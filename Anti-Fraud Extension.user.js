@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.6
+// @version      2.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/payments/paymentsItemsOut/index/*
@@ -503,7 +503,12 @@
                 let withdrawText = '';
                 let bonusDate = '';
 
+                let messageCount = 0; // Счетчик сообщений
+                const maxMessages = 3; // Максимальное количество сообщений
+
                 rows.forEach(row => {
+                    if (messageCount >= maxMessages) return; // Прекращение добавления сообщений
+
                     const cells = row.querySelectorAll('td');
                     if (cells.length > 0) {
                         const actionType = cells[1].innerText.trim();
@@ -526,9 +531,13 @@
                             const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                             bonusDate = dateMatch ? dateMatch[1] : '';
 
-                            // Проверка, если withdrawAmount больше balanceAfterBonus
                             if (withdrawAmount > balanceAfterBonus) {
+                                const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;
+                                console.log(message);
+
                                 updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate);
+
+                                messageCount++; // Увеличение счетчика сообщений
                             }
 
                             waitingForBonus = false;
@@ -541,6 +550,7 @@
             }
         });
     }
+
 
     function handlePopup() {
         const popup = document.querySelector('#swal2-content');

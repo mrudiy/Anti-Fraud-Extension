@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/payments/paymentsItemsOut/index/*
@@ -434,7 +434,7 @@
         }
     }
 
-    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount) {
+    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate) {
         if (!popupBox) {
             console.error('Попап не существует');
             return;
@@ -446,7 +446,7 @@
             <div style="color: red; font-weight: bold; margin-top: 10px;">
                 <center>
                 <span id="popup-clickable-text">
-                    Можливе порушення BTR:<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
+                    Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
                 </span>
                 </center>
             </div>`;
@@ -501,6 +501,7 @@
                 let bonusText = '';
                 let withdrawId = '';
                 let withdrawText = '';
+                let bonusDate = '';
 
                 rows.forEach(row => {
                     const cells = row.querySelectorAll('td');
@@ -521,7 +522,15 @@
                             balanceAfterBonus = parseFloat(cells[3].textContent.replace(',', '.'));
                             bonusId = cells[0].textContent.trim();
                             bonusText = cells[6].textContent.trim();
-                            updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount)
+                            const fullDate = cells[5].textContent.trim();
+                            const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
+                            bonusDate = dateMatch ? dateMatch[1] : '';
+
+                            // Проверка, если withdrawAmount больше balanceAfterBonus
+                            if (withdrawAmount > balanceAfterBonus) {
+                                updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate);
+                            }
+
                             waitingForBonus = false;
                         }
                     }
@@ -561,7 +570,7 @@
                                     fetchAndProcessData();
                                     createPopupBox(MonthPA, TotalPA, Balance, NDFL);
                                 }
-                            }, 500);
+                            }, 250);
                         }
                     }, 1);
                 }
@@ -575,7 +584,7 @@
         } else if (currentUrl.includes('playersItems/update')) {
             clickButton();
             addForeignButton();
-            setTimeout(handlePopup, 500);
+            setTimeout(handlePopup, 200);
         }
     });
 })();

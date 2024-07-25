@@ -1,25 +1,34 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/payments/paymentsItemsOut/index/*
 // @match        https://admin.777.ua/payments/paymentsItemsOut/index/*
 // @match        https://admin.777.ua/players/playersItems/update/*
 // @match        https://admin.slotoking.ua/players/playersItems/update/*
-// @updateURL
-// @downloadURL
+// @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @connect      admin.777.ua
+// @connect      admin.slotoking.ua
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
+    let popupBox;
     const currentUrl = window.location.href;
     const initialsKey = 'userInitials';
+    const urlPath = window.location.pathname;
+    const userId = urlPath.split('/')[4];
+    const TransactionUrl = window.location.hostname.includes('777.ua')
+                    ? 'https://admin.777.ua/players/playersItems/transactionLog/'
+                    : 'https://admin.slotoking.ua/players/playersItems/transactionLog/';
 
     function getCurrentDateFormatted() {
         const today = new Date();
@@ -154,7 +163,7 @@
         }
     }
 
-       function getBaseURL() {
+    function getBaseURL() {
         if (window.location.hostname === 'admin.777.ua') {
             return 'https://admin.777.ua/players/playersDetail/index/';
         } else if (window.location.hostname === 'admin.slotoking.ua') {
@@ -164,7 +173,7 @@
         return null;
     }
 
-        function getPlayerID() {
+    function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
             if (row.textContent.includes('Номер игрока')) {
@@ -189,7 +198,12 @@
     let isProfitButtonClicked = false;
 
     function createPopupBox(MonthPA, TotalPA, Balance, NDFL) {
-        const popupBox = document.createElement('div');
+        if (popupBox) {
+            // Если попап уже существует, не создаем новый
+            return;
+        }
+
+        popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
         popupBox.style.top = '10px';
         popupBox.style.right = '10px';
@@ -205,7 +219,12 @@
         popupBox.style.alignItems = 'center';
 
         const text = document.createElement('div');
-        text.innerHTML = `<center><b>Баланс: ${Balance}₴</b></center><center><b>НДФЛ: ${NDFL}₴</center></b><b>Month: ${MonthPA} | Total: ${TotalPA} |</b>`;
+        text.className = 'popup-text'; // Класс для удобного выбора
+        text.innerHTML = `
+        <center><b>Баланс: ${Balance}₴</b></center>
+        <center><b>НДФЛ: ${NDFL}₴</center></b>
+        <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
+    `;
         popupBox.appendChild(text);
 
         const settingsIcon = document.createElement('div');
@@ -394,7 +413,6 @@
 
                             const profit = depositsTotal - redeemsTotal;
 
-                            // Удаляем анимацию загрузки и отображаем результат
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += `<div><b>Прибуток клієнта: ${profit.toFixed(2)}₴</b></div>`;
                         } else {
@@ -414,6 +432,105 @@
                 }
             });
         }
+    }
+
+    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount) {
+        if (!popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = popupBox.querySelector('.popup-text');
+        if (textElement) {
+            textElement.innerHTML += `
+            <div style="color: red; font-weight: bold; margin-top: 10px;">
+                <center>
+                <span id="popup-clickable-text">
+                    Можливе порушення BTR:<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
+                </span>
+                </center>
+            </div>`;
+
+            // Добавляем обработчик клика
+            const clickableText = popupBox.querySelector('#popup-clickable-text');
+            if (clickableText) {
+                clickableText.addEventListener('click', () => {
+                    const date = getCurrentDate();
+                    const initials = GM_getValue(initialsKey);
+
+                    const textToInsert = `
+#<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
+#${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>
+`;
+
+                    insertTextIntoField(textToInsert);
+                });
+            }
+        }
+    }
+
+    function fetchAndProcessData() {
+        const fullTransactionUrl = `${TransactionUrl}${userId}/`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: fullTransactionUrl,
+            onload: function(response) {
+                const html = response.responseText;
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                const pageSizeSelect = doc.querySelector('#pageSize');
+                if (pageSizeSelect) {
+                    pageSizeSelect.value = '1000';
+                    const event = new Event('change');
+                    pageSizeSelect.dispatchEvent(event);
+                } else {
+                    console.warn('Page size selector not found.');
+                }
+
+                const rows = Array.from(doc.querySelectorAll('tr'));
+
+                let withdrawAmount = 0;
+                let balanceAfterBonus = 0;
+                let bonusAmount = 0;
+                let waitingForBonus = false;
+
+                let bonusId = '';
+                let bonusText = '';
+                let withdrawId = '';
+                let withdrawText = '';
+
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length > 0) {
+                        const actionType = cells[1].innerText.trim();
+
+                        if (actionType.includes('Вывод средств')) {
+                            withdrawAmount = parseFloat(cells[2].textContent.replace('-', '').replace(',', '.'));
+                            withdrawId = cells[0].textContent.trim();
+                            withdrawText = cells[6].textContent.trim();
+                            waitingForBonus = true;
+                        } else if (actionType.includes('Ввод средств')) {
+                            withdrawAmount = 0;
+                            balanceAfterBonus = 0;
+                            waitingForBonus = false;
+                        } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
+                            bonusAmount = parseFloat(cells[2].textContent.replace(',', '.'));
+                            balanceAfterBonus = parseFloat(cells[3].textContent.replace(',', '.'));
+                            bonusId = cells[0].textContent.trim();
+                            bonusText = cells[6].textContent.trim();
+                            updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount)
+                            waitingForBonus = false;
+                        }
+                    }
+                });
+            },
+            onerror: function(error) {
+                console.error('Ошибка загрузки данных:', error);
+            }
+        });
     }
 
     function handlePopup() {
@@ -442,6 +559,7 @@
                                 const balanceAfterSpan = document.querySelector('#balance-after');
                                 if (balanceAfterSpan) {
                                     const NDFL = balanceAfterSpan.textContent.trim();
+                                    fetchAndProcessData();
                                     createPopupBox(MonthPA, TotalPA, Balance, NDFL);
                                 }
                             }, 500);

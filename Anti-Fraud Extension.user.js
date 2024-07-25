@@ -542,7 +542,6 @@
                 const TotalPA = totalCell.textContent.trim();
                 const MonthPA = monthCell.textContent.trim();
                 const Balance = getBalance();
-                createPopupBox(MonthPA, TotalPA, Balance, 'N/A');
 
                 addCheckButton(TotalPA);
 

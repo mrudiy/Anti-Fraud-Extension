@@ -4,10 +4,8 @@
 // @version      2.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
-// @match        https://admin.slotoking.ua/payments/paymentsItemsOut/index/*
-// @match        https://admin.777.ua/payments/paymentsItemsOut/index/*
-// @match        https://admin.777.ua/players/playersItems/update/*
-// @match        https://admin.slotoking.ua/players/playersItems/update/*
+// @match        https://admin.slotoking.ua/*
+// @match        https://admin.777.ua/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
@@ -29,6 +27,7 @@
     const ProjectUrl = window.location.hostname.includes('777.ua')
     ? 'https://admin.777.ua/'
     : 'https://admin.slotoking.ua/';
+    const initialUrl = window.location.href; // Сохраняем текущий URL
 
     function getCurrentDateFormatted() {
         const today = new Date();
@@ -187,10 +186,65 @@
     }
     let isProfitButtonClicked = false;
 
+    function handle777() {
+        const currentUrl = window.location.href;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: currentUrl,
+            onload: function(response) {
+                if (response.status === 200) {
+                    // Create a hidden iframe to manipulate the DOM without affecting the main page
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    document.body.appendChild(iframe);
+
+                    // Write the page content into the iframe
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    iframeDoc.open();
+                    iframeDoc.write(response.responseText);
+                    iframeDoc.close();
+
+                    // Use iframe's document to manipulate DOM
+                    const checkbox = iframeDoc.querySelector('#Players_enabled_autopayouts');
+                    const updateButton = iframeDoc.querySelector('#yw2');
+
+                    if (!checkbox || !updateButton) {
+                        console.error('Checkbox or Update button not found');
+                        return;
+                    }
+
+                    // Toggle checkbox
+                    checkbox.checked = !checkbox.checked;
+
+                    // Click update button
+                    updateButton.click();
+
+                    // Remove iframe and refresh the main page
+                    setTimeout(() => {
+                        document.body.removeChild(iframe);
+                        location.reload();
+                    }, 300);
+                } else {
+                    console.error('Failed to load page content:', response.status);
+                }
+            },
+            onerror: function(error) {
+                console.error('Error occurred:', error);
+            }
+        });
+    }
+
     function createPopupBox(MonthPA, TotalPA, Balance, NDFL, pendingMessage = '') {
         if (popupBox) {
             return;
         }
+
+        const currentUrl = window.location.href;
+        const isSlotoking = currentUrl.includes('slotoking.ua');
+        const is777 = currentUrl.includes('777.ua');
+        const checkbox = document.getElementById('Players_enabled_autopayouts');
+        const isChecked = checkbox && checkbox.checked;
 
         popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
@@ -232,6 +286,32 @@
             }
         };
         popupBox.appendChild(settingsIcon);
+
+        const statusIcon = document.createElement('div');
+        statusIcon.style.position = 'absolute';
+        statusIcon.style.top = '5px';
+        statusIcon.style.left = '5px';
+        statusIcon.style.fontSize = '18px';
+        statusIcon.style.cursor = 'pointer';
+        statusIcon.innerHTML = isChecked ? '&#10004;' : '&#10008;';
+        statusIcon.onclick = () => {
+            if (is777) {
+                // Handle 777.ua site
+                handle777();
+            } else {
+                // Toggle checkbox and handle confirmation for slotoking.ua
+                checkbox.click();
+
+                // Wait for confirmation dialog and click "Yes, confirm"
+                setTimeout(() => {
+                    const confirmButton = document.querySelector('.swal2-confirm');
+                    if (confirmButton) {
+                        confirmButton.click();
+                    }
+                }, 100); // Adjust delay if necessary
+            }
+        };
+        popupBox.appendChild(statusIcon);
 
         const firstRowButtonContainer = document.createElement('div');
         firstRowButtonContainer.style.marginTop = '10px';
@@ -539,7 +619,6 @@
     function fetchAndProcessPending() {
         const PlayerID = getPlayerID();
         const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
-
         let totalPending = 0;
 
         GM_xmlhttpRequest({
@@ -551,9 +630,14 @@
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
 
+                // Проверьте, правильно ли получаем элемент и изменяем значение
                 const pageSizeSelect = doc.querySelector('#newPageSize');
                 if (pageSizeSelect) {
-                    pageSizeSelect.value = '500';
+                    console.log('Element found:', pageSizeSelect);
+                    pageSizeSelect.value = '450';
+                    const event = new Event('change', { bubbles: true });
+                    pageSizeSelect.dispatchEvent(event);
+                    console.log('Value set to:', pageSizeSelect.value);
                 } else {
                     console.warn('Page size selector not found.');
                 }
@@ -573,21 +657,20 @@
                         }
                     }
                 });
+
                 let pendingMessage = '';
                 if (totalPending > 0) {
                     pendingMessage = `На виплаті:\n${totalPending}₴`;
                 }
 
-                // Вызов функции fetchAndProcessData после получения pending данных
                 fetchAndProcessData();
 
-                // Обновление попапа с данными о pending
                 if (popupBox) {
                     const textElement = popupBox.querySelector('.popup-text');
                     if (textElement) {
                         textElement.innerHTML += `
-                            <center><b>${pendingMessage}</b></center>
-                        `;
+                        <center><b>${pendingMessage}</b></center>
+                    `;
                     }
                 }
             },

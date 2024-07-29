@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.7
+// @version      2.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/payments/paymentsItemsOut/index/*
@@ -26,9 +26,9 @@
     const initialsKey = 'userInitials';
     const urlPath = window.location.pathname;
     const userId = urlPath.split('/')[4];
-    const TransactionUrl = window.location.hostname.includes('777.ua')
-                    ? 'https://admin.777.ua/players/playersItems/transactionLog/'
-                    : 'https://admin.slotoking.ua/players/playersItems/transactionLog/';
+    const ProjectUrl = window.location.hostname.includes('777.ua')
+    ? 'https://admin.777.ua/'
+    : 'https://admin.slotoking.ua/';
 
     function getCurrentDateFormatted() {
         const today = new Date();
@@ -163,16 +163,6 @@
         }
     }
 
-    function getBaseURL() {
-        if (window.location.hostname === 'admin.777.ua') {
-            return 'https://admin.777.ua/players/playersDetail/index/';
-        } else if (window.location.hostname === 'admin.slotoking.ua') {
-            return 'https://admin.slotoking.ua/players/playersDetail/index/';
-        }
-        console.error('Unknown site');
-        return null;
-    }
-
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
@@ -197,9 +187,8 @@
     }
     let isProfitButtonClicked = false;
 
-    function createPopupBox(MonthPA, TotalPA, Balance, NDFL) {
+    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, pendingMessage = '') {
         if (popupBox) {
-            // Если попап уже существует, не создаем новый
             return;
         }
 
@@ -219,12 +208,13 @@
         popupBox.style.alignItems = 'center';
 
         const text = document.createElement('div');
-        text.className = 'popup-text'; // Класс для удобного выбора
+        text.className = 'popup-text';
         text.innerHTML = `
-        <center><b>Баланс: ${Balance}₴</b></center>
-        <center><b>НДФЛ: ${NDFL}₴</center></b>
-        <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
-    `;
+            <center><b>Баланс: ${Balance}₴</b></center>
+            <center><b>НДФЛ: ${NDFL}₴</center></b>
+            <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
+            ${pendingMessage ? `<center><b>${pendingMessage}</b></center>` : ''}
+        `;
         popupBox.appendChild(text);
 
         const settingsIcon = document.createElement('div');
@@ -373,11 +363,7 @@
             document.head.appendChild(style);
 
             const playerID = getPlayerID();
-            const baseURL = getBaseURL();
-
-            if (!baseURL) {
-                return;
-            }
+            const baseURL = `${ProjectUrl}players/playersDetail/index/`;
 
             GM_xmlhttpRequest({
                 method: 'POST',
@@ -451,7 +437,6 @@
                 </center>
             </div>`;
 
-            // Добавляем обработчик клика
             const clickableText = popupBox.querySelector('#popup-clickable-text');
             if (clickableText) {
                 clickableText.addEventListener('click', () => {
@@ -470,11 +455,11 @@
     }
 
     function fetchAndProcessData() {
-        const fullTransactionUrl = `${TransactionUrl}${userId}/`;
+        const fullProjectUrl = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
 
         GM_xmlhttpRequest({
             method: 'GET',
-            url: fullTransactionUrl,
+            url: fullProjectUrl,
             onload: function(response) {
                 const html = response.responseText;
 
@@ -537,13 +522,74 @@
 
                                 updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate);
 
-                                messageCount++; // Увеличение счетчика сообщений
+                                messageCount++;
                             }
 
                             waitingForBonus = false;
                         }
                     }
                 });
+            },
+            onerror: function(error) {
+                console.error('Ошибка загрузки данных:', error);
+            }
+        });
+    }
+
+    function fetchAndProcessPending() {
+        const PlayerID = getPlayerID();
+        const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
+
+        let totalPending = 0;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: fullProjectUrl,
+            onload: function(response) {
+                const html = response.responseText;
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                const pageSizeSelect = doc.querySelector('#newPageSize');
+                if (pageSizeSelect) {
+                    pageSizeSelect.value = '500';
+                } else {
+                    console.warn('Page size selector not found.');
+                }
+
+                const rows = doc.querySelectorAll('tr');
+                console.log(fullProjectUrl)
+                rows.forEach(row => {
+                    const statusSpan = row.querySelector('span.label');
+                    if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review')) {
+                        const amountCode = row.querySelector('td:nth-child(5) code');
+                        if (amountCode) {
+                            const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
+                            const amount = parseFloat(amountText.replace(',', '.'));
+                            if (!isNaN(amount)) {
+                                totalPending += amount;
+                            }
+                        }
+                    }
+                });
+                let pendingMessage = '';
+                if (totalPending > 0) {
+                    pendingMessage = `На виплаті:\n${totalPending}₴`;
+                }
+
+                // Вызов функции fetchAndProcessData после получения pending данных
+                fetchAndProcessData();
+
+                // Обновление попапа с данными о pending
+                if (popupBox) {
+                    const textElement = popupBox.querySelector('.popup-text');
+                    if (textElement) {
+                        textElement.innerHTML += `
+                            <center><b>${pendingMessage}</b></center>
+                        `;
+                    }
+                }
             },
             onerror: function(error) {
                 console.error('Ошибка загрузки данных:', error);
@@ -577,7 +623,7 @@
                                 const balanceAfterSpan = document.querySelector('#balance-after');
                                 if (balanceAfterSpan) {
                                     const NDFL = balanceAfterSpan.textContent.trim();
-                                    fetchAndProcessData();
+                                    fetchAndProcessPending();
                                     createPopupBox(MonthPA, TotalPA, Balance, NDFL);
                                 }
                             }, 250);

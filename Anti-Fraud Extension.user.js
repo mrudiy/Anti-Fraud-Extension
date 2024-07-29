@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.8
+// @version      2.9
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -397,7 +397,7 @@
         thirdRowButtonContainer.style.justifyContent = 'center';
 
         const resultButton = document.createElement('button');
-        resultButton.innerText = 'Прибуток';
+        resultButton.innerText = 'Total InOut';
         resultButton.style.padding = '5px 10px';
         resultButton.style.backgroundColor = '#2196F3';
         resultButton.style.color = 'white';
@@ -480,7 +480,7 @@
                             const profit = depositsTotal - redeemsTotal;
 
                             fourthRowContainer.removeChild(loader);
-                            fourthRowContainer.innerHTML += `<div><b>Прибуток клієнта: ${profit.toFixed(2)}₴</b></div>`;
+                            fourthRowContainer.innerHTML += `<div><b>Total InOut: ${profit.toFixed(2)}₴</b></div>`;
                         } else {
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += 'Таблица с результатами не найдена.';

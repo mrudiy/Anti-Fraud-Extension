@@ -29,6 +29,7 @@
     : 'https://admin.slotoking.ua/';
     const initialUrl = window.location.href;
     const sharedStorageKey = 'highlightRulesShared';
+    const languageKey = 'language';
 
     const defaultRules = [
         { text: 'Ввод средств', color: '#7cfc00' },
@@ -48,7 +49,6 @@
         localStorage.setItem(sharedStorageKey, JSON.stringify(rules));
     }
 
-    // Створюємо стилі для підсвічування
     const style = document.createElement('style');
     style.id = 'dynamic-styles';
     document.head.append(style);
@@ -175,7 +175,7 @@
         });
     }
 
-        function createTransactionsPopup() {
+    function createTransactionsPopup() {
         const rules = getRules();
         const popup = document.createElement('div');
         popup.id = 'color-popup';
@@ -232,7 +232,7 @@
         });
     }
 
-        function updateTransactionsPopup() {
+    function updateTransactionsPopup() {
         const popup = document.getElementById('color-popup');
         if (popup) {
             document.body.removeChild(popup);
@@ -241,7 +241,7 @@
         document.getElementById('color-popup').style.display = 'block';
     }
 
-        function initTransactionsPage() {
+    function initTransactionsPage() {
         const togglePopupButton = document.createElement('button');
         togglePopupButton.textContent = 'Керувати кольорами';
         togglePopupButton.className = 'toggle-popup-button';
@@ -321,6 +321,84 @@
         }
     }
 
+    function createSettingsPopup() {
+        const settingsPopup = document.createElement('div');
+        settingsPopup.style.position = 'fixed';
+        settingsPopup.style.top = '10px';
+        settingsPopup.style.right = '10px';
+        settingsPopup.style.padding = '10px';
+        settingsPopup.style.backgroundColor = 'white';
+        settingsPopup.style.border = '1px solid black';
+        settingsPopup.style.boxShadow = '0px 0px 5px rgba(0, 0, 0, 0.3)';
+        settingsPopup.style.zIndex = '10001';
+        settingsPopup.style.fontFamily = 'Arial, sans-serif';
+        settingsPopup.style.fontSize = '14px';
+        settingsPopup.style.borderRadius = '5px';
+
+        const header = document.createElement('h2');
+        header.innerText = 'Налаштування';
+        header.style.fontSize = '16px';
+        settingsPopup.appendChild(header);
+
+        const initialsDisplay = document.createElement('p');
+        const userInitials = GM_getValue(initialsKey, '');
+        initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+        settingsPopup.appendChild(initialsDisplay);
+
+        const languageDisplay = document.createElement('p');
+        let currentLanguage = GM_getValue(languageKey, 'російська');
+        languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
+        settingsPopup.appendChild(languageDisplay);
+
+        const initialsButton = document.createElement('button');
+        initialsButton.innerText = 'Вказати ініціали';
+        initialsButton.style.padding = '8px 16px';
+        initialsButton.style.backgroundColor = '#4CAF50';
+        initialsButton.style.color = 'white';
+        initialsButton.style.border = 'none';
+        initialsButton.style.borderRadius = '4px';
+        initialsButton.style.cursor = 'pointer';
+        initialsButton.addEventListener('click', () => {
+            const userInitials = prompt('Введіть свої ініціали (наприклад, РМ):', GM_getValue(initialsKey, ''));
+            if (userInitials !== null) {
+                GM_setValue(initialsKey, userInitials);
+                initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+            }
+        });
+        settingsPopup.appendChild(initialsButton);
+
+        const languageButton = document.createElement('button');
+        languageButton.innerText = `Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`;
+        languageButton.style.padding = '8px 16px';
+        languageButton.style.backgroundColor = '#2196F3';
+        languageButton.style.color = 'white';
+        languageButton.style.border = 'none';
+        languageButton.style.borderRadius = '4px';
+        languageButton.style.cursor = 'pointer';
+        languageButton.addEventListener('click', () => {
+            currentLanguage = currentLanguage === 'російська' ? 'українська' : 'російська';
+            GM_setValue(languageKey, currentLanguage);
+            languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
+            languageButton.innerText = `Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`;
+        });
+        settingsPopup.appendChild(languageButton);
+
+        const closeButton = document.createElement('button');
+        closeButton.innerText = 'Закрити';
+        closeButton.style.padding = '8px 16px';
+        closeButton.style.backgroundColor = '#f44336';
+        closeButton.style.color = 'white';
+        closeButton.style.border = 'none';
+        closeButton.style.borderRadius = '4px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.addEventListener('click', () => {
+            document.body.removeChild(settingsPopup);
+        });
+        settingsPopup.appendChild(closeButton);
+
+        document.body.appendChild(settingsPopup);
+    }
+
     function calculatePendingAmount() {
         let totalPending = 0;
 
@@ -353,6 +431,7 @@
         popupBoxWithDraw.style.display = 'flex';
         popupBoxWithDraw.style.flexDirection = 'column';
         popupBoxWithDraw.style.alignItems = 'center';
+        popupBoxWithDraw.style.borderRadius = '10px';
 
         const text = document.createElement('div');
         text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}₴</b></center>`;
@@ -508,10 +587,7 @@
         settingsIcon.style.fontSize = '18px';
         settingsIcon.title = 'Settings';
         settingsIcon.onclick = () => {
-            const userInitials = prompt('Введіть свої ініціали (наприклад, РМ):', GM_getValue(initialsKey, ''));
-            if (userInitials !== null) {
-                GM_setValue(initialsKey, userInitials);
-            }
+            createSettingsPopup();
         };
         popupBox.appendChild(settingsIcon);
 
@@ -533,7 +609,7 @@
                     if (confirmButton) {
                         confirmButton.click();
                     }
-                }, 100); 
+                }, 100);
             }
         };
         popupBox.appendChild(statusIcon);
@@ -553,8 +629,19 @@
         cleanButton.style.cursor = 'pointer';
         cleanButton.addEventListener('click', () => {
             const date = getCurrentDate();
-            const initials = GM_getValue(initialsKey)
-            const textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+            const initials = GM_getValue(initialsKey, '');
+            const currentLanguage = GM_getValue(languageKey, 'російська'); // Получаем текущий язык
+
+            let textToInsert;
+
+            if (currentLanguage === 'російська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+            } else if (currentLanguage === 'українська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#14b814">власними</font></b> картками, без ризиків`;
+            } else {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+            }
+
             insertTextIntoField(textToInsert);
         });
         firstRowButtonContainer.appendChild(cleanButton);
@@ -569,8 +656,19 @@
         foreignButton.style.cursor = 'pointer';
         foreignButton.addEventListener('click', () => {
             const date = getCurrentDate();
-            const initials = GM_getValue(initialsKey)
-            const textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+            const initials = GM_getValue(initialsKey, '');
+            const currentLanguage = GM_getValue(languageKey, 'російська');
+
+            let textToInsert;
+
+            if (currentLanguage === 'російська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+            } else if (currentLanguage === 'українська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`;
+            } else {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+            }
+
             insertTextIntoField(textToInsert);
         });
         firstRowButtonContainer.appendChild(foreignButton);
@@ -592,8 +690,19 @@
         pendingPlusButton.style.cursor = 'pointer';
         pendingPlusButton.addEventListener('click', () => {
             const date = getCurrentDate();
-            const initials = GM_getValue(initialsKey)
-            const textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+            const initials = GM_getValue(initialsKey, '');
+            const currentLanguage = GM_getValue(languageKey, 'російська');
+
+            let textToInsert;
+
+            if (currentLanguage === 'російська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+            } else if (currentLanguage === 'українська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#14b814">власними</font></b> картками, без ризиків, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+            } else {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+            }
+
             insertTextIntoField(textToInsert);
         });
         secondRowButtonContainer.appendChild(pendingPlusButton);
@@ -608,8 +717,19 @@
         pendingMinusButton.style.cursor = 'pointer';
         pendingMinusButton.addEventListener('click', () => {
             const date = getCurrentDate();
-            const initials = GM_getValue(initialsKey)
-            const textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+            const initials = GM_getValue(initialsKey, '');
+            const currentLanguage = GM_getValue(languageKey, 'російська');
+
+            let textToInsert;
+
+            if (currentLanguage === 'російська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+            } else if (currentLanguage === 'українська') {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+            } else {
+                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+            }
+
             insertTextIntoField(textToInsert);
         });
         secondRowButtonContainer.appendChild(pendingMinusButton);
@@ -725,7 +845,7 @@
         }
     }
 
-    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate) {
+    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index) {
         if (!popupBox) {
             console.error('Попап не существует');
             return;
@@ -733,54 +853,100 @@
 
         const textElement = popupBox.querySelector('.popup-text');
         if (textElement) {
-            textElement.innerHTML += `
-            <div style="color: red; font-weight: bold; margin-top: 10px;">
-                <center>
-                <span id="popup-clickable-text">
-                    Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
-                </span>
-                </center>
-            </div>`;
+            const newMessage = document.createElement('div');
+            newMessage.style.color = 'red';
+            newMessage.style.fontWeight = 'bold';
+            newMessage.style.marginTop = '10px';
+            newMessage.innerHTML = `
+            <center>
+            <span id="popup-clickable-text-${index}">
+                Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
+            </span>
+            </center>
+        `;
+            textElement.appendChild(newMessage);
 
-            const clickableText = popupBox.querySelector('#popup-clickable-text');
+            const clickableText = document.getElementById(`popup-clickable-text-${index}`);
             if (clickableText) {
                 clickableText.addEventListener('click', () => {
-                    const date = getCurrentDate();
-                    const initials = GM_getValue(initialsKey);
+                    const date = getCurrentDate(); // Предполагается, что эта функция существует
+                    const initials = GM_getValue(initialsKey); // Предполагается, что эта функция существует
 
                     const textToInsert = `
 #<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
 #${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>
-`;
-
+                `;
                     insertTextIntoField(textToInsert);
                 });
             }
         }
     }
 
+
+
+    function showBonusViolationMessage(bonusId, dateStr, index) {
+        if (!popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = popupBox.querySelector('.popup-text');
+        if (textElement) {
+            const newMessage = document.createElement('div');
+            newMessage.style.color = 'red';
+            newMessage.style.fontWeight = 'bold';
+            newMessage.style.marginTop = '10px';
+            newMessage.innerHTML = `
+            <center>
+            <span id="popup-bonus-violation-${index}">
+                Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}
+            </span>
+            </center>
+        `;
+            textElement.appendChild(newMessage);
+
+            const clickableText = document.getElementById(`popup-bonus-violation-${index}`);
+            if (clickableText) {
+                clickableText.addEventListener('click', () => {
+                    const textToInsert = `
+#<b>Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}</b>
+                `;
+                    insertTextIntoField(textToInsert);
+                });
+            }
+        }
+    }
+
+
     function fetchAndProcessData() {
         const fullProjectUrl = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
+
+        console.log('Запрос данных по URL:', fullProjectUrl);
 
         GM_xmlhttpRequest({
             method: 'GET',
             url: fullProjectUrl,
             onload: function(response) {
+                console.log('Получен ответ от сервера');
                 const html = response.responseText;
 
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
+
+                console.log('HTML успешно распарсен');
 
                 const pageSizeSelect = doc.querySelector('#pageSize');
                 if (pageSizeSelect) {
                     pageSizeSelect.value = '1000';
                     const event = new Event('change');
                     pageSizeSelect.dispatchEvent(event);
+                    console.log('Изменен размер страницы на 1000');
                 } else {
-                    console.warn('Page size selector not found.');
+                    console.warn('Элемент выбора размера страницы не найден');
                 }
 
                 const rows = Array.from(doc.querySelectorAll('tr'));
+                console.log('Найдено строк таблицы:', rows.length);
 
                 let withdrawAmount = 0;
                 let balanceAfterBonus = 0;
@@ -793,25 +959,37 @@
                 let withdrawText = '';
                 let bonusDate = '';
 
-                let messageCount = 0; // Счетчик сообщений
-                const maxMessages = 3; // Максимальное количество сообщений
+                let messageCount = 0;
+                const maxMessages = 3;
+
+                const bonusAssignments = {};
+
+                const displayedMessages = {};
 
                 rows.forEach(row => {
-                    if (messageCount >= maxMessages) return; // Прекращение добавления сообщений
+                    if (messageCount >= maxMessages) return;
 
                     const cells = row.querySelectorAll('td');
                     if (cells.length > 0) {
                         const actionType = cells[1].innerText.trim();
+                        const bonusInfo = cells[6].textContent.trim();
+                        const dateTimeStr = cells[5].textContent.trim();
+                        const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
+                        const dateStr = dateMatch ? dateMatch[1] : '';
+
+                        console.log('Обрабатываем строку:', { actionType, bonusInfo, dateStr });
 
                         if (actionType.includes('Вывод средств')) {
                             withdrawAmount = parseFloat(cells[2].textContent.replace('-', '').replace(',', '.'));
                             withdrawId = cells[0].textContent.trim();
                             withdrawText = cells[6].textContent.trim();
                             waitingForBonus = true;
+                            console.log('Обнаружен вывод средств:', { withdrawAmount, withdrawId, withdrawText });
                         } else if (actionType.includes('Ввод средств')) {
                             withdrawAmount = 0;
                             balanceAfterBonus = 0;
                             waitingForBonus = false;
+                            console.log('Обнаружен ввод средств');
                         } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
                             bonusAmount = parseFloat(cells[2].textContent.replace(',', '.'));
                             balanceAfterBonus = parseFloat(cells[3].textContent.replace(',', '.'));
@@ -821,16 +999,48 @@
                             const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                             bonusDate = dateMatch ? dateMatch[1] : '';
 
+                            console.log('Обнаружено отыгрывание бонуса:', { bonusAmount, balanceAfterBonus, bonusId, bonusText, bonusDate });
+
                             if (withdrawAmount > balanceAfterBonus) {
                                 const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;
-                                console.log(message);
+                                console.log('Проверка на нарушение BTR:', message);
 
-                                updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate);
+                                updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
 
                                 messageCount++;
                             }
 
                             waitingForBonus = false;
+                        } else if (actionType.includes('Присвоение бонуса')) {
+                            const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
+                            if (bonusIdMatch) {
+                                const bonusId = bonusIdMatch[1];
+
+                                if (!bonusAssignments[bonusId]) {
+                                    bonusAssignments[bonusId] = {};
+                                }
+
+                                if (!bonusAssignments[bonusId][dateStr]) {
+                                    bonusAssignments[bonusId][dateStr] = 0;
+                                }
+
+                                bonusAssignments[bonusId][dateStr]++;
+
+                                if (bonusAssignments[bonusId][dateStr] > 2) {
+                                    const key = `${bonusId}_${dateStr}`;
+                                    if (!displayedMessages[key]) {
+                                        const additionalMessage = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
+                                        console.log('Проверка на нарушение присвоения бонуса:', additionalMessage);
+
+                                        showBonusViolationMessage(bonusId, dateStr, messageCount);
+
+                                        displayedMessages[key] = true;
+                                        messageCount++;
+                                    }
+                                }
+                            } else {
+                                console.warn('Не удалось извлечь ID бонуса из строки:', bonusInfo);
+                            }
                         }
                     }
                 });
@@ -855,14 +1065,11 @@
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
 
-                // Проверьте, правильно ли получаем элемент и изменяем значение
                 const pageSizeSelect = doc.querySelector('#newPageSize');
                 if (pageSizeSelect) {
-                    console.log('Element found:', pageSizeSelect);
                     pageSizeSelect.value = '450';
                     const event = new Event('change', { bubbles: true });
                     pageSizeSelect.dispatchEvent(event);
-                    console.log('Value set to:', pageSizeSelect.value);
                 } else {
                     console.warn('Page size selector not found.');
                 }
@@ -952,7 +1159,7 @@
         } else if (currentUrl.includes('playersItems/transactionLog/')) {
             initTransactionsPage();
             processTableRows();
-            setTimeout(handlePopup, 200);
-        }
-    });
+        };
+    }
+                           );
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      2.9
+// @version      3.0
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -27,7 +27,240 @@
     const ProjectUrl = window.location.hostname.includes('777.ua')
     ? 'https://admin.777.ua/'
     : 'https://admin.slotoking.ua/';
-    const initialUrl = window.location.href; // Сохраняем текущий URL
+    const initialUrl = window.location.href;
+    const sharedStorageKey = 'highlightRulesShared';
+
+    const defaultRules = [
+        { text: 'Ввод средств', color: '#7cfc00' },
+        { text: 'Вывод средств', color: '#f0e68c' },
+        { text: 'Отыгрывание бонуса', color: '#ff69b4' },
+        { text: 'Начисление cashback', color: '#ff69b4' },
+        { text: 'Присвоение бонуса', color: '#1e90ff' },
+        { text: 'Отмена', color: '#ff4500' }
+    ];
+
+    function getRules() {
+        const rules = localStorage.getItem(sharedStorageKey);
+        return rules ? JSON.parse(rules) : defaultRules;
+    }
+
+    function saveRules(rules) {
+        localStorage.setItem(sharedStorageKey, JSON.stringify(rules));
+    }
+
+    // Створюємо стилі для підсвічування
+    const style = document.createElement('style');
+    style.id = 'dynamic-styles';
+    document.head.append(style);
+
+    function applyBackgroundColor(row, color) {
+        row.style.backgroundColor = color;
+    }
+
+    function updateColors() {
+        const rules = getRules();
+        let newStyleContent = `
+            tr td {
+                background-color: transparent !important;
+            }
+            #color-popup {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                padding: 20px;
+                z-index: 1000;
+                display: none;
+                width: 350px;
+                font-family: Arial, sans-serif;
+            }
+            #color-popup h2 {
+                margin-top: 0;
+                font-size: 18px;
+                text-align: center;
+            }
+            #color-popup input[type="color"], #color-popup input[type="text"] {
+                margin: 5px 0;
+                display: block;
+                width: calc(100% - 12px);
+                padding: 5px;
+                border-radius: 5px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            #color-popup input[type="color"] {
+                height: 30px;
+            }
+            #color-popup button {
+                display: block;
+                width: calc(100% - 20px);
+                margin: 10px auto;
+                padding: 10px;
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: background 0.3s;
+            }
+            #color-popup button:hover {
+                background: #0056b3;
+            }
+            .delete-rule {
+                background: #dc3545 !important;
+            }
+            .delete-rule:hover {
+                background: #c82333 !important;
+            }
+            .popup-rule {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .popup-rule input {
+                flex-grow: 1;
+                margin-right: 5px;
+            }
+            .popup-rule button {
+                margin: 0;
+                width: auto;
+                padding: 5px;
+                font-size: 12px;
+            }
+            .toggle-popup-button {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+                cursor: pointer;
+                z-index: 1000;
+                font-size: 14px;
+                transition: background 0.3s;
+            }
+            .toggle-popup-button:hover {
+                background: #218838;
+            }
+        `;
+
+        document.getElementById('dynamic-styles').textContent = newStyleContent;
+        processTableRows();
+    }
+
+    function processTableRows() {
+        const rules = getRules();
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            let colorApplied = false;
+            cells.forEach(cell => {
+                rules.forEach(rule => {
+                    if (cell.textContent.includes(rule.text)) {
+                        applyBackgroundColor(row, rule.color);
+                        colorApplied = true;
+                    }
+                });
+            });
+            if (!colorApplied) {
+                row.style.backgroundColor = '';
+            }
+        });
+    }
+
+        function createTransactionsPopup() {
+        const rules = getRules();
+        const popup = document.createElement('div');
+        popup.id = 'color-popup';
+        let rulesHtml = '<h2>Керування кольорами</h2>';
+
+        rules.forEach((rule, index) => {
+            rulesHtml += `
+                <div class="popup-rule" data-index="${index}">
+                    <input type="text" value="${rule.text}" class="rule-text" placeholder="Текст">
+                    <input type="color" value="${rule.color}" class="rule-color">
+                    <button class="delete-rule">Видалити</button>
+                </div>
+            `;
+        });
+
+        popup.innerHTML = `
+            ${rulesHtml}
+            <button id="add-rule">Додати правило</button>
+            <button id="save-rules">Зберегти</button>
+            <button id="close-popup">Закрити</button>
+        `;
+
+        document.body.append(popup);
+
+        document.querySelectorAll('.delete-rule').forEach(button => {
+            button.addEventListener('click', event => {
+                const index = event.target.parentElement.getAttribute('data-index');
+                rules.splice(index, 1);
+                saveRules(rules);
+                updateTransactionsPopup();
+                updateColors();
+            });
+        });
+
+        document.getElementById('add-rule').addEventListener('click', () => {
+            rules.push({ text: '', color: '#ffffff' });
+            saveRules(rules);
+            updateTransactionsPopup();
+        });
+
+        document.getElementById('save-rules').addEventListener('click', () => {
+            document.querySelectorAll('.popup-rule').forEach(div => {
+                const index = div.getAttribute('data-index');
+                rules[index].text = div.querySelector('.rule-text').value;
+                rules[index].color = div.querySelector('.rule-color').value;
+            });
+            saveRules(rules);
+            updateColors();
+        });
+
+        document.getElementById('close-popup').addEventListener('click', () => {
+            popup.style.display = 'none';
+            document.querySelector('.toggle-popup-button').style.display = 'block';
+        });
+    }
+
+        function updateTransactionsPopup() {
+        const popup = document.getElementById('color-popup');
+        if (popup) {
+            document.body.removeChild(popup);
+        }
+        createTransactionsPopup();
+        document.getElementById('color-popup').style.display = 'block';
+    }
+
+        function initTransactionsPage() {
+        const togglePopupButton = document.createElement('button');
+        togglePopupButton.textContent = 'Керувати кольорами';
+        togglePopupButton.className = 'toggle-popup-button';
+        document.body.append(togglePopupButton);
+
+        togglePopupButton.addEventListener('click', () => {
+            const popup = document.getElementById('color-popup');
+            if (popup) {
+                popup.style.display = 'block';
+                togglePopupButton.style.display = 'none';
+            } else {
+                createTransactionsPopup();
+                document.getElementById('color-popup').style.display = 'block';
+                togglePopupButton.style.display = 'none';
+            }
+        });
+
+        updateColors();
+    }
 
     function getCurrentDateFormatted() {
         const today = new Date();
@@ -194,18 +427,15 @@
             url: currentUrl,
             onload: function(response) {
                 if (response.status === 200) {
-                    // Create a hidden iframe to manipulate the DOM without affecting the main page
                     const iframe = document.createElement('iframe');
                     iframe.style.display = 'none';
                     document.body.appendChild(iframe);
 
-                    // Write the page content into the iframe
                     const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                     iframeDoc.open();
                     iframeDoc.write(response.responseText);
                     iframeDoc.close();
 
-                    // Use iframe's document to manipulate DOM
                     const checkbox = iframeDoc.querySelector('#Players_enabled_autopayouts');
                     const updateButton = iframeDoc.querySelector('#yw2');
 
@@ -214,13 +444,10 @@
                         return;
                     }
 
-                    // Toggle checkbox
                     checkbox.checked = !checkbox.checked;
 
-                    // Click update button
                     updateButton.click();
 
-                    // Remove iframe and refresh the main page
                     setTimeout(() => {
                         document.body.removeChild(iframe);
                         location.reload();
@@ -260,6 +487,7 @@
         popupBox.style.display = 'flex';
         popupBox.style.flexDirection = 'column';
         popupBox.style.alignItems = 'center';
+        popupBox.style.borderRadius = '10px';
 
         const text = document.createElement('div');
         text.className = 'popup-text';
@@ -296,19 +524,16 @@
         statusIcon.innerHTML = isChecked ? '&#10004;' : '&#10008;';
         statusIcon.onclick = () => {
             if (is777) {
-                // Handle 777.ua site
                 handle777();
             } else {
-                // Toggle checkbox and handle confirmation for slotoking.ua
                 checkbox.click();
 
-                // Wait for confirmation dialog and click "Yes, confirm"
                 setTimeout(() => {
                     const confirmButton = document.querySelector('.swal2-confirm');
                     if (confirmButton) {
                         confirmButton.click();
                     }
-                }, 100); // Adjust delay if necessary
+                }, 100); 
             }
         };
         popupBox.appendChild(statusIcon);
@@ -723,6 +948,10 @@
         } else if (currentUrl.includes('playersItems/update')) {
             clickButton();
             addForeignButton();
+            setTimeout(handlePopup, 200);
+        } else if (currentUrl.includes('playersItems/transactionLog/')) {
+            initTransactionsPage();
+            processTableRows();
             setTimeout(handlePopup, 200);
         }
     });

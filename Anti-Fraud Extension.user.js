@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.0
+// @version      3.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -304,7 +304,7 @@
         }
     }
 
-    function addCheckButton(TotalPA) {
+    function addCheckButton(TotalPA, Balance, totalPending) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
         if (formatableTextDiv) {
             const checkButton = document.createElement('button');
@@ -312,14 +312,42 @@
             checkButton.innerText = 'Check';
             checkButton.onclick = () => {
                 const date = getCurrentDate();
-                const initials = GM_getValue(initialsKey)
-                const textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} |`;
+                const initials = GM_getValue(initialsKey);
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+
+                let textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | `;
+
+                if (currentLanguage === 'українська') {
+
+                    if (Balance > 1) {
+                        const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${Balance}₴</b> | `;
+                    }
+
+                    if (totalPending > 1) {
+                        const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${totalPending}₴ </b>| `;
+                    }
+                } else {
+                    if (Balance > 1) {
+                        const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${Balance}₴</b> | `;
+                    }
+
+                    if (totalPending > 1) {
+                        const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${totalPending}₴ </b>| `;
+                    }
+                }
+
                 insertTextIntoField(textToInsert);
             };
 
             formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
         }
     }
+
+
 
     function createSettingsPopup() {
         const settingsPopup = document.createElement('div');
@@ -541,7 +569,7 @@
         });
     }
 
-    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, pendingMessage = '') {
+    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending) {
         if (popupBox) {
             return;
         }
@@ -571,12 +599,13 @@
         const text = document.createElement('div');
         text.className = 'popup-text';
         text.innerHTML = `
-            <center><b>Баланс: ${Balance}₴</b></center>
-            <center><b>НДФЛ: ${NDFL}₴</center></b>
-            <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
-            ${pendingMessage ? `<center><b>${pendingMessage}</b></center>` : ''}
-        `;
+    <center><b>Баланс: ${Balance}₴</b></center>
+    <center><b>НДФЛ: ${NDFL}₴</center></b>
+    <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
+    ${totalPending > 1 ? `<center><b>На виплаті:\n${totalPending}₴</b></center>` : ''}
+`;
         popupBox.appendChild(text);
+
 
         const settingsIcon = document.createElement('div');
         settingsIcon.innerHTML = '&#9881;';
@@ -630,16 +659,16 @@
         cleanButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська'); // Получаем текущий язык
+            const currentLanguage = GM_getValue(languageKey, 'російська'); 
 
             let textToInsert;
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#14b814">власними</font></b> картками, без ризиків`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, без ризиків`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             }
 
             insertTextIntoField(textToInsert);
@@ -662,11 +691,11 @@
             let textToInsert;
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
             }
 
             insertTextIntoField(textToInsert);
@@ -696,11 +725,11 @@
             let textToInsert;
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | грає <b><font color="#14b814">власними</font></b> картками, без ризиків, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, без ризиків, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             }
 
             insertTextIntoField(textToInsert);
@@ -723,11 +752,11 @@
             let textToInsert;
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br>РА: ${TotalPA} | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             }
 
             insertTextIntoField(textToInsert);
@@ -869,8 +898,8 @@
             const clickableText = document.getElementById(`popup-clickable-text-${index}`);
             if (clickableText) {
                 clickableText.addEventListener('click', () => {
-                    const date = getCurrentDate(); // Предполагается, что эта функция существует
-                    const initials = GM_getValue(initialsKey); // Предполагается, что эта функция существует
+                    const date = getCurrentDate(); 
+                    const initials = GM_getValue(initialsKey); 
 
                     const textToInsert = `
 #<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
@@ -1052,65 +1081,55 @@
     }
 
     function fetchAndProcessPending() {
-        const PlayerID = getPlayerID();
-        const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
-        let totalPending = 0;
+        return new Promise((resolve, reject) => {
+            const PlayerID = getPlayerID();
+            const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
+            let totalPending = 0;
 
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: fullProjectUrl,
-            onload: function(response) {
-                const html = response.responseText;
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: fullProjectUrl,
+                onload: function(response) {
+                    const html = response.responseText;
 
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
 
-                const pageSizeSelect = doc.querySelector('#newPageSize');
-                if (pageSizeSelect) {
-                    pageSizeSelect.value = '450';
-                    const event = new Event('change', { bubbles: true });
-                    pageSizeSelect.dispatchEvent(event);
-                } else {
-                    console.warn('Page size selector not found.');
-                }
+                    const pageSizeSelect = doc.querySelector('#newPageSize');
+                    if (pageSizeSelect) {
+                        pageSizeSelect.value = '450';
+                        const event = new Event('change', { bubbles: true });
+                        pageSizeSelect.dispatchEvent(event);
+                    } else {
+                        console.warn('Page size selector not found.');
+                    }
 
-                const rows = doc.querySelectorAll('tr');
-                console.log(fullProjectUrl)
-                rows.forEach(row => {
-                    const statusSpan = row.querySelector('span.label');
-                    if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review')) {
-                        const amountCode = row.querySelector('td:nth-child(5) code');
-                        if (amountCode) {
-                            const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
-                            const amount = parseFloat(amountText.replace(',', '.'));
-                            if (!isNaN(amount)) {
-                                totalPending += amount;
+                    const rows = doc.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const statusSpan = row.querySelector('span.label');
+                        if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review')) {
+                            const amountCode = row.querySelector('td:nth-child(5) code');
+                            if (amountCode) {
+                                const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
+                                const amount = parseFloat(amountText.replace(',', '.'));
+                                if (!isNaN(amount)) {
+                                    totalPending += amount;
+                                }
                             }
                         }
-                    }
-                });
+                    });
 
-                let pendingMessage = '';
-                if (totalPending > 0) {
-                    pendingMessage = `На виплаті:\n${totalPending}₴`;
+                    fetchAndProcessData();
+                    resolve(totalPending);
+                },
+                onerror: function(error) {
+                    console.error('Ошибка загрузки данных:', error);
+                    reject(error);
                 }
-
-                fetchAndProcessData();
-
-                if (popupBox) {
-                    const textElement = popupBox.querySelector('.popup-text');
-                    if (textElement) {
-                        textElement.innerHTML += `
-                        <center><b>${pendingMessage}</b></center>
-                    `;
-                    }
-                }
-            },
-            onerror: function(error) {
-                console.error('Ошибка загрузки данных:', error);
-            }
+            });
         });
     }
+
 
 
     function handlePopup() {
@@ -1122,8 +1141,6 @@
                 const TotalPA = totalCell.textContent.trim();
                 const MonthPA = monthCell.textContent.trim();
                 const Balance = getBalance();
-
-                addCheckButton(TotalPA);
 
                 const closeButton = document.querySelector('button.swal2-confirm');
                 if (closeButton) {
@@ -1138,8 +1155,12 @@
                                 const balanceAfterSpan = document.querySelector('#balance-after');
                                 if (balanceAfterSpan) {
                                     const NDFL = balanceAfterSpan.textContent.trim();
-                                    fetchAndProcessPending();
-                                    createPopupBox(MonthPA, TotalPA, Balance, NDFL);
+                                    fetchAndProcessPending().then(totalPending => {
+                                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending);
+                                        addCheckButton(TotalPA, Balance, totalPending);
+                                    }).catch(error => {
+                                        console.error('Error processing pending payments:', error);
+                                    });
                                 }
                             }, 250);
                         }
@@ -1148,6 +1169,9 @@
             }
         }
     }
+
+
+
 
     window.addEventListener('load', function() {
         if (currentUrl.includes('paymentsItemsOut/index')) {

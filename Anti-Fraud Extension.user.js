@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.1.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -526,59 +526,13 @@
     }
     let isProfitButtonClicked = false;
 
-    function handle777() {
-        const currentUrl = window.location.href;
-
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: currentUrl,
-            onload: function(response) {
-                if (response.status === 200) {
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    document.body.appendChild(iframe);
-
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                    iframeDoc.open();
-                    iframeDoc.write(response.responseText);
-                    iframeDoc.close();
-
-                    const checkbox = iframeDoc.querySelector('#Players_enabled_autopayouts');
-                    const updateButton = iframeDoc.querySelector('#yw2');
-
-                    if (!checkbox || !updateButton) {
-                        console.error('Checkbox or Update button not found');
-                        return;
-                    }
-
-                    checkbox.checked = !checkbox.checked;
-
-                    updateButton.click();
-
-                    setTimeout(() => {
-                        document.body.removeChild(iframe);
-                        location.reload();
-                    }, 300);
-                } else {
-                    console.error('Failed to load page content:', response.status);
-                }
-            },
-            onerror: function(error) {
-                console.error('Error occurred:', error);
-            }
-        });
-    }
-
     function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending) {
         if (popupBox) {
             return;
         }
 
         const currentUrl = window.location.href;
-        const isSlotoking = currentUrl.includes('slotoking.ua');
-        const is777 = currentUrl.includes('777.ua');
         const checkbox = document.getElementById('Players_enabled_autopayouts');
-        const isChecked = checkbox && checkbox.checked;
 
         popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
@@ -626,22 +580,27 @@
         statusIcon.style.left = '5px';
         statusIcon.style.fontSize = '18px';
         statusIcon.style.cursor = 'pointer';
-        statusIcon.innerHTML = isChecked ? '&#10004;' : '&#10008;';
-        statusIcon.onclick = () => {
-            if (is777) {
-                handle777();
-            } else {
-                checkbox.click();
 
-                setTimeout(() => {
-                    const confirmButton = document.querySelector('.swal2-confirm');
-                    if (confirmButton) {
-                        confirmButton.click();
-                    }
-                }, 100);
-            }
+        const updateStatusIcon = () => {
+            statusIcon.innerHTML = checkbox.checked ? '&#10004;' : '&#10008;';
         };
+        updateStatusIcon();
+
+        statusIcon.onclick = () => {
+            checkbox.click();
+
+            setTimeout(() => {
+                const confirmButton = document.querySelector('.swal2-confirm');
+                if (confirmButton) {
+                    confirmButton.click();
+                }
+
+                setTimeout(updateStatusIcon, 200);
+            }, 200);
+        };
+
         popupBox.appendChild(statusIcon);
+
 
         const firstRowButtonContainer = document.createElement('div');
         firstRowButtonContainer.style.marginTop = '10px';

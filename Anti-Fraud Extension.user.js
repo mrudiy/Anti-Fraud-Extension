@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.1.1
+// @version      3.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -550,16 +550,21 @@
         popupBox.style.alignItems = 'center';
         popupBox.style.borderRadius = '10px';
 
-        const text = document.createElement('div');
-        text.className = 'popup-text';
-        text.innerHTML = `
+        const maintext = document.createElement('div');
+        maintext.className = 'popup-main-text';
+        maintext.innerHTML = `
     <center><b>Баланс: ${Balance}₴</b></center>
     <center><b>НДФЛ: ${NDFL}₴</center></b>
     <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
     ${totalPending > 1 ? `<center><b>На виплаті:\n${totalPending}₴</b></center>` : ''}
 `;
-        popupBox.appendChild(text);
+        popupBox.appendChild(maintext);
 
+        const text = document.createElement('div');
+        text.className = 'popup-text';
+        text.innerHTML = ``;
+
+        popupBox.appendChild(text);
 
         const settingsIcon = document.createElement('div');
         settingsIcon.innerHTML = '&#9881;';
@@ -582,7 +587,11 @@
         statusIcon.style.cursor = 'pointer';
 
         const updateStatusIcon = () => {
-            statusIcon.innerHTML = checkbox.checked ? '&#10004;' : '&#10008;';
+            if (checkbox) {
+                statusIcon.innerHTML = checkbox.checked ? '&#10004;' : '&#10008;';
+            } else {
+                statusIcon.innerHTML = '&#10008;';
+            }
         };
         updateStatusIcon();
 
@@ -625,7 +634,7 @@
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, без ризиків`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, чистий`;
             } else {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             }
@@ -686,7 +695,7 @@
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, без ризиків, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
             } else {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             }
@@ -905,6 +914,53 @@
         }
     }
 
+    function showManualBalance(dateStr, bonusInfo) {
+        if (!popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = popupBox.querySelector('.popup-text');
+        if (textElement) {
+            const newMessage = document.createElement('div');
+            newMessage.style.color = 'blue';
+            newMessage.style.fontWeight = 'bold';
+            newMessage.style.marginTop = '10px';
+            newMessage.innerHTML = `
+            <center>
+            <span id="popup-manual-balance">
+                 ${bonusInfo} | ${dateStr}
+            </span>
+            </center>
+        `;
+            textElement.appendChild(newMessage);
+        };
+    }
+
+    function showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage) {
+        const popupText = document.querySelector('.popup-main-text');
+        if (popupText) {
+            const newLine = document.createElement('div');
+
+            const textColor = bonusDepositPercentage > 50 ? 'maroon' : 'black';
+
+            newLine.innerHTML = `
+            <center>
+                <b
+                    title="Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}"
+                    style="color: ${textColor};"
+                >
+                    BRP: ${bonusDepositPercentage.toFixed(2)}%
+                </b>
+            </center>
+        `;
+
+            popupText.appendChild(newLine);
+        } else {
+            console.warn('Елемент з класом .popup-main-text не знайдено');
+        }
+    }
+
 
     function fetchAndProcessData() {
         const fullProjectUrl = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
@@ -947,6 +1003,9 @@
                 let withdrawText = '';
                 let bonusDate = '';
 
+                let totalDeposits = 0;
+                let bonusWithDeposits = 0;
+
                 let messageCount = 0;
                 const maxMessages = 3;
 
@@ -959,31 +1018,33 @@
 
                     const cells = row.querySelectorAll('td');
                     if (cells.length > 0) {
-                        const actionType = cells[1].innerText.trim();
-                        const bonusInfo = cells[6].textContent.trim();
-                        const dateTimeStr = cells[5].textContent.trim();
+                        const actionType = cells[1] ? cells[1].innerText.trim() : '';
+                        const bonusInfo = cells[6] ? cells[6].textContent.trim() : '';
+                        const dateTimeStr = cells[5] ? cells[5].textContent.trim() : '';
                         const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
                         const dateStr = dateMatch ? dateMatch[1] : '';
 
-                        console.log('Обрабатываем строку:', { actionType, bonusInfo, dateStr });
-
                         if (actionType.includes('Вывод средств')) {
-                            withdrawAmount = parseFloat(cells[2].textContent.replace('-', '').replace(',', '.'));
-                            withdrawId = cells[0].textContent.trim();
-                            withdrawText = cells[6].textContent.trim();
+                            withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0');
+                            withdrawId = cells[0] ? cells[0].textContent.trim() : '';
+                            withdrawText = cells[6] ? cells[6].textContent.trim() : '';
                             waitingForBonus = true;
-                            console.log('Обнаружен вывод средств:', { withdrawAmount, withdrawId, withdrawText });
                         } else if (actionType.includes('Ввод средств')) {
                             withdrawAmount = 0;
                             balanceAfterBonus = 0;
                             waitingForBonus = false;
-                            console.log('Обнаружен ввод средств');
+                            totalDeposits++;
+                        } else if (actionType.includes('Ручное начисление баланса')) {
+                            const amount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
+                            if (amount > 1) {
+                                showManualBalance(dateStr, bonusInfo);
+                            }
                         } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
-                            bonusAmount = parseFloat(cells[2].textContent.replace(',', '.'));
-                            balanceAfterBonus = parseFloat(cells[3].textContent.replace(',', '.'));
-                            bonusId = cells[0].textContent.trim();
-                            bonusText = cells[6].textContent.trim();
-                            const fullDate = cells[5].textContent.trim();
+                            bonusAmount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
+                            balanceAfterBonus = parseFloat(cells[3] ? cells[3].textContent.replace(',', '.') : '0');
+                            bonusId = cells[0] ? cells[0].textContent.trim() : '';
+                            bonusText = cells[6] ? cells[6].textContent.trim() : '';
+                            const fullDate = cells[5] ? cells[5].textContent.trim() : '';
                             const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                             bonusDate = dateMatch ? dateMatch[1] : '';
 
@@ -1000,6 +1061,11 @@
 
                             waitingForBonus = false;
                         } else if (actionType.includes('Присвоение бонуса')) {
+                            if (bonusInfo.includes("платеж")) {
+                                bonusWithDeposits++;
+                                console.log('Обнаружен депозит с бонусом');
+                            }
+
                             const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
                             if (bonusIdMatch) {
                                 const bonusId = bonusIdMatch[1];
@@ -1032,6 +1098,15 @@
                         }
                     }
                 });
+                if (totalDeposits > 0) {
+                    let bonusDepositPercentage = (bonusWithDeposits / totalDeposits) * 100;
+                    console.log(`Загальна кількість депозитів: ${totalDeposits}`);
+                    console.log(`Кількість депозитів з бонусом: ${bonusWithDeposits}`);
+                    console.log(`BRP - ${bonusDepositPercentage.toFixed(2)}%`);
+                    showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage);
+                } else {
+                    console.log('Депозити відсутні.');
+                }
             },
             onerror: function(error) {
                 console.error('Ошибка загрузки данных:', error);
@@ -1090,6 +1165,436 @@
     }
 
 
+    function createOrUpdatePopup(message, isLoading = false) {
+        let popup = document.getElementById('balance-log-analyzer-popup');
+
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.id = 'balance-log-analyzer-popup';
+            popup.style.position = 'fixed';
+            popup.style.top = '10px';
+            popup.style.right = '10px';
+            popup.style.padding = '10px';
+            popup.style.backgroundColor = 'white';
+            popup.style.border = '1px solid black';
+            popup.style.zIndex = '10000';
+            popup.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+            popup.style.borderRadius = '5px';
+            document.body.appendChild(popup);
+        }
+
+        popup.innerHTML = `
+            <div style="font-size: 14px; margin-bottom: 10px;">${message}</div>
+            ${isLoading ? '<div class="loader"></div>' : ''}
+        `;
+
+        const links = popup.querySelectorAll('a[data-round-id]');
+        links.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const roundId = this.getAttribute('data-round-id');
+                scrollToRound(roundId);
+            });
+        });
+
+        if (isLoading) {
+            let style = document.getElementById('balance-log-analyzer-popup-style');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'balance-log-analyzer-popup-style';
+                style.innerHTML = `
+                    .loader {
+                        border: 4px solid #f3f3f3;
+                        border-top: 4px solid #3498db;
+                        border-radius: 50%;
+                        width: 20px;
+                        height: 20px;
+                        animation: spin 2s linear infinite;
+                    }
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+    }
+
+    function checkMultipleBets(data) {
+        const gameBets = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet') {
+                if (!gameBets[entry.game]) {
+                    gameBets[entry.game] = [];
+                }
+                gameBets[entry.game].push(entry);
+            }
+        });
+
+        const alerts = [];
+
+        for (const game in gameBets) {
+            const bets = gameBets[game];
+            let currentPeriod = [];
+            let previousGame = null;
+
+            bets.forEach(bet => {
+                if (bet.game === previousGame) {
+                    currentPeriod.push(bet);
+                } else {
+                    if (currentPeriod.length >= 1000) {
+                        alerts.push(currentPeriod[0]);
+                        alerts.push(currentPeriod[currentPeriod.length - 1]);
+                    }
+                    currentPeriod = [bet];
+                }
+                previousGame = bet.game;
+            });
+
+            if (currentPeriod.length >= 1000) {
+                alerts.push(currentPeriod[0]);
+                alerts.push(currentPeriod[currentPeriod.length - 1]);
+            }
+        }
+
+        return alerts;
+    }
+
+
+
+    function checkAnomalousBetIncreases(data) {
+        const gameBets = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet') {
+                if (!gameBets[entry.game]) {
+                    gameBets[entry.game] = [];
+                }
+                gameBets[entry.game].push(entry);
+            }
+        });
+
+        const alerts = [];
+
+        for (const game in gameBets) {
+            let bets = gameBets[game];
+            let previousBet = null;
+
+            for (let i = bets.length - 1; i >= 0; i--) {
+                const bet = bets[i];
+                if (previousBet && previousBet.amount < 0 && Math.abs(bet.amount) > Math.abs(previousBet.amount) * 500) {
+                    alerts.push({ previousBet, bet });
+                }
+                previousBet = bet;
+            }
+        }
+        return alerts;
+    }
+
+
+
+    function scrollToRound(roundId) {
+        const targetElements = document.querySelectorAll('tr td span.label.label-default');
+
+        let targetElement = null;
+
+        targetElements.forEach(element => {
+            if (element.textContent.trim() === roundId) {
+                targetElement = element;
+                element.closest('tr').style.backgroundColor = '#e0b3ff';
+            }
+        });
+
+        if (targetElement) {
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            console.warn(`Element with round ID ${roundId} not found.`);
+        }
+    }
+
+    function setPageSize() {
+        let selectElement = document.getElementById('pageSize');
+        if (!selectElement) {
+            console.error('Select element not found');
+            return;
+        }
+
+        let option = document.createElement('option');
+        option.value = '35000';
+        option.text = '35000';
+        selectElement.appendChild(option);
+        selectElement.value = '35000';
+        selectElement.dispatchEvent(new Event('change'));
+    }
+
+    function waitForDataLoad() {
+        return new Promise(resolve => {
+            setTimeout(resolve, 10000);
+        });
+    }
+
+    function analyzeTable() {
+        let rows = document.querySelectorAll('table tr');
+
+        let data = [];
+        rows.forEach(row => {
+            let cells = row.querySelectorAll('td');
+
+            if (cells.length >= 10) {
+                let date = cells[0].innerText.trim();
+                let provider = cells[1].innerText.trim();
+                let game = cells[2].innerText.trim();
+                let type = cells[3].innerText.trim();
+                let amount = parseFloat(cells[4].innerText.trim().replace(/\s/g, '').replace(',', '.'));
+                let balance = parseFloat(cells[5].innerText.trim().replace(/\s/g, '').replace(',', '.'));
+                let details = cells[6].innerText.trim();
+                let round_type = cells[8].innerText.trim();
+                let round_id = cells[9].innerText.trim();
+                let balance_id = cells[10].innerText.trim();
+
+                if (type === 'Bet') {
+                    data.push({
+                        date,
+                        provider,
+                        game,
+                        type,
+                        amount,
+                        balance,
+                        details,
+                        round_type,
+                        round_id,
+                        balance_id
+                    });
+                } else if (type === 'WIN') {
+                    data.push({
+                        date,
+                        provider,
+                        game,
+                        type,
+                        amount,
+                        balance,
+                        details,
+                        round_type,
+                        round_id,
+                        balance_id
+                    });
+                }
+            } else {
+                console.warn('Row skipped due to insufficient cells:', row);
+            }
+        });
+
+        return data;
+    }
+
+    function checkRoundIntervals(data) {
+        const roundData = {};
+
+        data.forEach(entry => {
+            const round_id = entry.round_id;
+
+            if (!roundData[round_id]) {
+                roundData[round_id] = { bet: null, win: null };
+            }
+            if (entry.type === 'Bet' && Math.abs(entry.amount) > 1000) {
+                roundData[round_id].bet = entry;
+            } else if (entry.type === 'WIN') {
+                roundData[round_id].win = entry;
+            }
+        });
+
+        const alerts = [];
+
+        for (const round_id in roundData) {
+            const { bet, win } = roundData[round_id];
+
+            if (bet && win) {
+                const betDate = new Date(bet.date);
+                const winDate = new Date(win.date);
+                const diffMinutes = (winDate - betDate) / 1000 / 60;
+
+                if (diffMinutes > 5) {
+                    alerts.push({
+                        round_id,
+                        game: bet.game,
+                        amount: bet.amount,
+                        balance: bet.balance,
+                        date: bet.date
+                    });
+                }
+            }
+        }
+
+        return alerts;
+    }
+
+
+    function checkLargeBets(data) {
+        const largeBets = data.filter(entry =>
+                                      entry.type === 'Bet' &&
+                                      (
+            (entry.balance > 1 && Math.abs(entry.amount) > 0.25 * entry.balance && Math.abs(entry.amount) > 1000) ||
+            (entry.balance === 0	 && Math.abs(entry.amount) > 1000)
+        )
+                                     );
+        return largeBets;
+    }
+
+    function createScrollableContent(items) {
+        const content = `
+            <div style="
+                max-height: 300px;
+                overflow-y: auto;
+                background-color: #f9f9f9;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                padding: 10px;
+                margin-top: 10px;
+            ">
+                ${items.map(item => `
+                    <div style="
+                        border-bottom: 1px solid #ddd;
+                        padding-bottom: 10px;
+                        margin-bottom: 10px;
+                    ">
+                        <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
+                        <strong>Game:</strong> ${item.game}<br>
+                        <strong>Bet Amount:</strong> ${item.amount}<br>
+                        <strong>Balance:</strong> ${item.balance}<br>
+                        <strong>Date:</strong> ${item.date}<br>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        return content;
+    }
+
+    function calculateBetsByRoundType(data) {
+        const results = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet' && entry.amount < 0) {
+                if (!results[entry.game]) {
+                    results[entry.game] = { bonusBets: 0, realBets: 0 };
+                }
+
+                if (entry.round_type === 'bonus') {
+                    results[entry.game].bonusBets += Math.abs(entry.amount);
+                } else if (entry.round_type === 'real') {
+                    results[entry.game].realBets += Math.abs(entry.amount);
+                }
+            }
+        });
+
+        return results;
+    }
+
+    function calculateWinsByRoundType(data) {
+        const results = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'WIN' && entry.amount > 0) {
+                if (!results[entry.game]) {
+                    results[entry.game] = { bonus: 0, real: 0 };
+                }
+
+                if (entry.round_type === 'bonus') {
+                    results[entry.game].bonus += entry.amount;
+                } else if (entry.round_type === 'real') {
+                    results[entry.game].real += entry.amount;
+                }
+            }
+        });
+
+        return results;
+    }
+
+    async function mainBalance() {
+        createOrUpdatePopup('<b>Зачекай, будь ласка, аналізую інформацію...</b>', true);
+        setPageSize();
+        await waitForDataLoad();
+        createOrUpdatePopup('<b>Я повністю готовий до роботи.</b>');
+
+        const data = analyzeTable();
+
+        const roundAlerts = checkRoundIntervals(data);
+        const largeBetAlerts = checkLargeBets(data);
+        const winResults = calculateWinsByRoundType(data);
+        const betResults = calculateBetsByRoundType(data);
+        const multipleBetsAlerts = checkMultipleBets(data);
+        const anomalousBetIncreasesAlerts = checkAnomalousBetIncreases(data);
+
+        let message = '';
+
+        console.log(largeBetAlerts)
+        console.log(anomalousBetIncreasesAlerts)
+
+        if (roundAlerts.length > 0) {
+            message += '<b>Знайдено можливі відкладені раунди:</b><br>' +
+                createScrollableContent(roundAlerts) +
+                '<br>';
+
+        } else {
+            message += '<b>Відкладених раундів не знайдено</b><br>';
+        }
+
+        if (largeBetAlerts.length > 0) {
+            message += '<b>Знайдено ставки, що перевищують 25% від балансу:</b><br>' +
+                createScrollableContent(largeBetAlerts, 'Large Bets') +
+                '<br>';
+        } else {
+            message += '<b>Великих ставок не знайдено</b><br>';
+        }
+
+        if (multipleBetsAlerts.length > 0) {
+            message += '<b>Знайдено більше 1000 ставок в одній грі:</b><br>' +
+                createScrollableContent(multipleBetsAlerts, 'Multiple Bets in One Game') +
+                '<br>';
+        } else {
+            message += '<b>Більше 1000 ставок не знайдено</b><br>';
+        }
+
+        if (anomalousBetIncreasesAlerts.length > 0) {
+            message += '<b>Знайдено аномальні зростання ставок:</b><br>' +
+                createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
+                ...alert.previousBet,
+                amount: `Previous: ${alert.previousBet.amount}, Current: ${alert.bet.amount}`
+            })), 'Anomalous Bet Increases') +
+                '<br>';
+        } else {
+            message += '<b>Аномальних зростань ставок не знайдено</b><br>';
+        }
+
+        for (const game in winResults) {
+            const winResult = winResults[game];
+            const betResult = betResults[game] || { bonusBets: 0, realBets: 0 };
+            const ggrBonus = betResult.bonusBets - winResult.bonus;
+            const ggrReal = betResult.realBets - winResult.real;
+
+            if (ggrReal < -1000) {
+                if (ggrBonus !== 0 && ggrReal < ggrBonus) {
+                    const percentageReal = ((ggrReal / ggrBonus) * 100).toFixed(2);
+                    if (percentageReal < 0) {
+                        let messageForGame = `<b style="color: purple;"> GGR:</b><br>
+                        <b>Гра:</b> ${game}<br>
+                <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
+                <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
+                <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
+                <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
+                <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
+                <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
+                <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>`;
+
+                        message += messageForGame + '<br>';
+                    }
+                }
+            }
+        }
+        createOrUpdatePopup(message, false);
+    }
 
     function handlePopup() {
         const popup = document.querySelector('#swal2-content');
@@ -1139,6 +1644,8 @@
             clickButton();
             addForeignButton();
             setTimeout(handlePopup, 200);
+        } else if (currentUrl.includes('playersItems/balanceLog/')) {
+            mainBalance();
         } else if (currentUrl.includes('playersItems/transactionLog/')) {
             initTransactionsPage();
             processTableRows();

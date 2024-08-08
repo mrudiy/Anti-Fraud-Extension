@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1
+// @version      3.3.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1692,7 +1692,7 @@
                             break;
                     }
                 } else {
-                    span.className = 'label label-info';
+                    span.className = 'label label-warning';
                 }
             }
         });

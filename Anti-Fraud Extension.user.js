@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.2
+// @version      3.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1184,9 +1184,9 @@
         }
 
         popup.innerHTML = `
-            <div style="font-size: 14px; margin-bottom: 10px;">${message}</div>
-            ${isLoading ? '<div class="loader"></div>' : ''}
-        `;
+        <div style="font-size: 14px; margin-bottom: 10px;">${message}</div>
+        ${isLoading ? '<div class="loader"></div>' : ''}
+    `;
 
         const links = popup.querySelectorAll('a[data-round-id]');
         links.forEach(link => {
@@ -1197,29 +1197,44 @@
             });
         });
 
+        const toggleButtons = popup.querySelectorAll('.toggle-button');
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', function(event) {
+                const content = this.nextElementSibling;
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    this.textContent = '▼';
+                } else {
+                    content.style.display = 'none';
+                    this.textContent = '►';
+                }
+            });
+        });
+
         if (isLoading) {
             let style = document.getElementById('balance-log-analyzer-popup-style');
             if (!style) {
                 style = document.createElement('style');
                 style.id = 'balance-log-analyzer-popup-style';
                 style.innerHTML = `
-                    .loader {
-                        border: 4px solid #f3f3f3;
-                        border-top: 4px solid #3498db;
-                        border-radius: 50%;
-                        width: 20px;
-                        height: 20px;
-                        animation: spin 2s linear infinite;
-                    }
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                `;
+                .loader {
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #3498db;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    animation: spin 2s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
                 document.head.appendChild(style);
             }
         }
     }
+
 
     function checkMultipleBets(data) {
         const gameBets = {};
@@ -1444,33 +1459,48 @@
 
     function createScrollableContent(items) {
         const content = `
-            <div style="
-                max-height: 300px;
-                overflow-y: auto;
-                background-color: #f9f9f9;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                padding: 10px;
-                margin-top: 10px;
-            ">
-                ${items.map(item => `
-                    <div style="
-                        border-bottom: 1px solid #ddd;
-                        padding-bottom: 10px;
-                        margin-bottom: 10px;
-                    ">
-                        <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
-                        <strong>Game:</strong> ${item.game}<br>
-                        <strong>Bet Amount:</strong> ${item.amount}<br>
-                        <strong>Balance:</strong> ${item.balance}<br>
-                        <strong>Date:</strong> ${item.date}<br>
-                    </div>
-                `).join('')}
-            </div>
-        `;
+        <div style="
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            display: none;
+        " class="scrollable-content">
+            ${items.map(item => `
+                <div style="
+                    border-bottom: 1px solid #ddd;
+                    padding-bottom: 10px;
+                    margin-bottom: 10px;
+                ">
+                    <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
+                    <strong>Game:</strong> ${item.game}<br>
+                    <strong>Bet Amount:</strong> ${item.amount}<br>
+                    <strong>Balance:</strong> ${item.balance}<br>
+                    <strong>Date:</strong> ${item.date}<br>
+                </div>
+            `).join('')}
+        </div>
+    `;
 
         return content;
     }
+
+    function toggleContentVisibility(event) {
+        const button = event.target;
+        const content = button.nextElementSibling;
+
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            button.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            button.textContent = '►';
+        }
+    }
+
 
     function calculateBetsByRoundType(data) {
         const results = {};
@@ -1529,41 +1559,53 @@
 
         let message = '';
 
-        console.log(largeBetAlerts)
-        console.log(anomalousBetIncreasesAlerts)
+        console.log(largeBetAlerts);
+        console.log(anomalousBetIncreasesAlerts);
 
         if (roundAlerts.length > 0) {
-            message += '<b>Знайдено можливі відкладені раунди:</b><br>' +
-                createScrollableContent(roundAlerts) +
-                '<br>';
+            message += `
+        <b>Знайдено можливі відкладені раунди:</b>
+        <button class="toggle-button">►</button>
+        ${createScrollableContent(roundAlerts)}
+        <br>
+    `;
 
         } else {
             message += '<b>Відкладених раундів не знайдено</b><br>';
         }
 
         if (largeBetAlerts.length > 0) {
-            message += '<b>Знайдено ставки, що перевищують 25% від балансу:</b><br>' +
-                createScrollableContent(largeBetAlerts, 'Large Bets') +
-                '<br>';
+            message += `
+            <b>Знайдено ставки, що перевищують 25% від балансу:</b>
+            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+            ${createScrollableContent(largeBetAlerts)}
+            <br>
+        `;
         } else {
             message += '<b>Великих ставок не знайдено</b><br>';
         }
 
         if (multipleBetsAlerts.length > 0) {
-            message += '<b>Знайдено більше 1000 ставок в одній грі:</b><br>' +
-                createScrollableContent(multipleBetsAlerts, 'Multiple Bets in One Game') +
-                '<br>';
+            message += `
+            <b>Знайдено більше 1000 ставок в одній грі:</b>
+            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+            ${createScrollableContent(multipleBetsAlerts)}
+            <br>
+        `;
         } else {
             message += '<b>Більше 1000 ставок не знайдено</b><br>';
         }
 
         if (anomalousBetIncreasesAlerts.length > 0) {
-            message += '<b>Знайдено аномальні зростання ставок:</b><br>' +
-                createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
+            message += `
+            <b>Знайдено аномальні зростання ставок:</b>
+            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+            ${createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
                 ...alert.previousBet,
                 amount: `Previous: ${alert.previousBet.amount}, Current: ${alert.bet.amount}`
-            })), 'Anomalous Bet Increases') +
-                '<br>';
+            })))}
+            <br>
+        `;
         } else {
             message += '<b>Аномальних зростань ставок не знайдено</b><br>';
         }
@@ -1578,23 +1620,105 @@
                 if (ggrBonus !== 0 && ggrReal < ggrBonus) {
                     const percentageReal = ((ggrReal / ggrBonus) * 100).toFixed(2);
                     if (percentageReal < 0) {
-                        let messageForGame = `<b style="color: purple;"> GGR:</b><br>
+                        let messageForGame = `
+                        <b style="color: purple;"> GGR:</b><br>
                         <b>Гра:</b> ${game}<br>
-                <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
-                <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
-                <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
-                <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
-                <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
-                <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
-                <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>`;
-
+                        <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
+                        <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
+                        <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
+                        <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
+                        <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
+                        <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
+                        <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>
+                    `;
                         message += messageForGame + '<br>';
                     }
                 }
             }
         }
+
         createOrUpdatePopup(message, false);
     }
+
+    function getCardStatus(playerUrl, callback) {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: playerUrl,
+            onload: function(response) {
+                if (response.status === 200) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(response.responseText, 'text/html');
+                    const cardRows = doc.querySelectorAll('table.items tbody tr');
+
+                    const cardStatuses = {};
+                    cardRows.forEach(row => {
+                        const cells = row.children;
+                        const cardNumberElement = cells[1]?.querySelector('strong');
+                        const cardStatusElement = cells[4]?.querySelector('input');
+
+                        if (cardNumberElement && cardStatusElement) {
+                            const cardNumber = cardNumberElement.textContent.trim();
+                            const cardStatus = cardStatusElement.value.trim();
+                            cardStatuses[cardNumber] = cardStatus;
+                        }
+                    });
+
+                    console.log('Card statuses:', cardStatuses); // Діагностичне повідомлення
+                    callback(cardStatuses);
+                } else {
+                    console.error('Failed to fetch player page:', response.statusText);
+                }
+            }
+        });
+    }
+
+    // Функція для оновлення статусу карток на основній сторінці
+    function updateCardStatus(cardStatuses) {
+        const cardElements = document.querySelectorAll('td span.label');
+
+        cardElements.forEach(span => {
+            const cardNumber = span.textContent.trim();
+            if (span.closest('td')?.cellIndex === 7) { // Перевірка, чи є це восьма колонка (карти)
+                if (cardStatuses[cardNumber]) {
+                    switch (cardStatuses[cardNumber]) {
+                        case 'Чужая':
+                            span.className = 'label label-danger';
+                            break;
+                        case 'Верифицирована':
+                            span.className = 'label label-success';
+                            break;
+                        case 'Не проверена':
+                            span.className = 'label label-default';
+                            break;
+                    }
+                } else {
+                    span.className = 'label label-info';
+                }
+            }
+        });
+
+        console.log('Updated card statuses on the main page');
+    }
+
+    function depositCardChecker() {
+        const playerLink = document.querySelector('tr.odd td span.player_card a');
+        if (playerLink) {
+            var href = playerLink.getAttribute('href');
+            if (href.startsWith('/')) {
+                href = href.substring(1);
+            }
+            const playerUrl = ProjectUrl + href;
+
+            console.log(playerUrl)
+
+            getCardStatus(playerUrl, function(cardStatuses) {
+                updateCardStatus(cardStatuses);
+            });
+        } else {
+            console.error('Player link not found');
+        }
+    }
+
 
     function handlePopup() {
         const popup = document.querySelector('#swal2-content');
@@ -1646,6 +1770,8 @@
             setTimeout(handlePopup, 200);
         } else if (currentUrl.includes('playersItems/balanceLog/')) {
             mainBalance();
+        } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
+            depositCardChecker();
         } else if (currentUrl.includes('playersItems/transactionLog/')) {
             initTransactionsPage();
             processTableRows();

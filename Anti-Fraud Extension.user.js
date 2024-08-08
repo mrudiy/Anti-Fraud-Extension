@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.3.2
+// @version      3.3.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1459,31 +1459,33 @@
 
     function createScrollableContent(items) {
         const content = `
-        <div style="
-            max-height: 300px;
-            overflow-y: auto;
-            background-color: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 10px;
-            margin-top: 10px;
-            display: none;
-        " class="scrollable-content">
-            ${items.map(item => `
-                <div style="
-                    border-bottom: 1px solid #ddd;
-                    padding-bottom: 10px;
-                    margin-bottom: 10px;
-                ">
-                    <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
-                    <strong>Game:</strong> ${item.game}<br>
-                    <strong>Bet Amount:</strong> ${item.amount}<br>
-                    <strong>Balance:</strong> ${item.balance}<br>
-                    <strong>Date:</strong> ${item.date}<br>
-                </div>
-            `).join('')}
-        </div>
-    `;
+    <div style="
+        max-height: 300px;
+        overflow-y: auto;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-top: 10px;
+        display: none;
+    " class="scrollable-content">
+        ${items.map(item => `
+            <div style="
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+            ">
+                ${item.message ? item.message : `
+                <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
+                <strong>Game:</strong> ${item.game}<br>
+                <strong>Bet Amount:</strong> ${item.amount}<br>
+                <strong>Balance:</strong> ${item.balance}<br>
+                <strong>Date:</strong> ${item.date}<br>
+                `}
+            </div>
+        `).join('')}
+    </div>
+`;
 
         return content;
     }
@@ -1565,47 +1567,46 @@
         if (roundAlerts.length > 0) {
             message += `
         <b>Знайдено можливі відкладені раунди:</b>
-        <button class="toggle-button">►</button>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
         ${createScrollableContent(roundAlerts)}
         <br>
     `;
-
         } else {
             message += '<b>Відкладених раундів не знайдено</b><br>';
         }
 
         if (largeBetAlerts.length > 0) {
             message += `
-            <b>Знайдено ставки, що перевищують 25% від балансу:</b>
-            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
-            ${createScrollableContent(largeBetAlerts)}
-            <br>
-        `;
+        <b>Знайдено ставки, що перевищують 25% від балансу:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(largeBetAlerts)}
+        <br>
+    `;
         } else {
             message += '<b>Великих ставок не знайдено</b><br>';
         }
 
         if (multipleBetsAlerts.length > 0) {
             message += `
-            <b>Знайдено більше 1000 ставок в одній грі:</b>
-            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
-            ${createScrollableContent(multipleBetsAlerts)}
-            <br>
-        `;
+        <b>Знайдено більше 1000 ставок в одній грі:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(multipleBetsAlerts)}
+        <br>
+    `;
         } else {
             message += '<b>Більше 1000 ставок не знайдено</b><br>';
         }
 
         if (anomalousBetIncreasesAlerts.length > 0) {
             message += `
-            <b>Знайдено аномальні зростання ставок:</b>
-            <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
-            ${createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
+        <b>Знайдено аномальні зростання ставок:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
                 ...alert.previousBet,
                 amount: `Previous: ${alert.previousBet.amount}, Current: ${alert.bet.amount}`
             })))}
-            <br>
-        `;
+        <br>
+    `;
         } else {
             message += '<b>Аномальних зростань ставок не знайдено</b><br>';
         }
@@ -1621,17 +1622,25 @@
                     const percentageReal = ((ggrReal / ggrBonus) * 100).toFixed(2);
                     if (percentageReal < 0) {
                         let messageForGame = `
-                        <b style="color: purple;"> GGR:</b><br>
-                        <b>Гра:</b> ${game}<br>
-                        <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
-                        <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
-                        <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
-                        <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
-                        <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
-                        <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
-                        <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>
-                    `;
-                        message += messageForGame + '<br>';
+                    <b style="color: purple;">GGR:</b><br>
+                    <b>Гра:</b> ${game}<br>
+                    <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
+                    <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
+                    <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
+                    <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
+                    <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
+                    <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
+                    <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>
+                `;
+                        message += `
+                    <b>Деталі GGR:</b>
+                    <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+                    ${createScrollableContent([{ game: game, message: messageForGame }])}
+                    <br>
+                `;
+                    }
+                    else {
+                        message += '<b>GGR в нормі</b><br>';
                     }
                 }
             }
@@ -1734,6 +1743,28 @@
         });
     }
 
+    var buttonImageUrl = 'https://ltdfoto.ru/images/2024/08/08/image-removebg-preview.png';
+
+    function createFloatingButton(imageUrl) {
+        var button = document.createElement('div');
+        button.style.position = 'fixed';
+        button.style.top = '10px';
+        button.style.right = '10px';
+        button.style.width = '105px';
+        button.style.height = '105px';
+        button.style.backgroundImage = 'url(' + imageUrl + ')';
+        button.style.backgroundSize = 'cover';
+        button.style.zIndex = '9999';
+        button.style.cursor = 'pointer';
+
+        document.body.appendChild(button);
+
+        button.addEventListener('click', function() {
+            mainBalance();
+            button.remove();
+        });
+    }
+
 
     function handlePopup() {
         const popup = document.querySelector('#swal2-content');
@@ -1784,7 +1815,7 @@
             addForeignButton();
             setTimeout(handlePopup, 200);
         } else if (currentUrl.includes('playersItems/balanceLog/')) {
-            mainBalance();
+            createFloatingButton(buttonImageUrl);
         } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
             depositCardChecker();
             observeDOMChanges();

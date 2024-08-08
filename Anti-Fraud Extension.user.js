@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.3
+// @version      3.3.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1719,6 +1719,21 @@
         }
     }
 
+    function observeDOMChanges() {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList') {
+                    depositCardChecker(); // Викликайте вашу функцію при зміні контенту
+                }
+            });
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
 
     function handlePopup() {
         const popup = document.querySelector('#swal2-content');
@@ -1772,6 +1787,7 @@
             mainBalance();
         } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
             depositCardChecker();
+            observeDOMChanges();
         } else if (currentUrl.includes('playersItems/transactionLog/')) {
             initTransactionsPage();
             processTableRows();

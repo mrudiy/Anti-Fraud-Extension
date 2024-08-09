@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.3.3
+// @version      3.3.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1743,7 +1743,7 @@
         });
     }
 
-    var buttonImageUrl = 'https://ltdfoto.ru/images/2024/08/08/image-removebg-preview.png';
+    var buttonImageUrl = 'https://i.ibb.co/LzhGhY2/image-removebg-preview.png';
 
     function createFloatingButton(imageUrl) {
         var button = document.createElement('div');

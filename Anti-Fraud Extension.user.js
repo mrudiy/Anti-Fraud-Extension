@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.3.4
+// @version      3.4.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -526,7 +526,7 @@
     }
     let isProfitButtonClicked = false;
 
-    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending) {
+    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards) {
         if (popupBox) {
             return;
         }
@@ -554,10 +554,23 @@
         maintext.className = 'popup-main-text';
         maintext.innerHTML = `
     <center><b>Баланс: ${Balance}₴</b></center>
-    <center><b>НДФЛ: ${NDFL}₴</center></b>
-    <center><b>Month: ${MonthPA} | Total: ${TotalPA} |</b></center>
-    ${totalPending > 1 ? `<center><b>На виплаті:\n${totalPending}₴</b></center>` : ''}
+    <center><b>НДФЛ: ${NDFL}₴</b></center>
+    <center><b>Month: ${MonthPA} | Total: ${TotalPA}</b></center>
+    ${totalPending > 0 ? `<center><b>На виплаті: ${totalPending}₴</b></center>` : ''}
+    ${cards.length > 0 ? `
+        <center><b>Картки для верифікації:</b><br>
+        ${cards.map(card => `
+            <div style="display: inline-block; margin-top: 5px;">
+                ${card}
+                <button onclick="navigator.clipboard.writeText('${card}')"
+                        style="border: none; background: none; cursor: pointer; margin-left: 5px;">
+                    <span class="fa fa-files-o"></span>
+                </button>
+            </div>
+        `).join('<br>')}
+        </center>` : ''}
 `;
+
         popupBox.appendChild(maintext);
 
         const text = document.createElement('div');
@@ -1119,6 +1132,7 @@
             const PlayerID = getPlayerID();
             const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
             let totalPending = 0;
+            let cardsSet = new Set();
 
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -1151,10 +1165,16 @@
                                 }
                             }
                         }
+
+                        const cardLabel = row.querySelector('td:nth-child(10) span.label.label-default');
+                        if (cardLabel) {
+                            const cardNumber = cardLabel.textContent.trim();
+                            cardsSet.add(cardNumber);
+                        }
                     });
 
-                    fetchAndProcessData();
-                    resolve(totalPending);
+                    const uniqueCards = Array.from(cardsSet);
+                    resolve({ totalPending, cards: uniqueCards });
                 },
                 onerror: function(error) {
                     console.error('Ошибка загрузки данных:', error);
@@ -1681,7 +1701,6 @@
         });
     }
 
-    // Функція для оновлення статусу карток на основній сторінці
     function updateCardStatus(cardStatuses) {
         const cardElements = document.querySelectorAll('td span.label');
 
@@ -1789,8 +1808,10 @@
                                 const balanceAfterSpan = document.querySelector('#balance-after');
                                 if (balanceAfterSpan) {
                                     const NDFL = balanceAfterSpan.textContent.trim();
-                                    fetchAndProcessPending().then(totalPending => {
-                                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending);
+                                    fetchAndProcessPending().then(({ totalPending, cards }) => {
+                                        console.log(cards)
+                                        fetchAndProcessData()
+                                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
                                         addCheckButton(TotalPA, Balance, totalPending);
                                     }).catch(error => {
                                         console.error('Error processing pending payments:', error);

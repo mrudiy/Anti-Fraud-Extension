@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.4.1
+// @version      3.4.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -314,8 +314,9 @@
                 const date = getCurrentDate();
                 const initials = GM_getValue(initialsKey);
                 const currentLanguage = GM_getValue(languageKey, 'російська');
+                const colorPA = TotalPA > 1 ? 'red' : 'black';
 
-                let textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | `;
+                let textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
 
                 if (currentLanguage === 'українська') {
 
@@ -555,7 +556,7 @@
         maintext.innerHTML = `
     <center><b>Баланс: ${Balance}₴</b></center>
     <center><b>НДФЛ: ${NDFL}₴</b></center>
-    <center><b>Month: ${MonthPA} | Total: ${TotalPA}</b></center>
+    <center><b>Month: <span style="color: ${MonthPA > 1 ? 'red' : 'black'}">${MonthPA}</span> | Total: <span style="color: ${TotalPA > 1 ? 'red' : 'black'}">${TotalPA}</span></b></center>
     ${totalPending > 0 ? `<center><b>На виплаті: ${totalPending}₴</b></center>` : ''}
     ${cards.length > 0 ? `
         <center><b>Картки для верифікації:</b><br>
@@ -644,12 +645,14 @@
 
             let textToInsert;
 
+            const colorPA = TotalPA > 1 ? 'red' : 'black';
+
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, чистий`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист`;
             }
 
             insertTextIntoField(textToInsert);
@@ -670,13 +673,14 @@
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
+            const colorPA = TotalPA > 1 ? 'red' : 'black';
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`;
             }
 
             insertTextIntoField(textToInsert);
@@ -704,13 +708,14 @@
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
+            const colorPA = TotalPA > 1 ? 'red' : 'black';
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             }
 
             insertTextIntoField(textToInsert);
@@ -731,13 +736,14 @@
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
+            const colorPA = TotalPA > 1 ? 'red' : 'black';
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: ${TotalPA}</b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             }
 
             insertTextIntoField(textToInsert);
@@ -1817,7 +1823,7 @@
                                         console.error('Error processing pending payments:', error);
                                     });
                                 }
-                            }, 250);
+                            }, 350);
                         }
                     }, 1);
                 }

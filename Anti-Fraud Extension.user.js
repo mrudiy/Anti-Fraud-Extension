@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.4.2
+// @version      3.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -30,6 +30,8 @@
     const initialUrl = window.location.href;
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
+    const ndfDisplayKey = 'ndfDisplay';
+
 
     const defaultRules = [
         { text: 'Ввод средств', color: '#7cfc00' },
@@ -379,6 +381,20 @@
         languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
         settingsPopup.appendChild(languageDisplay);
 
+        // Добавляем чекбокс для отображения НДФЛ
+        const ndfDisplayCheckbox = document.createElement('input');
+        ndfDisplayCheckbox.type = 'checkbox';
+        ndfDisplayCheckbox.checked = GM_getValue(ndfDisplayKey, true);
+        const ndfDisplayLabel = document.createElement('label');
+        ndfDisplayLabel.innerText = 'Показувати НДФЛ';
+        ndfDisplayLabel.style.display = 'block'; // Чтобы текст располагался под остальными элементами
+        ndfDisplayLabel.prepend(ndfDisplayCheckbox);
+        settingsPopup.appendChild(ndfDisplayLabel);
+
+        ndfDisplayCheckbox.addEventListener('change', () => {
+            GM_setValue(ndfDisplayKey, ndfDisplayCheckbox.checked);
+        });
+
         const initialsButton = document.createElement('button');
         initialsButton.innerText = 'Вказати ініціали';
         initialsButton.style.padding = '8px 16px';
@@ -551,11 +567,14 @@
         popupBox.style.alignItems = 'center';
         popupBox.style.borderRadius = '10px';
 
+        const showNDFL = GM_getValue(ndfDisplayKey, true);  // По умолчанию NDFL отображается
+
+
         const maintext = document.createElement('div');
         maintext.className = 'popup-main-text';
         maintext.innerHTML = `
     <center><b>Баланс: ${Balance}₴</b></center>
-    <center><b>НДФЛ: ${NDFL}₴</b></center>
+        ${showNDFL ? `<center><b>НДФЛ: ${NDFL}₴</b></center>` : ''}
     <center><b>Month: <span style="color: ${MonthPA > 1 ? 'red' : 'black'}">${MonthPA}</span> | Total: <span style="color: ${TotalPA > 1 ? 'red' : 'black'}">${TotalPA}</span></b></center>
     ${totalPending > 0 ? `<center><b>На виплаті: ${totalPending}₴</b></center>` : ''}
     ${cards.length > 0 ? `
@@ -775,8 +794,10 @@
 
         const fourthRowContainer = document.createElement('div');
         fourthRowContainer.style.marginTop = '10px';
-        fourthRowContainer.style.display = 'flex';
+        fourthRowContainer.style.display = 'block';
         fourthRowContainer.style.justifyContent = 'center';
+        fourthRowContainer.style.alignItems = 'center';
+        fourthRowContainer.style.textAlign = 'center';
 
         popupBox.appendChild(thirdRowButtonContainer);
         popupBox.appendChild(fourthRowContainer);
@@ -796,11 +817,17 @@
 
             const style = document.createElement('style');
             style.textContent = `
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-        `;
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    #popup-container {
+        min-height: 200px;
+        overflow-y: auto;
+        white-space: normal;
+        word-wrap: break-word;
+    }
+    `;
             document.head.appendChild(style);
 
             const playerID = getPlayerID();
@@ -839,9 +866,17 @@
                             });
 
                             const profit = depositsTotal - redeemsTotal;
+                            const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal);
+                            const PrognosePA = ((redeemsTotal + totalPending) / depositsTotal) * 100;
 
                             fourthRowContainer.removeChild(loader);
-                            fourthRowContainer.innerHTML += `<div><b>Total InOut: ${profit.toFixed(2)}₴</b></div>`;
+                            fourthRowContainer.innerHTML += `
+                        <div><b>Total InOut: ${profit.toFixed(2)}₴</b></div>
+                        ${totalPending > 1 ? `
+                            <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}₴</b></div>
+                            <div><b>Prognose PA: ${PrognosePA.toFixed(2)}%</b></div>
+                        ` : ''}
+                    `;
                         } else {
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += 'Таблица с результатами не найдена.';
@@ -1757,7 +1792,22 @@
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
                 if (mutation.type === 'childList') {
-                    depositCardChecker(); // Викликайте вашу функцію при зміні контенту
+                    depositCardChecker();
+                }
+            });
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    function observeDOMChangesTransactions() {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList') {
+                    processTableRows();
                 }
             });
         });
@@ -1849,6 +1899,7 @@
         } else if (currentUrl.includes('playersItems/transactionLog/')) {
             initTransactionsPage();
             processTableRows();
+            observeDOMChangesTransactions();
         };
     }
                            );

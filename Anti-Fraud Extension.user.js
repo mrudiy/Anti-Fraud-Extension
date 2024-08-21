@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.5.2
+// @version      3.5.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -459,7 +459,7 @@
         const rows = document.querySelectorAll('tr');
         rows.forEach(row => {
             const statusSpan = row.querySelector('span.label');
-            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review')) {
+            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
                 const amountCode = row.querySelector('td:nth-child(5) code');
                 if (amountCode) {
                     const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
@@ -1261,7 +1261,7 @@
                     const rows = doc.querySelectorAll('tr');
                     rows.forEach(row => {
                         const statusSpan = row.querySelector('span.label');
-                        if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review')) {
+                        if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
                             const amountCode = row.querySelector('td:nth-child(5) code');
                             if (amountCode) {
                                 const amountText = amountCode.textContent.trim().replace('UAH', '').trim();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6.4
+// @version      3.6.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -955,9 +955,12 @@
                         const middleName = getValueByLabel(tempDiv, 'Middle Name');
                         const firstName = getValueByLabel(tempDiv, 'Имя');
 
-                        if (surname === 'Не задан' && middleName === 'Не задан' && firstName === 'Не задан') {
-                            status = 'default'; // Если все поля "Не задан", статус аккаунта - "inactive"
+                        if ((surname === 'Не заданий' || surname === 'Не задан') &&
+                            (middleName === 'Не заданий' || middleName === 'Не задан') &&
+                            (firstName === 'Не заданий' || firstName === 'Не задан')) {
+                            status = 'default';
                         }
+
 
 
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');

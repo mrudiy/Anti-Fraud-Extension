@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6.2
+// @version      3.6.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -2163,32 +2163,37 @@
         });
     }
 
+    let isButtonToSaveClicked = false;
+
     function buttonToSave() {
         const button = document.querySelector('.btn-update-comment-antifraud_manager');
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
-
 
         const initials = GM_getValue(initialsKey, '');
         const currentDate = getCurrentDate();
         const playerID = getPlayerID();
         const project = getProject();
         const url = window.location.href;
+
         if (button) {
             button.addEventListener('click', () => {
-                getAccessToken().then(accessToken => {
-                    const dataToInsert = {
-                        date: currentDate,
-                        url: url,
-                        project: project,
-                        playerID: playerID,
-                        initials: initials,
-                        comment: textarea.value.replace(/\r?\n/g, ""),
-                    };
-                    console.log(dataToInsert)
-                    sendDataToGoogleSheet(accessToken, dataToInsert);
-                }).catch(err => {
-                    console.error("Error getting Access Token:", err);
-                });
+                if (!isButtonToSaveClicked) {
+                    isButtonToSaveClicked = true;
+                    getAccessToken().then(accessToken => {
+                        const dataToInsert = {
+                            date: currentDate,
+                            url: url,
+                            project: project,
+                            playerID: playerID,
+                            initials: initials,
+                            comment: textarea.value.replace(/\r?\n/g, ""),
+                        };
+                        console.log(dataToInsert);
+                        sendDataToGoogleSheet(accessToken, dataToInsert);
+                    }).catch(err => {
+                        console.error("Error getting Access Token:", err);
+                    });
+                }
             });
         } else {
             console.error("Button not found.");

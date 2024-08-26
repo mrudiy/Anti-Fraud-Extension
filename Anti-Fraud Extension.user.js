@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.5.3
+// @version      3.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -521,13 +521,6 @@
         return '0.00';
     }
 
-    function clickButton() {
-        const button = document.querySelector('#show-player-in-out');
-        if (button) {
-            button.click();
-        }
-    }
-
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
@@ -682,7 +675,7 @@
         cleanButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська'); 
+            const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
 
@@ -838,6 +831,180 @@
         thirdRowButtonContainer.style.marginTop = '10px';
         thirdRowButtonContainer.style.display = 'flex';
         thirdRowButtonContainer.style.justifyContent = 'center';
+
+        const projectButtonContainer = document.createElement('div');
+        projectButtonContainer.style.marginTop = '10px';
+        projectButtonContainer.style.display = 'block';
+        projectButtonContainer.style.justifyContent = 'center';
+        projectButtonContainer.style.alignItems = 'center';
+        projectButtonContainer.style.textAlign = 'center';
+
+        const projectImageUrl = window.location.hostname.includes('777.ua')
+        ? 'https://admin.slotoking.ua/img/slotoking.png'
+        : 'https://admin.777.ua/img/777.png'
+
+        const projectImage = document.createElement('img');
+        projectImage.src = projectImageUrl;
+        projectImage.style.cursor = 'pointer';
+        if (projectImageUrl.includes('slotoking')) {
+            projectImage.style.width = '100px';
+            projectImage.style.height = 'auto';
+        } else if (projectImageUrl.includes('777')) {
+            projectImage.style.width = '75px';
+            projectImage.style.height = 'auto';
+        }
+        projectImage.addEventListener('click', () => {
+
+            function getValueByLabel(doc, labelText) {
+                const rows = doc.querySelectorAll('tr');
+                for (const row of rows) {
+                    const th = row.querySelector('th');
+                    const td = row.querySelector('td');
+                    if (th && th.textContent.trim() === labelText) {
+                        const text = td ? td.textContent.trim() : 'Не найдено';
+                        return text.split('\n')[0].trim();
+                    }
+                }
+                return 'Не найдено';
+            }
+
+            function getFirstValueByLabel(labelText) {
+                const rows = document.querySelectorAll('tr');
+                for (const row of rows) {
+                    const th = row.querySelector('th');
+                    const td = row.querySelector('td');
+                    if (th) {
+                        console.log(`Checking TH: ${th.textContent.trim()}`);
+                    }
+                    if (td) {
+                        console.log(`Checking TD: ${td.textContent.trim()}`);
+                    }
+                    if (th && th.textContent.trim() === labelText) {
+                        const text = td ? td.textContent.trim() : 'Не найдено';
+                        return text.split('\n')[0].trim();
+                    }
+                }
+                return 'Не найдено';
+            }
+
+            function searchUser(query, fieldType) {
+                const searchUrl = window.location.hostname.includes('777.ua')
+                ? 'https://admin.slotoking.ua/players/playersItems/search/'
+                : 'https://admin.777.ua/players/playersItems/search/';
+
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: searchUrl,
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
+                    onload: function(response) {
+                        if (response.finalUrl.includes('/update/')) {
+                            getUserInfo(response.finalUrl, fieldType);
+                        } else {
+                            projectButtonContainer.innerHTML += `<div>Користувача з ${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')} "${query}" не знайдено.</div>`;
+                        }
+                    },
+                    onerror: function() {
+                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'}.</div>`;
+                    }
+                });
+            }
+
+
+            function getUserInfo(url, fieldType) {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    onload: function(response) {
+                        let tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+
+                        const playerId = getValueByLabel(tempDiv, 'Номер игрока');
+
+                        let status = 'success';
+
+                        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
+                        attentionHeaders.forEach(header => {
+                            const headerText = header.textContent.trim();
+                            if (headerText.includes('Дубликат')) {
+                                status = 'danger';
+                            } else if (headerText.includes('Отключен')) {
+                                status = 'danger';
+                            } else if (headerText.includes('Лудоман')) {
+                                status = 'info';
+                            } else if (headerText.includes('Не подтвержден')) {
+                                status = 'danger';
+                            }
+                        });
+
+                        const surname = getValueByLabel(tempDiv, 'Фамилия');
+                        const middleName = getValueByLabel(tempDiv, 'Middle Name');
+                        const firstName = getValueByLabel(tempDiv, 'Имя');
+
+                        if (surname === 'Не задан' && middleName === 'Не задан' && firstName === 'Не задан') {
+                            status = 'default'; // Если все поля "Не задан", статус аккаунта - "inactive"
+                        }
+
+
+                        const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
+
+                        projectButtonContainer.innerHTML += `
+                <div>${searchTypeLabel}: <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>
+            `;
+                    },
+                    onerror: function() {
+                        projectButtonContainer.innerHTML += '<div>Ошибка при получении данных пользователя.</div>';
+                    }
+                });
+            }
+
+
+            function getAjaxUrl() {
+                const scripts = document.querySelectorAll('script');
+                for (const script of scripts) {
+                    const scriptContent = script.textContent;
+                    if (scriptContent.includes('#credentials-info')) {
+                        const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
+                        if (urlMatch) {
+                            return urlMatch[1];
+                        }
+                    }
+                }
+                return null;
+            }
+
+            const url = getAjaxUrl();
+
+            if (url) {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    onload: function(response) {
+                        let tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+
+                        let inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn').value;
+                        const email = getFirstValueByLabel('E-mail');
+                        const phone = getFirstValueByLabel('Телефон');
+
+                        searchUser(inn, 'inn');
+                        searchUser(email, 'email');
+                        searchUser(phone, 'phone');
+                    },
+                    onerror: function() {
+                        projectButtonContainer.innerHTML += '<div>Ошибка при получении данных ИНН.</div>';
+                    }
+                });
+            } else {
+                projectButtonContainer.innerHTML += '<div>Не удалось найти URL для запроса.</div>';
+            }
+        });
+
+        popupBox.appendChild(projectButtonContainer);
+        projectButtonContainer.appendChild(projectImage);
+
 
         const resultButton = document.createElement('button');
         resultButton.innerText = 'Total InOut';
@@ -1103,13 +1270,11 @@
                     pageSizeSelect.value = '1000';
                     const event = new Event('change');
                     pageSizeSelect.dispatchEvent(event);
-                    console.log('Изменен размер страницы на 1000');
                 } else {
                     console.warn('Элемент выбора размера страницы не найден');
                 }
 
                 const rows = Array.from(doc.querySelectorAll('tr'));
-                console.log('Найдено строк таблицы:', rows.length);
 
                 let withdrawAmount = 0;
                 let balanceAfterBonus = 0;
@@ -1470,6 +1635,21 @@
         selectElement.dispatchEvent(new Event('change'));
     }
 
+    function setPageSize1k() {
+        let selectElement = document.getElementById('newPageSize');
+        if (!selectElement) {
+            console.error('Select element not found');
+            return;
+        }
+
+        let option = document.createElement('option');
+        option.value = '500';
+        option.text = '500';
+        selectElement.appendChild(option);
+        selectElement.value = '500';
+        selectElement.dispatchEvent(new Event('change'));
+    }
+
     function waitForDataLoad() {
         return new Promise(resolve => {
             setTimeout(resolve, 10000);
@@ -1797,8 +1977,6 @@
                             cardStatuses[cardNumber] = cardStatus;
                         }
                     });
-
-                    console.log('Card statuses:', cardStatuses); // Діагностичне повідомлення
                     callback(cardStatuses);
                 } else {
                     console.error('Failed to fetch player page:', response.statusText);
@@ -1812,7 +1990,7 @@
 
         cardElements.forEach(span => {
             const cardNumber = span.textContent.trim();
-            if (span.closest('td')?.cellIndex === 7) { // Перевірка, чи є це восьма колонка (карти)
+            if (span.closest('td')?.cellIndex === 7) {
                 if (cardStatuses[cardNumber]) {
                     switch (cardStatuses[cardNumber]) {
                         case 'Чужая':
@@ -1907,53 +2085,65 @@
 
 
     function handlePopup() {
-        const popup = document.querySelector('#swal2-content');
-        if (popup) {
-            const totalCell = popup.querySelector('table tbody tr:nth-child(2) td:nth-child(2)');
-            const monthCell = popup.querySelector('table tbody tr:nth-child(2) td:nth-child(1)');
-            if (totalCell && monthCell) {
-                const TotalPA = totalCell.textContent.trim();
-                const MonthPA = monthCell.textContent.trim();
-                const Balance = getBalance();
-
-                const closeButton = document.querySelector('button.swal2-confirm');
-                if (closeButton) {
-                    closeButton.click();
-
-                    setTimeout(() => {
-                        const showBalanceButton = document.querySelector('#show-player-balance-after');
-                        if (showBalanceButton) {
-                            showBalanceButton.click();
-
-                            setTimeout(() => {
-                                const balanceAfterSpan = document.querySelector('#balance-after');
-                                if (balanceAfterSpan) {
-                                    const NDFL = balanceAfterSpan.textContent.trim();
-                                    fetchAndProcessPending().then(({ totalPending, cards }) => {
-                                        console.log(cards)
-                                        fetchAndProcessData()
-                                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
-                                        addCheckButton(TotalPA, Balance, totalPending);
-                                    }).catch(error => {
-                                        console.error('Error processing pending payments:', error);
-                                    });
-                                }
-                            }, 350);
-                        }
-                    }, 1);
+        function getInOutUrl() {
+            const scripts = document.querySelectorAll('script');
+            for (const script of scripts) {
+                const scriptContent = script.textContent;
+                if (scriptContent.includes('#show-player-in-out')) {
+                    const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
+                    if (urlMatch) {
+                        return urlMatch[1];
+                    }
                 }
             }
+            return null;
+        }
+
+        const url = getInOutUrl();
+        if (url) {
+            $.ajax({
+                type: 'GET',
+                url: url,
+            }).done(function(data) {
+                // Обработка данных
+                const TotalPA = data.totalInOut;
+                const MonthPA = data.monthInOut;
+                const Balance = getBalance(); // Предполагается, что эта функция определена
+
+                // Открытие попапа для отображения данных
+                const showBalanceButton = document.querySelector('#show-player-balance-after');
+                if (showBalanceButton) {
+                    showBalanceButton.click();
+
+                    setTimeout(() => {
+                        const balanceAfterSpan = document.querySelector('#balance-after');
+                        if (balanceAfterSpan) {
+                            const NDFL = balanceAfterSpan.textContent.trim();
+                            fetchAndProcessPending().then(({ totalPending, cards }) => {
+                                console.log(cards);
+                                fetchAndProcessData();
+                                createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
+                                addCheckButton(TotalPA, Balance, totalPending);
+                            }).catch(error => {
+                                console.error('Error processing pending payments:', error);
+                            });
+                        }
+                    }, 150);
+                }
+            }).fail(function(xhr) {
+                console.error('Ошибка при выполнении запроса:', xhr.responseText);
+            });
+        } else {
+            console.log('Не удалось найти URL для запроса.');
         }
     }
-
-
 
 
     window.addEventListener('load', function() {
         if (currentUrl.includes('paymentsItemsOut/index')) {
             calculatePendingAmount();
+            setPageSize1k();
         } else if (currentUrl.includes('playersItems/update')) {
-            clickButton();
             addForeignButton();
             setTimeout(handlePopup, 200);
         } else if (currentUrl.includes('playersItems/balanceLog/')) {

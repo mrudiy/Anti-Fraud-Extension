@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6
+// @version      3.6.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -14,6 +14,7 @@
 // @connect      admin.777.ua
 // @connect      admin.slotoking.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
 // ==/UserScript==
 
 (function() {
@@ -31,6 +32,11 @@
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
     const ndfDisplayKey = 'ndfDisplay';
+    const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
+    const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
+    const sheetId = "1zAAQZ3jJNJc5ZBgL6317WJRAwQ3MAh6zjGgbf1QdF1Q";
+
+    const scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
 
 
     const defaultRules = [
@@ -49,6 +55,12 @@
 
     function saveRules(rules) {
         localStorage.setItem(sharedStorageKey, JSON.stringify(rules));
+    }
+
+    function getProject() {
+        const url = window.location.href;
+        const match = url.match(/admin\.([^.]+)\./);
+        return match ? match[1] : null;
     }
 
     const style = document.createElement('style');
@@ -2083,6 +2095,105 @@
         });
     }
 
+    function getAccessToken() {
+        return new Promise((resolve, reject) => {
+            console.log("Generating JWT...");
+            const iat = Math.floor(Date.now() / 1000);
+            const exp = iat + 3600;
+
+            const oHeader = { alg: "RS256", typ: "JWT" };
+            const oPayload = {
+                iss: clientEmail,
+                scope: scopes,
+                aud: "https://oauth2.googleapis.com/token",
+                exp: exp,
+                iat: iat
+            };
+
+            const sHeader = JSON.stringify(oHeader);
+            const sPayload = JSON.stringify(oPayload);
+
+            const sJWT = KJUR.jws.JWS.sign("RS256", sHeader, sPayload, privateKey);
+
+            fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`
+            })
+                .then(response => response.json())
+                .then(data => {
+                if (data.access_token) {
+                    resolve(data.access_token);
+                } else {
+                    reject("No access_token found in response.");
+                }
+            })
+                .catch(err => {
+                console.error("Error during token request:", err);
+                reject(err);
+            });
+        });
+    }
+
+    function sendDataToGoogleSheet(accessToken, data) {
+        console.log("Sending data to Google Sheets...");
+        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/INFO!A1:append?valueInputOption=RAW`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken,
+            },
+            body: JSON.stringify({
+                values: [[
+                    data.date,
+                    data.url,
+                    data.project,
+                    data.playerID,
+                    data.initials,
+                    data.comment,
+                ]]
+            })
+        }).then(response => response.json())
+            .then(data => {
+        })
+            .catch((error) => {
+            console.error("Error sending data to Google Sheets:", error);
+        });
+    }
+
+    function buttonToSave() {
+        const button = document.querySelector('.btn-update-comment-antifraud_manager');
+        const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
+
+
+        const initials = GM_getValue(initialsKey, '');
+        const currentDate = getCurrentDate();
+        const playerID = getPlayerID();
+        const project = getProject();
+        const url = window.location.href;
+        if (button) {
+            button.addEventListener('click', () => {
+                getAccessToken().then(accessToken => {
+                    const dataToInsert = {
+                        date: currentDate,
+                        url: url,
+                        project: project,
+                        playerID: playerID,
+                        initials: initials,
+                        comment: textarea.value.replace(/\r?\n/g, ""),
+                    };
+                    console.log(dataToInsert)
+                    sendDataToGoogleSheet(accessToken, dataToInsert);
+                }).catch(err => {
+                    console.error("Error getting Access Token:", err);
+                });
+            });
+        } else {
+            console.error("Button not found.");
+        }
+    }
 
     function handlePopup() {
         function getInOutUrl() {
@@ -2105,12 +2216,10 @@
                 type: 'GET',
                 url: url,
             }).done(function(data) {
-                // Обработка данных
                 const TotalPA = data.totalInOut;
                 const MonthPA = data.monthInOut;
-                const Balance = getBalance(); // Предполагается, что эта функция определена
+                const Balance = getBalance();
 
-                // Открытие попапа для отображения данных
                 const showBalanceButton = document.querySelector('#show-player-balance-after');
                 if (showBalanceButton) {
                     showBalanceButton.click();
@@ -2145,6 +2254,7 @@
             setPageSize1k();
         } else if (currentUrl.includes('playersItems/update')) {
             addForeignButton();
+            buttonToSave();
             setTimeout(handlePopup, 200);
         } else if (currentUrl.includes('playersItems/balanceLog/')) {
             createFloatingButton(buttonImageUrl);

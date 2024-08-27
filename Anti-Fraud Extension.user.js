@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6.5
+// @version      3.6.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -403,6 +403,12 @@
         languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
         settingsPopup.appendChild(languageDisplay);
 
+        const shortcutKeyDisplay = document.createElement('p');
+        const savedShortcut = GM_getValue('dateShortcut', 'не задано');
+        shortcutKeyDisplay.innerText = `Вставка дати: ${savedShortcut}`;
+        settingsPopup.appendChild(shortcutKeyDisplay);
+
+
         const ndfDisplayCheckbox = document.createElement('input');
         ndfDisplayCheckbox.type = 'checkbox';
         ndfDisplayCheckbox.checked = GM_getValue(ndfDisplayKey, true);
@@ -415,6 +421,8 @@
         ndfDisplayCheckbox.addEventListener('change', () => {
             GM_setValue(ndfDisplayKey, ndfDisplayCheckbox.checked);
         });
+
+
 
         const initialsButton = document.createElement('button');
         initialsButton.innerText = 'Вказати ініціали';
@@ -449,6 +457,36 @@
         });
         settingsPopup.appendChild(languageButton);
 
+        function getShortcutFromEvent(event) {
+            const keys = [];
+            if (event.ctrlKey) keys.push('CTRL');
+            if (event.altKey) keys.push('ALT');
+            if (event.shiftKey) keys.push('SHIFT');
+            keys.push(event.code);
+            return keys.join(' + ');
+        }
+
+        const setShortcutButton = document.createElement('button');
+        setShortcutButton.innerText = 'Задати клавіші';
+        setShortcutButton.style.padding = '8px 16px';
+        setShortcutButton.style.backgroundColor = '#FF9800';
+        setShortcutButton.style.color = 'white';
+        setShortcutButton.style.border = 'none';
+        setShortcutButton.style.borderRadius = '4px';
+        setShortcutButton.style.cursor = 'pointer';
+
+        setShortcutButton.addEventListener('click', () => {
+            alert('Після натискання на "ОК" натисніть бажане поєднання клавіш');
+            document.addEventListener('keydown', function captureShortcut(event) {
+                const shortcut = getShortcutFromEvent(event);
+                GM_setValue('dateShortcut', shortcut);
+                shortcutKeyDisplay.innerText = `Вставка дати: ${shortcut}`;
+                document.removeEventListener('keydown', captureShortcut);
+            });
+        });
+
+        settingsPopup.appendChild(setShortcutButton);
+
         const closeButton = document.createElement('button');
         closeButton.innerText = 'Закрити';
         closeButton.style.padding = '8px 16px';
@@ -464,6 +502,7 @@
 
         document.body.appendChild(settingsPopup);
     }
+
 
     function calculatePendingAmount() {
         let totalPending = 0;
@@ -567,6 +606,38 @@
             return Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
         } else {
             return balance;
+        }
+    }
+
+    function handleShortcut(event) {
+        const keys = [];
+        if (event.ctrlKey) keys.push('CTRL');
+        if (event.altKey) keys.push('ALT');
+        if (event.shiftKey) keys.push('SHIFT');
+        keys.push(event.code);
+
+        const shortcut = keys.join(' + ');
+        const savedShortcut = GM_getValue('dateShortcut', 'не задано');
+
+        if (shortcut === savedShortcut) {
+            event.preventDefault();
+
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
+                const date = getCurrentDateFormatted();
+                if (activeElement.isContentEditable) {
+                    const selection = window.getSelection();
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(document.createTextNode(date));
+                    range.collapse(false);
+                } else {
+                    const startPos = activeElement.selectionStart;
+                    const endPos = activeElement.selectionEnd;
+                    activeElement.value = activeElement.value.substring(0, startPos) + date + activeElement.value.substring(endPos);
+                    activeElement.selectionStart = activeElement.selectionEnd = startPos + date.length;
+                }
+            }
         }
     }
 
@@ -2263,6 +2334,7 @@
         } else if (currentUrl.includes('playersItems/update')) {
             addForeignButton();
             buttonToSave();
+            document.addEventListener('keydown', handleShortcut);
             setTimeout(handlePopup, 200);
         } else if (currentUrl.includes('playersItems/balanceLog/')) {
             createFloatingButton(buttonImageUrl);

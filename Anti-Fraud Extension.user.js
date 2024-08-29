@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6.7
+// @version      3.6.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -32,6 +32,7 @@
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
     const ndfDisplayKey = 'ndfDisplay';
+    const amountDisplayKey = 'amountDisplay';
     const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
     const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
     const sheetId = "1zAAQZ3jJNJc5ZBgL6317WJRAwQ3MAh6zjGgbf1QdF1Q";
@@ -335,7 +336,7 @@
                 const date = getCurrentDate();
                 const initials = GM_getValue(initialsKey);
                 const currentLanguage = GM_getValue(languageKey, 'російська');
-                const colorPA = TotalPA > 1 ? 'red' : 'black';
+                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
                 const formattedBalance = formatAmount(Balance);
                 const formattedTotalPending = formatAmount(totalPending);
 
@@ -343,7 +344,7 @@
 
                 if (currentLanguage === 'українська') {
 
-                    if (Balance > 1) {
+                    if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                         textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                     }
@@ -354,12 +355,12 @@
                     }
 
                 } else {
-                    if (Balance > 1) {
+                    if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                         textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                     }
 
-                    if (totalPending > 1) {
+                    if (totalPending > 1000) {
                         const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
                         textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `;
                     }
@@ -414,7 +415,7 @@
         ndfDisplayCheckbox.checked = GM_getValue(ndfDisplayKey, true);
         const ndfDisplayLabel = document.createElement('label');
         ndfDisplayLabel.innerText = 'Показувати НДФЛ';
-        ndfDisplayLabel.style.display = 'block'; // Чтобы текст располагался под остальными элементами
+        ndfDisplayLabel.style.display = 'block';
         ndfDisplayLabel.prepend(ndfDisplayCheckbox);
         settingsPopup.appendChild(ndfDisplayLabel);
 
@@ -422,7 +423,18 @@
             GM_setValue(ndfDisplayKey, ndfDisplayCheckbox.checked);
         });
 
+        const amountDisplayCheckbox = document.createElement('input');
+        amountDisplayCheckbox.type = 'checkbox';
+        amountDisplayCheckbox.checked = GM_getValue(amountDisplayKey, true);
+        const amountDisplayLabel = document.createElement('label');
+        amountDisplayLabel.innerText = 'Округляти баланси';
+        amountDisplayLabel.style.display = 'block';
+        amountDisplayLabel.prepend(amountDisplayCheckbox);
+        settingsPopup.appendChild(amountDisplayLabel);
 
+        amountDisplayCheckbox.addEventListener('change', () => {
+            GM_setValue(amountDisplayKey, amountDisplayCheckbox.checked);
+        });
 
         const initialsButton = document.createElement('button');
         initialsButton.innerText = 'Вказати ініціали';
@@ -598,15 +610,20 @@
 
     function formatAmount(balance) {
         let formattedBalance;
-        if (balance >= 1000000) {
-            formattedBalance = balance / 1000000;
-            return Number.isInteger(formattedBalance) ? `${formattedBalance} млн` : `${formattedBalance.toFixed(1)} млн`;
-        } else if (balance >= 1000) {
-            formattedBalance = balance / 1000;
-            return Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
+        const isNegative = balance < 0; // Проверяем, отрицательное ли значение
+        const absoluteBalance = Math.abs(balance); // Преобразуем в абсолютное значение
+
+        if (absoluteBalance >= 1000000) {
+            formattedBalance = absoluteBalance / 1000000;
+            formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance} млн` : `${formattedBalance.toFixed(1)} млн`;
+        } else if (absoluteBalance >= 1000) {
+            formattedBalance = absoluteBalance / 1000;
+            formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
         } else {
-            return balance;
+            formattedBalance = absoluteBalance.toFixed(2); // Возвращаем абсолютное значение, если оно меньше 1000
         }
+
+        return isNegative ? `-${formattedBalance}` : formattedBalance; // Добавляем знак минуса, если значение было отрицательным
     }
 
     function handleShortcut(event) {
@@ -667,20 +684,28 @@
         popupBox.style.borderRadius = '10px';
 
         const showNDFL = GM_getValue(ndfDisplayKey, true);
+        const showAmount = GM_getValue(amountDisplayKey, true);
+        const formattedBalance = formatAmount(Balance);
+        const formattedNDFL = formatAmount(NDFL);
+        const formattedTotalPending = formatAmount(totalPending);
+
+
 
         const maintext = document.createElement('div');
         maintext.className = 'popup-main-text';
         maintext.innerHTML = `
-    <center><b>Баланс: ${Balance}₴</b></center>
-        ${showNDFL ? `<center><b>НДФЛ: ${NDFL}₴</b></center>` : ''}
-    <center><b>Month: <span style="color: ${MonthPA > 1 ? 'red' : 'black'}">${MonthPA}</span> | Total: <span style="color: ${TotalPA > 1 ? 'red' : 'black'}">${TotalPA}</span></b></center>
-    ${totalPending > 0 ? `<center><b>На виплаті: ${totalPending}₴</b></center>` : ''}
-    ${cards.length > 0 ? `
+    ${showAmount ? `<center><b>Баланс: ${formattedBalance}₴</b></center>` : `<center><b>Баланс: ${Balance}₴</b></center>`}
+    ${showNDFL ? (showAmount ? `<center><b>НДФЛ: ${formattedNDFL}₴</b></center>` : `<center><b>НДФЛ: ${NDFL}₴</b></center>`) : ''}
+    <center><b>
+        Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA < 1 ? 'orange' : 'red')}">${MonthPA}</span> |
+        Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red')}">${TotalPA}</span>
+    </b></center>
+    ${totalPending > 0 ? (showAmount ? `<center><b>На виплаті: ${formattedTotalPending}₴</b></center>` : `<center><b>На виплаті: ${totalPending}₴</b></center>`) : ''}    ${cards.length > 0 ? `
         <center><b>Картки для верифікації:</b><br>
         ${cards.map(card => `
             <div style="display: inline-block; margin-top: 5px;">
                 ${card}
-                <button onclick="navigator.clipboard.writeText('${card}')"
+                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')"
                         style="border: none; background: none; cursor: pointer; margin-left: 5px;">
                     <span class="fa fa-files-o"></span>
                 </button>
@@ -688,6 +713,7 @@
         `).join('<br>')}
         </center>` : ''}
 `;
+
 
         popupBox.appendChild(maintext);
 
@@ -762,14 +788,14 @@
 
             let textToInsert;
 
-            const colorPA = TotalPA > 1 ? 'red' : 'black';
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
             const formattedBalance = formatAmount(Balance);
             const formattedTotalPending = formatAmount(totalPending);
 
 
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1) {
+                if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                 }
@@ -781,7 +807,7 @@
                 textToInsert += `играет <b><font color="#14b814">своими</font></b> картами, чист`;
             } else if (currentLanguage === 'українська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1) {
+                if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                 }
@@ -813,11 +839,11 @@
             let textToInsert;
             const formattedBalance = formatAmount(Balance);
             const formattedTotalPending = formatAmount(totalPending);
-            const colorPA = TotalPA > 1 ? 'red' : 'black';
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1) {
+                if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                 }
@@ -830,7 +856,7 @@
             }
             else if (currentLanguage === 'українська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1) {
+                if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
                 }
@@ -866,7 +892,7 @@
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
-            const colorPA = TotalPA > 1 ? 'red' : 'black';
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
@@ -894,7 +920,7 @@
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
             let textToInsert;
-            const colorPA = TotalPA > 1 ? 'red' : 'black';
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
                 textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
@@ -1014,6 +1040,8 @@
                             if (headerText.includes('Дубликат')) {
                                 status = 'danger';
                             } else if (headerText.includes('Отключен')) {
+                                status = 'danger';
+                            } else if (headerText.includes('Ограничение по возрасту!')) {
                                 status = 'danger';
                             } else if (headerText.includes('Лудоман')) {
                                 status = 'info';
@@ -1183,18 +1211,28 @@
 
                             let cleanBalance = parseFloat(Balance);
 
-                            const profit = depositsTotal - redeemsTotal;
+                            const profit = (depositsTotal - redeemsTotal);
                             const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance);
                             const PrognosePA = ((redeemsTotal + totalPending + cleanBalance) / depositsTotal) * 100;
+                            const formattedProfit = formatAmount(profit)
+                            const formattedPrognoseInOut = formatAmount(PrognoseInOut)
+                            const showAmount = GM_getValue(amountDisplayKey, true);
+
+
 
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += `
-                        <div><b>Total InOut: ${profit.toFixed(2)}₴</b></div>
-                        ${(totalPending > 1 || cleanBalance > 1) ? `
-                            <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}₴</b></div>
-                            <div><b>Prognose PA: ${PrognosePA.toFixed(2)}%</b></div>
-                        ` : ''}
-                    `;
+    <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}₴</b></div>
+    ${(totalPending > 1 || cleanBalance > 1) ? `
+        <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}₴</b></div>
+        <div><b>Prognose PA:
+            <span style="color: ${PrognosePA < 75 ? 'green' : (PrognosePA < 100 ? 'orange' : 'red')}">
+                ${PrognosePA.toFixed(2)}%
+            </span>
+        </b></div>
+    ` : ''}
+`;
+
                         } else {
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += 'Таблица с результатами не найдена.';

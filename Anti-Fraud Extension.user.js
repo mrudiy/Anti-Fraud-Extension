@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.7
+// @version      3.7.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -663,7 +663,13 @@
         popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
         popupBox.style.top = '20px';
-        popupBox.style.right = '20px';
+        popupBox.style.right = ''; // Забираємо значення з правої сторони
+
+        // Розміщуємо попап справа через обчислення left
+        const popupWidth = 250;
+        popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`; // 20px - відступ від правого краю
+        popupBox.style.width = `${popupWidth}px`; // Задаємо ширину попапу
+
         popupBox.style.padding = '20px';
         popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
         popupBox.style.border = `2px solid black`;
@@ -676,6 +682,8 @@
         popupBox.style.alignItems = 'center';
         popupBox.style.borderRadius = '10px';
         popupBox.style.animation = 'fadeIn 0.5s ease-in-out, borderGlow 2.5s infinite';
+        popupBox.style.resize = 'both';
+        popupBox.style.overflow = 'auto';
 
 
         const showNDFL = GM_getValue(ndfDisplayKey, true);
@@ -685,7 +693,37 @@
         const formattedTotalPending = formatAmount(totalPending);
 
 
+        const dragHandle = document.createElement('div');
+        dragHandle.style.position = 'absolute';
+        dragHandle.style.top = '0';
+        dragHandle.style.left = '0';
+        dragHandle.style.width = '100%';
+        dragHandle.style.height = '20px';
+        dragHandle.style.cursor = 'move';
+        popupBox.appendChild(dragHandle);
 
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        dragHandle.addEventListener('mousedown', function (e) {
+            isDragging = true;
+            offsetX = e.clientX - popupBox.getBoundingClientRect().left;
+            offsetY = e.clientY - popupBox.getBoundingClientRect().top;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            popupBox.style.left = `${e.clientX - offsetX}px`;
+            popupBox.style.top = `${e.clientY - offsetY}px`;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
 
         const maintext = document.createElement('div');
         maintext.className = 'popup-main-text';

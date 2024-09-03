@@ -666,7 +666,7 @@
         popupBox.style.right = ''; // Забираємо значення з правої сторони
 
         // Розміщуємо попап справа через обчислення left
-        const popupWidth = 250;
+        const popupWidth = 270;
         popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`; // 20px - відступ від правого краю
         popupBox.style.width = `${popupWidth}px`; // Задаємо ширину попапу
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.6.8
+// @version      3.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -33,6 +33,7 @@
     const languageKey = 'language';
     const ndfDisplayKey = 'ndfDisplay';
     const amountDisplayKey = 'amountDisplay';
+    const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
     const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
     const sheetId = "1zAAQZ3jJNJc5ZBgL6317WJRAwQ3MAh6zjGgbf1QdF1Q";
@@ -380,140 +381,131 @@
         settingsPopup.style.position = 'fixed';
         settingsPopup.style.top = '10px';
         settingsPopup.style.right = '10px';
-        settingsPopup.style.padding = '10px';
-        settingsPopup.style.backgroundColor = 'white';
-        settingsPopup.style.border = '1px solid black';
-        settingsPopup.style.boxShadow = '0px 0px 5px rgba(0, 0, 0, 0.3)';
+        settingsPopup.style.padding = '20px';
+        settingsPopup.style.backgroundColor = '#f9f9f9';
+        settingsPopup.style.border = '1px solid #ccc';
+        settingsPopup.style.boxShadow = '0px 0px 15px rgba(0, 0, 0, 0.2)';
         settingsPopup.style.zIndex = '10001';
         settingsPopup.style.fontFamily = 'Arial, sans-serif';
         settingsPopup.style.fontSize = '14px';
-        settingsPopup.style.borderRadius = '5px';
+        settingsPopup.style.borderRadius = '8px';
 
         const header = document.createElement('h2');
         header.innerText = 'Налаштування';
-        header.style.fontSize = '16px';
+        header.style.fontWeight = 'bold';
+        header.style.fontSize = '18px';
+        header.style.marginBottom = '15px';
         settingsPopup.appendChild(header);
 
         const initialsDisplay = document.createElement('p');
         const userInitials = GM_getValue(initialsKey, '');
         initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+        initialsDisplay.style.marginBottom = '10px';
         settingsPopup.appendChild(initialsDisplay);
 
         const languageDisplay = document.createElement('p');
         let currentLanguage = GM_getValue(languageKey, 'російська');
         languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
+        languageDisplay.style.marginBottom = '10px';
         settingsPopup.appendChild(languageDisplay);
 
         const shortcutKeyDisplay = document.createElement('p');
         const savedShortcut = GM_getValue('dateShortcut', 'не задано');
         shortcutKeyDisplay.innerText = `Вставка дати: ${savedShortcut}`;
+        shortcutKeyDisplay.style.marginBottom = '20px';
         settingsPopup.appendChild(shortcutKeyDisplay);
 
+        const createCheckboxWithLabel = (labelText, isChecked, onChange) => {
+            const label = document.createElement('label');
+            label.style.display = 'block';
+            label.style.marginBottom = '10px';
+            label.style.cursor = 'pointer';
 
-        const ndfDisplayCheckbox = document.createElement('input');
-        ndfDisplayCheckbox.type = 'checkbox';
-        ndfDisplayCheckbox.checked = GM_getValue(ndfDisplayKey, true);
-        const ndfDisplayLabel = document.createElement('label');
-        ndfDisplayLabel.innerText = 'Показувати НДФЛ';
-        ndfDisplayLabel.style.display = 'block';
-        ndfDisplayLabel.prepend(ndfDisplayCheckbox);
-        settingsPopup.appendChild(ndfDisplayLabel);
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isChecked;
+            checkbox.style.marginRight = '10px';
+            checkbox.addEventListener('change', onChange);
 
-        ndfDisplayCheckbox.addEventListener('change', () => {
-            GM_setValue(ndfDisplayKey, ndfDisplayCheckbox.checked);
-        });
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(labelText));
+            return label;
+        };
 
-        const amountDisplayCheckbox = document.createElement('input');
-        amountDisplayCheckbox.type = 'checkbox';
-        amountDisplayCheckbox.checked = GM_getValue(amountDisplayKey, true);
-        const amountDisplayLabel = document.createElement('label');
-        amountDisplayLabel.innerText = 'Округляти баланси';
-        amountDisplayLabel.style.display = 'block';
-        amountDisplayLabel.prepend(amountDisplayCheckbox);
-        settingsPopup.appendChild(amountDisplayLabel);
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Показувати НДФЛ', GM_getValue(ndfDisplayKey, true), (e) => {
+                GM_setValue(ndfDisplayKey, e.target.checked);
+            })
+        );
 
-        amountDisplayCheckbox.addEventListener('change', () => {
-            GM_setValue(amountDisplayKey, amountDisplayCheckbox.checked);
-        });
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Округляти баланси', GM_getValue(amountDisplayKey, true), (e) => {
+                GM_setValue(amountDisplayKey, e.target.checked);
+            })
+        );
 
-        const initialsButton = document.createElement('button');
-        initialsButton.innerText = 'Вказати ініціали';
-        initialsButton.style.padding = '8px 16px';
-        initialsButton.style.backgroundColor = '#4CAF50';
-        initialsButton.style.color = 'white';
-        initialsButton.style.border = 'none';
-        initialsButton.style.borderRadius = '4px';
-        initialsButton.style.cursor = 'pointer';
-        initialsButton.addEventListener('click', () => {
-            const userInitials = prompt('Введіть свої ініціали (наприклад, РМ):', GM_getValue(initialsKey, ''));
-            if (userInitials !== null) {
-                GM_setValue(initialsKey, userInitials);
-                initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
-            }
-        });
-        settingsPopup.appendChild(initialsButton);
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Кнопки Pending', GM_getValue(pendingButtonsDisplayKey, true), (e) => {
+                GM_setValue(pendingButtonsDisplayKey, e.target.checked);
+            })
+        );
 
-        const languageButton = document.createElement('button');
-        languageButton.innerText = `Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`;
-        languageButton.style.padding = '8px 16px';
-        languageButton.style.backgroundColor = '#2196F3';
-        languageButton.style.color = 'white';
-        languageButton.style.border = 'none';
-        languageButton.style.borderRadius = '4px';
-        languageButton.style.cursor = 'pointer';
-        languageButton.addEventListener('click', () => {
+        const createButton = (text, bgColor, onClick) => {
+            const button = document.createElement('button');
+            button.innerText = text;
+            button.style.padding = '10px 20px';
+            button.style.backgroundColor = bgColor;
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.borderRadius = '4px';
+            button.style.cursor = 'pointer';
+            button.style.marginRight = '10px';
+            button.style.marginTop = '10px';
+            button.style.transition = 'background-color 0.3s';
+            button.addEventListener('click', onClick);
+            return button;
+        };
+
+        settingsPopup.appendChild(
+            createButton('Вказати ініціали', '#4CAF50', () => {
+                const userInitials = prompt('Введіть свої ініціали (наприклад, РМ):', GM_getValue(initialsKey, ''));
+                if (userInitials !== null) {
+                    GM_setValue(initialsKey, userInitials);
+                    initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+                }
+            })
+        );
+
+        const languageButton = createButton(`Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`, '#2196F3', () => {
             currentLanguage = currentLanguage === 'російська' ? 'українська' : 'російська';
             GM_setValue(languageKey, currentLanguage);
             languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
             languageButton.innerText = `Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`;
         });
+
         settingsPopup.appendChild(languageButton);
 
-        function getShortcutFromEvent(event) {
-            const keys = [];
-            if (event.ctrlKey) keys.push('CTRL');
-            if (event.altKey) keys.push('ALT');
-            if (event.shiftKey) keys.push('SHIFT');
-            keys.push(event.code);
-            return keys.join(' + ');
-        }
+        settingsPopup.appendChild(
+            createButton('Задати клавіші', '#FF9800', () => {
+                alert('Після натискання на "ОК" натисніть бажане поєднання клавіш');
+                document.addEventListener('keydown', function captureShortcut(event) {
+                    const shortcut = getShortcutFromEvent(event);
+                    GM_setValue('dateShortcut', shortcut);
+                    shortcutKeyDisplay.innerText = `Вставка дати: ${shortcut}`;
+                    document.removeEventListener('keydown', captureShortcut);
+                });
+            })
+        );
 
-        const setShortcutButton = document.createElement('button');
-        setShortcutButton.innerText = 'Задати клавіші';
-        setShortcutButton.style.padding = '8px 16px';
-        setShortcutButton.style.backgroundColor = '#FF9800';
-        setShortcutButton.style.color = 'white';
-        setShortcutButton.style.border = 'none';
-        setShortcutButton.style.borderRadius = '4px';
-        setShortcutButton.style.cursor = 'pointer';
-
-        setShortcutButton.addEventListener('click', () => {
-            alert('Після натискання на "ОК" натисніть бажане поєднання клавіш');
-            document.addEventListener('keydown', function captureShortcut(event) {
-                const shortcut = getShortcutFromEvent(event);
-                GM_setValue('dateShortcut', shortcut);
-                shortcutKeyDisplay.innerText = `Вставка дати: ${shortcut}`;
-                document.removeEventListener('keydown', captureShortcut);
-            });
-        });
-
-        settingsPopup.appendChild(setShortcutButton);
-
-        const closeButton = document.createElement('button');
-        closeButton.innerText = 'Закрити';
-        closeButton.style.padding = '8px 16px';
-        closeButton.style.backgroundColor = '#f44336';
-        closeButton.style.color = 'white';
-        closeButton.style.border = 'none';
-        closeButton.style.borderRadius = '4px';
-        closeButton.style.cursor = 'pointer';
-        closeButton.addEventListener('click', () => {
-            document.body.removeChild(settingsPopup);
-        });
-        settingsPopup.appendChild(closeButton);
+        settingsPopup.appendChild(
+            createButton('Закрити', '#f44336', () => {
+                document.body.removeChild(settingsPopup);
+            })
+        );
 
         document.body.appendChild(settingsPopup);
     }
+
 
 
     function calculatePendingAmount() {
@@ -666,28 +658,32 @@
 
         const currentUrl = window.location.href;
         const checkbox = document.getElementById('Players_enabled_autopayouts');
+        const borderColor = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
 
         popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
-        popupBox.style.top = '10px';
-        popupBox.style.right = '10px';
-        popupBox.style.padding = '10px';
-        popupBox.style.backgroundColor = 'white';
-        popupBox.style.border = '2px solid black';
-        popupBox.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+        popupBox.style.top = '20px';
+        popupBox.style.right = '20px';
+        popupBox.style.padding = '20px';
+        popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        popupBox.style.border = `2px solid black`;
+        popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
         popupBox.style.zIndex = '10000';
-        popupBox.style.fontFamily = 'Arial, sans-serif';
+        popupBox.style.fontFamily = '"Roboto", sans-serif';
         popupBox.style.fontSize = '16px';
         popupBox.style.display = 'flex';
         popupBox.style.flexDirection = 'column';
         popupBox.style.alignItems = 'center';
         popupBox.style.borderRadius = '10px';
+        popupBox.style.animation = 'fadeIn 0.5s ease-in-out, borderGlow 2.5s infinite';
+
 
         const showNDFL = GM_getValue(ndfDisplayKey, true);
         const showAmount = GM_getValue(amountDisplayKey, true);
         const formattedBalance = formatAmount(Balance);
         const formattedNDFL = formatAmount(NDFL);
         const formattedTotalPending = formatAmount(totalPending);
+
 
 
 
@@ -724,13 +720,13 @@
         popupBox.appendChild(text);
 
         const settingsIcon = document.createElement('div');
-        settingsIcon.innerHTML = '&#9881;';
+        settingsIcon.innerHTML = '<i class="fa fa-cog"></i>';
         settingsIcon.style.position = 'absolute';
-        settingsIcon.style.top = '5px';
-        settingsIcon.style.right = '5px';
+        settingsIcon.style.top = '10px';
+        settingsIcon.style.right = '10px';
         settingsIcon.style.cursor = 'pointer';
-        settingsIcon.style.fontSize = '18px';
-        settingsIcon.title = 'Settings';
+        settingsIcon.style.fontSize = '20px';
+        settingsIcon.title = 'Налаштування';
         settingsIcon.onclick = () => {
             createSettingsPopup();
         };
@@ -738,19 +734,12 @@
 
         const statusIcon = document.createElement('div');
         statusIcon.style.position = 'absolute';
-        statusIcon.style.top = '5px';
-        statusIcon.style.left = '5px';
-        statusIcon.style.fontSize = '18px';
+        statusIcon.style.top = '10px';
+        statusIcon.style.left = '10px';
+        statusIcon.style.fontSize = '20px';
         statusIcon.style.cursor = 'pointer';
-
-        const updateStatusIcon = () => {
-            if (checkbox) {
-                statusIcon.innerHTML = checkbox.checked ? '&#10004;' : '&#10008;';
-            } else {
-                statusIcon.innerHTML = '&#10008;';
-            }
-        };
-        updateStatusIcon();
+        statusIcon.title = 'Автовиплата';
+        statusIcon.innerHTML = checkbox && checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
 
         statusIcon.onclick = () => {
             checkbox.click();
@@ -761,11 +750,25 @@
                     confirmButton.click();
                 }
 
-                setTimeout(updateStatusIcon, 200);
+                setTimeout(() => {
+                    statusIcon.innerHTML = checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
+                }, 200);
             }, 200);
         };
-
         popupBox.appendChild(statusIcon);
+
+        const buttonStyle = `
+    font-family: Arial, sans-serif;
+    font-size: 15px;
+    font-weight: bold;
+    color: white;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+`;
+
 
 
         const firstRowButtonContainer = document.createElement('div');
@@ -775,12 +778,10 @@
 
         const cleanButton = document.createElement('button');
         cleanButton.innerText = 'Чистий';
-        cleanButton.style.padding = '5px 10px';
-        cleanButton.style.backgroundColor = '#4CAF50';
-        cleanButton.style.color = 'white';
-        cleanButton.style.border = 'none';
-        cleanButton.style.borderRadius = '5px';
-        cleanButton.style.cursor = 'pointer';
+        cleanButton.style.cssText = buttonStyle;
+        cleanButton.style.backgroundColor = '#28a745';
+        cleanButton.onmouseover = () => cleanButton.style.backgroundColor = '#218838';
+        cleanButton.onmouseout = () => cleanButton.style.backgroundColor = '#28a745';
         cleanButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
@@ -825,12 +826,10 @@
 
         const foreignButton = document.createElement('button');
         foreignButton.innerText = 'Чужа';
-        foreignButton.style.padding = '5px 10px';
-        foreignButton.style.backgroundColor = '#f44336';
-        foreignButton.style.color = 'white';
-        foreignButton.style.border = 'none';
-        foreignButton.style.borderRadius = '5px';
-        foreignButton.style.cursor = 'pointer';
+        foreignButton.style.cssText = buttonStyle;
+        foreignButton.style.backgroundColor = '#dc3545';
+        foreignButton.onmouseover = () => foreignButton.style.backgroundColor = '#c82333';
+        foreignButton.onmouseout = () => foreignButton.style.backgroundColor = '#dc3545';
         foreignButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
@@ -878,14 +877,14 @@
         secondRowButtonContainer.style.display = 'flex';
         secondRowButtonContainer.style.gap = '10px';
 
+        const showPendingsButton = GM_getValue(pendingButtonsDisplayKey, true);
+
         const pendingPlusButton = document.createElement('button');
         pendingPlusButton.innerText = 'Pending (+)';
-        pendingPlusButton.style.padding = '5px 10px';
-        pendingPlusButton.style.backgroundColor = '#4CAF50';
-        pendingPlusButton.style.color = 'white';
-        pendingPlusButton.style.border = 'none';
-        pendingPlusButton.style.borderRadius = '5px';
-        pendingPlusButton.style.cursor = 'pointer';
+        pendingPlusButton.style.cssText = buttonStyle;
+        pendingPlusButton.style.backgroundColor = '#28a745';
+        pendingPlusButton.onmouseover = () => pendingPlusButton.style.backgroundColor = '#218838';
+        pendingPlusButton.onmouseout = () => pendingPlusButton.style.backgroundColor = '#28a745';
         pendingPlusButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
@@ -908,12 +907,10 @@
 
         const pendingMinusButton = document.createElement('button');
         pendingMinusButton.innerText = 'Pending (-)';
-        pendingMinusButton.style.padding = '5px 10px';
-        pendingMinusButton.style.backgroundColor = '#f44336';
-        pendingMinusButton.style.color = 'white';
-        pendingMinusButton.style.border = 'none';
-        pendingMinusButton.style.borderRadius = '5px';
-        pendingMinusButton.style.cursor = 'pointer';
+        pendingMinusButton.style.cssText = buttonStyle;
+        pendingMinusButton.style.backgroundColor = '#dc3545';
+        pendingMinusButton.onmouseover = () => pendingMinusButton.style.backgroundColor = '#c82333';
+        pendingMinusButton.onmouseout = () => pendingMinusButton.style.backgroundColor = '#dc3545';
         pendingMinusButton.addEventListener('click', () => {
             const date = getCurrentDate();
             const initials = GM_getValue(initialsKey, '');
@@ -933,8 +930,8 @@
             insertTextIntoField(textToInsert);
         });
         secondRowButtonContainer.appendChild(pendingMinusButton);
-
-        popupBox.appendChild(secondRowButtonContainer);
+        if (showPendingsButton === true){
+            popupBox.appendChild(secondRowButtonContainer);}
 
         const thirdRowButtonContainer = document.createElement('div');
         thirdRowButtonContainer.style.marginTop = '10px';
@@ -1012,7 +1009,7 @@
                         if (response.finalUrl.includes('/update/')) {
                             getUserInfo(response.finalUrl, fieldType);
                         } else {
-                            projectButtonContainer.innerHTML += `<div>Користувача з ${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')} "${query}" не знайдено.</div>`;
+                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не знайдено</div>`;
                         }
                     },
                     onerror: function() {
@@ -1054,18 +1051,14 @@
                         const middleName = getValueByLabel(tempDiv, 'Middle Name');
                         const firstName = getValueByLabel(tempDiv, 'Имя');
 
-                        if ((surname === 'Не заданий' || surname === 'Не задан') &&
-                            (middleName === 'Не заданий' || middleName === 'Не задан') &&
-                            (firstName === 'Не заданий' || firstName === 'Не задан')) {
+                        if (firstName === 'Не заданий' || firstName === 'Не задан') {
                             status = 'default';
                         }
-
-
 
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
                         projectButtonContainer.innerHTML += `
-                <div>${searchTypeLabel}: <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>
+                <div><b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>
             `;
                     },
                     onerror: function() {
@@ -1122,12 +1115,10 @@
 
         const resultButton = document.createElement('button');
         resultButton.innerText = 'Total InOut';
-        resultButton.style.padding = '5px 10px';
+        resultButton.style.cssText = buttonStyle;
         resultButton.style.backgroundColor = '#2196F3';
-        resultButton.style.color = 'white';
-        resultButton.style.border = 'none';
-        resultButton.style.borderRadius = '5px';
-        resultButton.style.cursor = 'pointer';
+        resultButton.onmouseover = () => resultButton.style.backgroundColor = '#2f76ae';
+        resultButton.onmouseout = () => resultButton.style.backgroundColor = '#2196F3';
         resultButton.addEventListener('click', () => {
             if (!isProfitButtonClicked) {
                 isProfitButtonClicked = true;
@@ -1146,6 +1137,34 @@
         popupBox.appendChild(thirdRowButtonContainer);
         popupBox.appendChild(fourthRowContainer);
 
+        const styleSheet = document.createElement('style');
+        styleSheet.type = 'text/css';
+        styleSheet.innerText = `
+    @keyframes borderGlow {
+        0% {
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            border-color: gray;
+        }
+        50% {
+            box-shadow: 0 0 15px gray;
+            border-color: gray;
+        }
+        100% {
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            border-color: gray;
+        }
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+`;
+        document.head.appendChild(styleSheet);
         document.body.appendChild(popupBox);
 
         function fetchResults() {

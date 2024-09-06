@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      3.7.1
+// @version      4.0
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -15,6 +15,10 @@
 // @connect      admin.slotoking.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
+// @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
+// @require      https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.7.1/sweetalert2.all.min.js
+// @resource     SWEETALERT2_CSS https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.7.1/sweetalert2.min.css
 // ==/UserScript==
 
 (function() {
@@ -37,9 +41,12 @@
     const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
     const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
     const sheetId = "1zAAQZ3jJNJc5ZBgL6317WJRAwQ3MAh6zjGgbf1QdF1Q";
-
     const scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
 
+
+    const stylerangePicker = document.createElement('style');
+    stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
+    document.head.appendChild(stylerangePicker);
 
     const defaultRules = [
         { text: 'Ввод средств', color: '#7cfc00' },
@@ -374,7 +381,112 @@
         }
     }
 
+    function addFraudPageButton(isInFraudList, fraudId = null) {
+        const container = document.querySelector('.form-actions');
+        if (container) {
+            let button = document.querySelector('#fraud-button');
+            if (!button) {
+                button = document.createElement('button');
+                button.id = 'fraud-button';
+                container.appendChild(button);
 
+                const style = document.createElement('style');
+                style.textContent = `
+            #fraud-button {
+                background-color: purple;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-right: 25px;
+                margin-left: 10px;
+            }
+            #fraud-button i {
+                margin-right: 5px;
+            }
+        `;
+                document.head.appendChild(style);
+            }
+
+            if (isInFraudList) {
+                button.innerHTML = '<i class="fa fa-eye-slash"></i> Видалити';
+                button.onclick = async (event) => {
+                    event.preventDefault();
+                    console.log(fraudId)
+                    if (fraudId) {
+                        await deleteFraud(fraudId);
+                    }
+                };
+            } else {
+                button.innerHTML = '<i class="fa fa-eye"></i> Під нагляд';
+                button.onclick = async (event) => {
+                    event.preventDefault();
+                    const comment = await Swal.fire({
+                        title: 'Введіть коментар',
+                        input: 'text',
+                        inputPlaceholder: 'Ваш коментар',
+                        showCancelButton: true,
+                        confirmButtonText: 'Додати',
+                        cancelButtonText: 'Скасувати',
+                    }).then(result => result.value);
+
+                    if (comment) {
+                        const playerId = getPlayerID();
+                        const url = window.location.href;
+                        await addFraud(playerId, url, comment);
+                    }
+                };
+            }
+        }
+    }
+
+    async function checkUserInFraudList() {
+        const token = localStorage.getItem('authToken');
+        const playerId = getPlayerID();
+        const url = window.location.href;
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_fraud', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url: url })
+            });
+
+            const data = await response.json();
+
+            if (data.fraudExists) {
+                addFraudPageButton(true, data.fraud_id);
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning';
+                alertDiv.style.backgroundColor = '#6a0dad'; // Ярко фиолетовый
+                alertDiv.style.color = '#fff'; // Текст белый
+                alertDiv.style.borderColor = '#5a00a2'; // Темно фиолетовый
+
+                alertDiv.innerHTML = `
+                <strong>Увага!</strong> Користувач під наглядом.
+                <br><strong>Менеджер:</strong> ${data.manager_name}
+                <br><strong>Коментар:</strong> ${data.comment || 'Немає коментарів'}
+            `;
+
+                const table = document.querySelector('#yw1');
+
+                if (table) {
+                    table.parentNode.insertBefore(alertDiv, table);
+                } else {
+                    console.error('Таблица не найдена.');
+                }
+            } else {
+                addFraudPageButton(false);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
 
     function createSettingsPopup() {
         const settingsPopup = document.createElement('div');
@@ -486,6 +598,35 @@
         settingsPopup.appendChild(languageButton);
 
         settingsPopup.appendChild(
+            createButton('Змінити пароль', '#FF5722', () => {
+                const newPassword = prompt('Введіть новий пароль:');
+                const token = localStorage.getItem('authToken');
+
+                if (newPassword) {
+                    fetch('https://vps65001.hyperhost.name/api/change_password_by_user', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ password: newPassword }),
+                    })
+                        .then(response => {
+                        if (response.ok) {
+                            alert('Пароль успішно змінено');
+                        } else {
+                            alert('Сталася помилка при зміні пароля');
+                        }
+                    })
+                        .catch(error => {
+                        console.error('Помилка:', error);
+                        alert('Сталася помилка при зміні пароля');
+                    });
+                }
+            })
+        );
+
+        settingsPopup.appendChild(
             createButton('Задати клавіші', '#FF9800', () => {
                 alert('Після натискання на "ОК" натисніть бажане поєднання клавіш');
                 document.addEventListener('keydown', function captureShortcut(event) {
@@ -549,12 +690,1018 @@
         document.body.appendChild(popupBoxWithDraw);
     }
 
+    function createPopup(id, headerText, content, onClose) {
+        if (document.getElementById(id)) {
+            return;
+        }
+
+        const popup = document.createElement('div');
+        popup.id = id;
+        popup.className = 'custom-popup';
+        popup.innerHTML = `
+        <div class="popup-header">
+            ${headerText}
+            <span class="close-btn">&times;</span>
+        </div>
+        <div class="popup-content">
+            ${content}
+        </div>
+        <div class="popup-resize-handle"></div> <!-- Ручка для изменения размера -->
+    `;
+        document.body.appendChild(popup);
+
+        enableResize(popup);
+
+        popup.querySelector('.close-btn').addEventListener('click', () => {
+            popup.remove();
+            if (onClose) onClose();
+        });
+
+        dragElement(popup); 
+    }
+
+    function enableResize(popup) {
+        const resizeHandle = popup.querySelector('.popup-resize-handle');
+
+        let startX, startY, startWidth, startHeight;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(popup).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(popup).height, 10);
+            document.documentElement.addEventListener('mousemove', resizePopup, false);
+            document.documentElement.addEventListener('mouseup', stopResizePopup, false);
+        });
+
+        function resizePopup(e) {
+            popup.style.width = (startWidth + e.clientX - startX) + 'px';
+            popup.style.height = (startHeight + e.clientY - startY) + 'px';
+        }
+
+        function stopResizePopup() {
+            document.documentElement.removeEventListener('mousemove', resizePopup, false);
+            document.documentElement.removeEventListener('mouseup', stopResizePopup, false);
+        }
+    }
+
+
+
+    function createAdminPopup() {
+        const content = `
+    <table id="admin-popup-table">
+        <thead>
+            <tr>
+                <th>Ім'я</th>
+                <th>Статус</th>
+                <th><i class="fa fa-user" title='Кількість опрацьованих'></i></th>
+                <th><i class="fa fa-chrome" title='Остання вкладка'></i></th>
+                <th class="actions">Дії</th>
+            </tr>
+        </thead>
+        <tbody id="users-list"></tbody>
+    </table>
+    <button id="add-user-btn">Додати користувача</button>
+    `;
+        createPopup('admin-popup', 'Менеджери', content, () => {});
+
+        loadUsers();
+
+        document.getElementById('add-user-btn').addEventListener('click', createRegisterPopup);
+    }
+
+    function createRegisterPopup() {
+        const content = `
+    <input type="text" id="register-username" placeholder="Логін" required />
+    <input type="password" id="register-password" placeholder="Пароль" required />
+    <input type="text" id="manager-name" placeholder="Ім'я Фамілія" required />
+    <select id="user-status" required>
+        <option value="" disabled selected>Статус</option>
+        <option value="Manager">Менеджер</option>
+        <option value="Admin">Admin</option>
+    </select>
+    <button id="register-btn">Додати користувача</button>
+    <div class="error" id="register-error-msg"></div>
+    <div class="success" id="register-success-msg"></div>
+    `;
+        createPopup('register-popup', 'Додати користувача', content, () => {});
+
+        document.getElementById('register-btn').addEventListener('click', async () => {
+            const username = document.getElementById('register-username').value;
+            const password = document.getElementById('register-password').value;
+            const managerName = document.getElementById('manager-name').value;
+            const status = document.getElementById('user-status').value;
+
+            const isRegistered = await registerUser(username, password, managerName, status);
+
+            const errorMsg = document.getElementById('register-error-msg');
+            const successMsg = document.getElementById('register-success-msg');
+
+            if (isRegistered) {
+                successMsg.textContent = 'Користувача було додано!';
+                errorMsg.textContent = '';
+                setTimeout(() => {
+                    document.getElementById('register-popup').remove();
+                }, 2000);
+                loadUsers();
+            } else {
+                errorMsg.textContent = 'Виникла помилка! Такий користувач вже існує.';
+                successMsg.textContent = '';
+            }
+        });
+    }
+
+    function dragElement(elmnt) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = elmnt.querySelector('.popup-header');
+        header.onmousedown = dragMouseDown;
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+            elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    }
+
+    async function loadUsers() {
+        const token = localStorage.getItem('authToken');
+        const today = getCurrentDateRequest();
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/users', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const users = await response.json();
+
+            const userStatsPromises = users.map(async user => {
+                const statsResponse = await fetch(`https://vps65001.hyperhost.name/api/get_statistics/${user.id}?date=${today}`, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const stats = await statsResponse.json();
+                return { ...user, processedToday: stats.total_players || 0 };
+            });
+
+            const usersWithStats = await Promise.all(userStatsPromises);
+
+            usersWithStats.sort((a, b) => b.processedToday - a.processedToday);
+
+            const usersList = document.getElementById('users-list');
+            usersList.innerHTML = '';
+
+            usersWithStats.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td>${user.manager_name}</td>
+                <td>${user.status}</td>
+                <td>${user.processedToday}</td>
+                 <td>
+                 ${user.active_url ? `<a href="${user.active_url}" target="_blank">Link</a>` : 'Не відомо'}
+                </td>
+                <td class="actions">
+                    <i class="fa fa-bar-chart get-statistics" title="Статистика"></i>
+                    <i class="fa fa-key change-password" title="Скинути пароль"></i>
+                    <i class="fa fa-trash delete-user" title="Видалити користувача"></i>
+                </td>
+            `;
+                usersList.appendChild(row);
+
+                row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
+                row.querySelector('.change-password').addEventListener('click', () => changePassword(user.id));
+                row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
+            });
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    function createFraudPopup() {
+        const content = `
+        <table id="my-frauds-table-popup">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Проєкт</th>
+                    <th>ID</th>
+                    <th>Менеджер</th>
+                    <th>Коментар</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody id="my-frauds-list"></tbody>
+        </table>
+
+        <table id="common-frauds-table-popup">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Проєкт</th>
+                    <th>ID</th>
+                    <th>Менеджер</th>
+                    <th>Коментар</th>
+                </tr>
+            </thead>
+            <tbody id="common-frauds-list"></tbody>
+        </table>
+
+        <button id="add-fraud-btn">Під нагляд</button>
+    `;
+
+        // Додати стилі безпосередньо в документ
+        const style = document.createElement('style');
+        style.textContent = `
+        /* Стилі для таблиць у попапі */
+        #my-frauds-table-popup, #common-frauds-table-popup {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #my-frauds-table-popup th, #my-frauds-table-popup td,
+        #common-frauds-table-popup th, #common-frauds-table-popup td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        #my-frauds-table-popup th, #common-frauds-table-popup th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
+            background-color: #f1f1f1;
+        }
+        .delete-fraud {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .delete-fraud:hover {
+            background-color: #c62828;
+        }
+        #add-fraud-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-top: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #add-fraud-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+        document.head.appendChild(style);
+
+        loadFrauds();
+        createPopup('fraud-popup', 'Під наглядом', content);
+
+        document.getElementById('add-fraud-btn').addEventListener('click', createAddFraudPopup);
+    }
+
+
+    async function loadFrauds() {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/frauds', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch frauds: ${response.statusText}`);
+            }
+
+            const frauds = await response.json();
+            const myFraudsList = document.getElementById('my-frauds-list');
+            const commonFraudsList = document.getElementById('common-frauds-list');
+            const managerName = await getManagerName(token);
+
+            if (!myFraudsList || !commonFraudsList) {
+                console.error('Required elements not found in the DOM.');
+                return;
+            }
+
+            myFraudsList.innerHTML = '';
+            commonFraudsList.innerHTML = '';
+
+            const style = document.createElement('style');
+            style.textContent = `
+        /* Стилі для таблиць у попапі */
+        #my-frauds-table-popup, #common-frauds-table-popup {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #my-frauds-table-popup th, #my-frauds-table-popup td,
+        #common-frauds-table-popup th, #common-frauds-table-popup td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        #my-frauds-table-popup th, #common-frauds-table-popup th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
+            background-color: #f1f1f1;
+        }
+        .delete-fraud {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .delete-fraud:hover {
+            background-color: #c62828;
+        }
+        #add-fraud-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-top: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #add-fraud-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+
+            frauds.forEach(fraud => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td>${new Date(fraud.date_added).toLocaleDateString()}</td>
+                <td>${fraud.project}</td>
+                <td><a href="${fraud.url}" target="_blank">${fraud.player_id}</a></td>
+                <td>${fraud.manager}</td>
+                <td>${fraud.comment || ''}</td>
+                <td>${fraud.manager === managerName ? '<button class="delete-fraud">Видалити</button>' : ''}</td>
+            `;
+
+                if (fraud.manager === managerName) {
+                    myFraudsList.appendChild(row);
+                    const deleteButton = row.querySelector('.delete-fraud');
+                    if (deleteButton) {
+                        deleteButton.addEventListener('click', () => deleteFraud(fraud.id));
+                    }
+                } else {
+                    commonFraudsList.appendChild(row);
+                }
+            });
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    function createAddFraudPopup() {
+        const content = `
+        <div id="add-fraud-form">
+            <input type="text" id="fraud-player-id" placeholder="ID клієнта" required />
+            <input type="text" id="fraud-url" placeholder="Посилання" required />
+            <input type="text" id="fraud-comment" placeholder="Коментар" />
+            <button id="add-fraud-confirm-btn">Додати</button>
+        </div>
+    `;
+
+        // Додати стилі безпосередньо в документ
+        const style = document.createElement('style');
+        style.textContent = `
+        #add-fraud-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        #add-fraud-form input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 100%;
+        }
+        #add-fraud-form input:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+        #add-fraud-confirm-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        #add-fraud-confirm-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+        document.head.appendChild(style);
+
+        createPopup('add-fraud-popup', 'Додати під нагляд', content);
+
+        document.getElementById('add-fraud-confirm-btn').addEventListener('click', async () => {
+            const playerId = document.getElementById('fraud-player-id').value;
+            const url = document.getElementById('fraud-url').value;
+            const comment = document.getElementById('fraud-comment').value;
+
+            await addFraud(playerId, url, comment);
+            document.getElementById('add-fraud-popup').remove();
+            loadFrauds();
+        });
+    }
+
+
+    async function addFraud(playerId, url, comment) {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/add_fraud', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url: url, comment: comment })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Користувача додано до списку!');
+                loadFrauds();
+                window.location.reload()
+            } else {
+                alert('Виникла помилка!.');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    async function deleteFraud(fraudId) {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch(`https://vps65001.hyperhost.name/api/delete_fraud/${fraudId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Користувача видалено зі списку!');
+                loadFrauds();
+                window.location.reload()
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    async function registerUser(username, password, managerName, status) {
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, managerName, status })
+            });
+            const data = await response.json();
+            return data.success;
+        } catch (error) {
+            console.error('Error:', error);
+            return false;
+        }
+    }
+
+    const stylePopUps = document.createElement('style');
+    stylePopUps.innerHTML = `
+.custom-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Центрирует попап */
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+    cursor: move;
+    resize: both; /* Возможность изменения размера */
+    overflow: auto; /* Прокрутка при переполнении */
+    max-width: 90vw; /* Ограничение по ширине экрана */
+    max-height: 90vh; /* Ограничение по высоте экрана */
+    min-width: 150px; /* Минимальная ширина, чтобы избежать слишком узкого попапа */
+    min-height: 100px; /* Минимальная высота */
+}
+
+.popup-header {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    cursor: move;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.popup-header .close-btn {
+    font-size: 16px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #dc3545;
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1;
+}
+.popup-header .close-btn:hover {
+    background-color: #c82333;
+}
+#admin-popup-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#admin-popup-table th,
+#admin-popup-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+#admin-popup-table th {
+    background-color: #f4f4f4;
+}
+#admin-popup-table tr:nth-child(even) {
+    background-color: #f2f2f2; /* Чередование цвета строк */
+}
+#admin-popup-table tr:hover {
+    background-color: #ddd; /* Изменение цвета строки при наведении */
+}
+#admin-popup-table .actions {
+    text-align: center;
+}
+#admin-popup-table .actions i {
+    cursor: pointer;
+    margin: 0 5px;
+    font-size: 18px;
+    padding: 5px;
+    border-radius: 4px;
+    color: #fff;
+}
+.get-statistics { background-color: #007bff; }
+.change-password { background-color: #ffc107; }
+.delete-user { background-color: #dc3545; }
+#add-user-btn {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#add-user-btn:hover {
+    background-color: #0056b3;
+}
+#register-popup input, #register-popup select {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+#register-popup button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#register-popup button:hover {
+    background-color: #0056b3;
+}
+#register-popup .error {
+    color: red;
+    margin-top: 10px;
+    text-align: center;
+}
+#register-popup .success {
+    color: green;
+    margin-top: 10px;
+    text-align: center;
+}
+.popup-resize-handle {
+    width: 10px;
+    height: 10px;
+    background-color: #ccc;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize; /* Индикатор изменения размера */
+}
+        .daterangepicker {
+            z-index: 10001 !important; /* Обеспечиваем, чтобы календарь отображался поверх всплывающего окна */
+        }
+`;
+    document.head.appendChild(stylePopUps);
+
+
+
+    async function deleteUser(userId) {
+        const token = localStorage.getItem('authToken');
+        try {
+            const response = await fetch(`https://vps65001.hyperhost.name/api/delete_user/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Користувач видалений успішно!');
+                loadUsers();
+            } else {
+                alert('Помилка: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    async function changePassword(userId) {
+        const token = localStorage.getItem('authToken');
+
+        Swal.fire({
+            title: 'Ви впевнені?',
+            text: "Ви дійсно бажаєте скинути пароль?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Так, скинути!',
+            cancelButtonText: 'Ні, повернутись'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await fetch(`https://vps65001.hyperhost.name/api/change_password/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        Swal.fire('Готово!', `Пароль було змінено. Новий пароль: ${data.new_password}`, 'success');
+                    } else {
+                        Swal.fire('Помилка', data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    Swal.fire('Помилка', 'Произошла ошибка при сбросе пароля', 'error');
+                }
+            }
+        });
+    }
+
+
+    async function getStatistics(userId) {
+        const token = localStorage.getItem('authToken');
+        const today = getCurrentDateRequest();
+
+        await fetchStatistics(userId, today);
+    }
+
+    async function fetchStatistics(userId, selectedDate) {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch(`https://vps65001.hyperhost.name/api/get_statistics/${userId}?date=${selectedDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const content = `
+                <style>
+                    #updateButton {
+                        background-color: #6a5acd; /* Зеленый цвет фона */
+                        color: white; /* Белый текст */
+                        padding: 10px 20px; /* Внутренние отступы */
+                        border: none; /* Убираем стандартную рамку */
+                        border-radius: 5px; /* Закругленные углы */
+                        cursor: pointer; /* Изменение курсора при наведении */
+                        font-size: 16px; /* Размер текста */
+                    }
+
+                    #updateButton:hover {
+                        background-color: #5244a8; /* Изменение цвета при наведении */
+                    }
+
+                    table {
+                        width: 100%;
+                        border-collapse: collapse; /* Убираем промежутки между ячейками */
+                    }
+
+                    th, td {
+                        border: 1px solid #ddd; /* Добавляем границы */
+                        padding: 8px; /* Внутренние отступы */
+                    }
+                </style>
+
+                <label for="datePicker">Оберіть дату:</label>
+                <input type="date" id="datePicker" value="${selectedDate}" />
+                <button id="updateButton">Оновити</button>
+
+                <p>Кількість всіх гравців: ${data.total_players}</p>
+                <p>Кількість Slotoking: ${data.slotoking_count}</p>
+                <p>Кількість 777: ${data.seven_count}</p>
+
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">  <!-- Контейнер с прокруткой -->
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID Гравця</th>
+                                <th>Проект</th>
+                                <th>Коментар</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.entries.map(entry => `
+                                <tr>
+                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
+                                    <td>${entry.project}</td>
+                                    <td>${entry.comment || ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+
+                const popup = document.getElementById('statistics-popup');
+                if (popup) {
+                    popup.querySelector('.popup-content').innerHTML = content;
+                } else {
+                    createPopup('statistics-popup', 'Статистика менеджера', content, () => {
+                        document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
+                    });
+                }
+
+                document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
+            } else {
+                alert('Помилка: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    function updateStatistics(userId) {
+        const selectedDate = document.getElementById('datePicker').value;
+        console.log(selectedDate)
+        fetchStatistics(userId, selectedDate);
+    }
+
+    function createStatisticPopup() {
+        const today = new Date().toISOString().split('T')[0];
+
+        const content = `
+        <style>
+            /* Стили только для попапа статистики */
+            #statistic-popup .popup-content {
+                padding: 20px;
+                font-family: Arial, sans-serif;
+                color: #333;
+            }
+
+            #statistic-popup #dateRangePicker {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            }
+
+            #statistic-popup #updateStatisticsButton {
+                background-color: #007bff;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-bottom: 20px;
+                display: block;
+                width: 100%;
+            }
+
+            #statistic-popup #updateStatisticsButton:hover {
+                background-color: #0056b3;
+            }
+
+            #statistic-popup table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+
+            #statistic-popup th, #statistic-popup td {
+                padding: 10px;
+                border: 1px solid #ddd;
+                text-align: left;
+            }
+
+            #statistic-popup th {
+                background-color: #f4f4f4;
+                font-weight: bold;
+            }
+
+            #statistic-popup tbody tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+
+            #statistic-popup tbody tr:hover {
+                background-color: #f1f1f1;
+            }
+
+            #statistic-popup .crown {
+                color: gold;
+                font-size: 20px;
+                vertical-align: middle;
+            }
+
+            #statistic-popup p {
+                font-size: 16px;
+                margin: 10px 0;
+            }
+        </style>
+        <label for="dateRangePicker">Оберіть період:</label>
+        <input type="text" id="dateRangePicker" />
+        <button id="updateStatisticsButton">Оновити</button>
+
+        <p>Опрацьовано за період: <span id="totalPeriod">0</span></p>
+        <p>Опрацьовано всього: <span id="totalAllTime">0</span></p>
+        <p>Середнє оброблення на менеджера за період: <span id="averageProcessedPerManager">0</span></p>
+
+
+        <table id="managersTable">
+            <thead>
+                <tr>
+                    <th>Ім'я Прізвище</th>
+                    <th>Опрацьовано за період</th>
+                    <th>Опрацьовано за весь час</th>
+                    <th>Cередня кількість</th>
+                </tr>
+            </thead>
+            <tbody id="managersList"></tbody>
+        </table>
+    `;
+
+        createPopup('statistic-popup', 'Статистика', content, () => {});
+
+        $('#dateRangePicker').daterangepicker({
+            startDate: today,
+            endDate: today,
+            locale: {
+                format: 'YYYY-MM-DD'
+            }
+        });
+
+        document.getElementById('updateStatisticsButton').addEventListener('click', updateStatisticPopup);
+
+        loadStatisticData(today, today);
+    }
+
+
+    async function loadStatisticData(startDate, endDate) {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch(`https://vps65001.hyperhost.name/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+            console.log(data);
+
+            if (response.ok) {
+                document.getElementById('totalPeriod').textContent = data.totalForPeriod;
+                document.getElementById('totalAllTime').textContent = data.totalAllTime;
+                document.getElementById('averageProcessedPerManager').textContent = data.averageProcessedPerManager.toFixed(2);
+
+                const managersList = document.getElementById('managersList');
+                managersList.innerHTML = '';
+
+                data.managers.forEach(manager => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                    <td>${manager.name}</td>
+                    <td>${manager.processedForPeriod}</td>
+                    <td>${manager.processedAllTime}</td>
+                    <td>${manager.averageProcessedPerPeriod.toFixed(2)}</td>
+                `;
+                    managersList.appendChild(row);
+                });
+            } else {
+                alert('Ошибка загрузки данных: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+        }
+    }
+
+
+
+    function updateStatisticPopup() {
+        const dateRange = $('#dateRangePicker').data('daterangepicker');
+        const startDate = dateRange.startDate.format('YYYY-MM-DD');
+        const endDate = dateRange.endDate.format('YYYY-MM-DD');
+
+        loadStatisticData(startDate, endDate);
+    }
+
+
+
+
+
     function getCurrentDate() {
         const today = new Date();
         const day = String(today.getDate()).padStart(2, '0');
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const year = today.getFullYear();
         return `${day}.${month}.${year}`;
+    }
+
+    function getCurrentDateRequest() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${year}-${month}-${day}`;
+
     }
 
     function getBalance() {
@@ -640,18 +1787,23 @@
                     range.deleteContents();
                     range.insertNode(document.createTextNode(date));
                     range.collapse(false);
+                    const event = new Event('input', { bubbles: true });
+                    activeElement.dispatchEvent(event);
                 } else {
                     const startPos = activeElement.selectionStart;
                     const endPos = activeElement.selectionEnd;
                     activeElement.value = activeElement.value.substring(0, startPos) + date + activeElement.value.substring(endPos);
                     activeElement.selectionStart = activeElement.selectionEnd = startPos + date.length;
+                    const event = new Event('input', { bubbles: true });
+                    activeElement.dispatchEvent(event);
                 }
             }
         }
     }
 
 
-    function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards) {
+
+    async function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards) {
         if (popupBox) {
             return;
         }
@@ -770,6 +1922,39 @@
         };
         popupBox.appendChild(settingsIcon);
 
+        const statisticIcon = document.createElement('div');
+        statisticIcon.innerHTML = '<i class="fa fa-signal"></i>';
+        statisticIcon.style.position = 'absolute';
+        statisticIcon.style.top = '35px';
+        statisticIcon.style.right = '10px';
+        statisticIcon.style.cursor = 'pointer';
+        statisticIcon.style.fontSize = '20px';
+        statisticIcon.title = 'Статистика';
+        statisticIcon.onclick = () => {
+            createStatisticPopup();
+        };
+        popupBox.appendChild(statisticIcon);
+
+        const status = await checkUserStatus();
+
+        if (status === 'Admin') {
+            const adminIcon = document.createElement('div');
+            adminIcon.innerHTML = '<i class="fa fa-users"></i>';
+            adminIcon.style.position = 'absolute';
+            adminIcon.style.top = '70px';
+            adminIcon.style.right = '10px';
+            adminIcon.style.cursor = 'pointer';
+            adminIcon.style.fontSize = '18px';
+            adminIcon.title = 'Користувачі';
+            adminIcon.onclick = () => {
+                if (document.getElementById('admin-popup')) {
+                    return;
+                }
+                createAdminPopup();
+            };
+            popupBox.appendChild(adminIcon);
+        }
+
         const statusIcon = document.createElement('div');
         statusIcon.style.position = 'absolute';
         statusIcon.style.top = '10px';
@@ -794,6 +1979,20 @@
             }, 200);
         };
         popupBox.appendChild(statusIcon);
+
+        const fraudIcon = document.createElement('div');
+        fraudIcon.style.position = 'absolute';
+        fraudIcon.style.top = '40px';
+        fraudIcon.style.left = '10px';
+        fraudIcon.style.fontSize = '20px';
+        fraudIcon.style.cursor = 'pointer';
+        fraudIcon.title = 'Нагляд';
+        fraudIcon.innerHTML = '<i class="fa fa-eye"></i>';
+
+        fraudIcon.onclick = () => {
+            createFraudPopup();
+        };
+        popupBox.appendChild(fraudIcon);
 
         const buttonStyle = `
     font-family: Arial, sans-serif;
@@ -1017,12 +2216,6 @@
                 for (const row of rows) {
                     const th = row.querySelector('th');
                     const td = row.querySelector('td');
-                    if (th) {
-                        console.log(`Checking TH: ${th.textContent.trim()}`);
-                    }
-                    if (td) {
-                        console.log(`Checking TD: ${td.textContent.trim()}`);
-                    }
                     if (th && th.textContent.trim() === labelText) {
                         const text = td ? td.textContent.trim() : 'Не найдено';
                         return text.split('\n')[0].trim();
@@ -1105,7 +2298,6 @@
                 });
             }
 
-
             function getAjaxUrl() {
                 const scripts = document.querySelectorAll('script');
                 for (const script of scripts) {
@@ -1137,6 +2329,9 @@
                         searchUser(inn, 'inn');
                         searchUser(email, 'email');
                         searchUser(phone, 'phone');
+                        setTimeout(function() {
+                            processCards();
+                        }, 3000);
                     },
                     onerror: function() {
                         projectButtonContainer.innerHTML += '<div>Ошибка при получении данных ИНН.</div>';
@@ -1146,6 +2341,69 @@
                 projectButtonContainer.innerHTML += '<div>Не удалось найти URL для запроса.</div>';
             }
         });
+
+        async function processCards() {
+            const data = await fetchAllCards();
+            const cards = data.cards;
+
+            const searchUrl = window.location.hostname.includes('777.ua')
+            ? 'https://admin.slotoking.ua/payments/paymentsItemsOut/requisite/'
+            : 'https://admin.777.ua/payments/paymentsItemsOut/requisite/';
+
+            const openUrl = window.location.hostname.includes('777.ua')
+            ? 'https://admin.slotoking.ua'
+            : 'https://admin.777.ua';
+
+            for (const card of cards) {
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: searchUrl,
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                    onload: function(response) {
+                        let tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+                        const table = tempDiv.querySelector('table.items tbody');
+
+                        if (table) {
+                            const rows = table.querySelectorAll('tr');
+
+                            rows.forEach((row) => {
+                                const playerCard = row.querySelector('td span.player_card');
+                                if (playerCard) {
+                                    // Клонируем HTML-код карточки для изменения
+                                    let cardHtml = playerCard.outerHTML;
+
+                                    // Создаем временный элемент для обработки
+                                    let cardTempDiv = document.createElement('div');
+                                    cardTempDiv.innerHTML = cardHtml;
+
+                                    // Находим все ссылки внутри cardTempDiv и изменяем их href
+                                    cardTempDiv.querySelectorAll('a').forEach(link => {
+                                        let href = link.getAttribute('href');
+                                        if (href) {
+                                            link.setAttribute('href', `${openUrl}${href}`);
+                                        }
+                                    });
+
+                                    cardHtml = cardTempDiv.innerHTML;
+                                    const first6 = card.slice(0, 6);
+                                    const last4 = card.slice(-4);
+
+                                    projectButtonContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
+                                }
+                            });
+                        }
+                    },
+                    onerror: function() {
+                        console.log(`Ошибка при поиске владельца для карты: ${card}`);
+                    }
+                });
+            }
+        }
+
 
         popupBox.appendChild(projectButtonContainer);
         projectButtonContainer.appendChild(projectImage);
@@ -1636,6 +2894,53 @@
         });
     }
 
+
+    function fetchAllCards() {
+        return new Promise((resolve, reject) => {
+            const PlayerID = getPlayerID();
+            const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
+            let cardsSet = new Set();
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: fullProjectUrl,
+                onload: function(response) {
+                    const html = response.responseText;
+
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    const pageSizeSelect = doc.querySelector('#newPageSize');
+                    if (pageSizeSelect) {
+                        pageSizeSelect.value = '450';
+                        const event = new Event('change', { bubbles: true });
+                        pageSizeSelect.dispatchEvent(event);
+                    } else {
+                        console.warn('Page size selector не найден.');
+                    }
+
+                    const rows = doc.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const cardLabel = row.querySelector('td:nth-child(10)');
+                        if (cardLabel) {
+                            const cardNumber = cardLabel.textContent.trim();
+                            if (cardNumber) {
+                                cardsSet.add(cardNumber);
+                            }
+                        }
+                    });
+
+                    const uniqueCards = Array.from(cardsSet);
+                    console.log({ cards: uniqueCards })
+                    resolve({ cards: uniqueCards });
+                },
+                onerror: function(error) {
+                    console.error('Ошибка загрузки данных:', error);
+                    reject(error);
+                }
+            });
+        });
+    }
 
     function createOrUpdatePopup(message, isLoading = false) {
         let popup = document.getElementById('balance-log-analyzer-popup');
@@ -2334,6 +3639,34 @@
 
     let isButtonToSaveClicked = false;
 
+    async function getManagerName(token) {
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/get_manager_name', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ token }) // Отправка токена в теле запроса
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data && data.name) {
+                return data.name; // Возвращаем имя пользователя
+            } else {
+                throw new Error('Name not found in response');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            return null; // Возвращаем null в случае ошибки
+        }
+    }
+
     function buttonToSave() {
         const button = document.querySelector('.btn-update-comment-antifraud_manager');
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
@@ -2357,7 +3690,16 @@
                             initials: initials,
                             comment: textarea.value.replace(/\r?\n/g, ""),
                         };
-                        console.log(dataToInsert);
+
+                        const token = localStorage.getItem('authToken');
+                        sendDataToServer(dataToInsert, token)
+                            .then(response => {
+                            console.log('Data sent successfully:', response);
+                        })
+                            .catch(err => {
+                            console.error('Error sending data:', err);
+                        });
+
                         sendDataToGoogleSheet(accessToken, dataToInsert);
                     }).catch(err => {
                         console.error("Error getting Access Token:", err);
@@ -2366,6 +3708,28 @@
             });
         } else {
             console.error("Button not found.");
+        }
+    }
+
+    async function sendDataToServer(data, accessToken) {
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/working', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error:', error);
+            throw error;
         }
     }
 
@@ -2421,26 +3785,194 @@
         }
     }
 
+    async function checkToken() {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            return false;
+        }
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/check_token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token })
+            });
 
-    window.addEventListener('load', function() {
-        if (currentUrl.includes('paymentsItemsOut/index')) {
-            calculatePendingAmount();
-            setPageSize1k();
-        } else if (currentUrl.includes('playersItems/update')) {
-            addForeignButton();
-            buttonToSave();
-            document.addEventListener('keydown', handleShortcut);
-            setTimeout(handlePopup, 200);
-        } else if (currentUrl.includes('playersItems/balanceLog/')) {
-            createFloatingButton(buttonImageUrl);
-        } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
-            depositCardChecker();
-            observeDOMChanges();
-        } else if (currentUrl.includes('playersItems/transactionLog/')) {
-            initTransactionsPage();
-            processTableRows();
-            observeDOMChangesTransactions();
-        };
+            const data = await response.json();
+            return data.success;
+        } catch (error) {
+            console.error('Error:', error);
+            return false;
+        }
+    }
+
+    function createLoginForm() {
+        const form = document.createElement('div');
+        form.innerHTML = `
+        <style>
+            #login-form {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #f2f2f2;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                font-family: Arial, sans-serif;
+                z-index: 9999;
+            }
+            #login-form h2 {
+                margin-bottom: 15px;
+                font-size: 22px;
+                text-align: center;
+            }
+            #login-form input[type="text"],
+            #login-form input[type="password"] {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 16px;
+            }
+            #login-form button {
+                width: 100%;
+                padding: 10px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+            }
+            #login-form button:hover {
+                background-color: #45a049;
+            }
+            #login-form .error {
+                color: red;
+                margin-top: 10px;
+                text-align: center;
+            }
+        </style>
+        <div id="login-form">
+            <h2>Авторизація</h2>
+            <input type="text" id="username" placeholder="Логін" required />
+            <input type="password" id="password" placeholder="Пароль" required />
+            <button id="login-btn">Увійти</button>
+            <div class="error" id="error-msg"></div>
+        </div>
+    `;
+
+        document.body.appendChild(form);
+
+        document.getElementById('login-btn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const { success, token } = await authenticate(username, password);
+
+            if (success) {
+                localStorage.setItem('authToken', token);
+                alert('Авторизація успішна!');
+                form.remove();
+                window.location.reload()
+            } else {
+                document.getElementById('error-msg').textContent = 'Неправильний логін або пароль';
+            }
+        });
+    }
+
+    async function authenticate(username, password) {
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/auth', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
+            });
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error:', error);
+            return { success: false };
+        }
+    }
+
+    async function checkUserStatus() {
+        const token = localStorage.getItem('authToken');
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/user/status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const data = await response.json();
+            return data.status;
+        } catch (error) {
+            console.error('Error:', error);
+            return 'Unknown';
+        }
+    }
+
+
+    async function sendActivePageInfo() {
+        const token = localStorage.getItem('authToken');
+        const currentUrl = window.location.href; // поточний URL сторінки
+
+        if (token) {
+            await fetch('https://vps65001.hyperhost.name/api/update_active_page', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: currentUrl })
+            });
+        }
+    }
+
+    window.addEventListener('load', async function() {
+        const tokenIsValid = await checkToken();
+        if (tokenIsValid) {
+            sendActivePageInfo();
+            if (currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmount();
+                setPageSize1k();
+            } else if (currentUrl.includes('playersItems/update')) {
+                addForeignButton();
+                buttonToSave();
+                checkUserInFraudList();
+                document.addEventListener('keydown', handleShortcut);
+                setTimeout(handlePopup, 200);
+            } else if (currentUrl.includes('playersItems/balanceLog/')) {
+                createFloatingButton(buttonImageUrl);
+            } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
+                depositCardChecker();
+                observeDOMChanges();
+            } else if (currentUrl.includes('playersItems/transactionLog/')) {
+                initTransactionsPage();
+                processTableRows();
+                observeDOMChangesTransactions();
+            };
+        }
+        else {
+            console.log('User is not logged in or token is invalid');
+            localStorage.removeItem('authToken');
+            createLoginForm();
+        }
     }
                            );
 })();

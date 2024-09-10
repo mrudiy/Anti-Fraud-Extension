@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.0.1
+// @version      4.0.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -2705,143 +2705,144 @@
             method: 'GET',
             url: fullProjectUrl,
             onload: function(response) {
-                console.log('Получен ответ от сервера');
-                const html = response.responseText;
-
                 const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+                const formData = new FormData();
+                formData.append('pageSize', '10000');
 
-                console.log('HTML успешно распарсен');
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: fullProjectUrl,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    data: new URLSearchParams(formData).toString(),
+                    onload: function(response) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                const pageSizeSelect = doc.querySelector('#pageSize');
-                if (pageSizeSelect) {
-                    pageSizeSelect.value = '1000';
-                    const event = new Event('change');
-                    pageSizeSelect.dispatchEvent(event);
-                } else {
-                    console.warn('Элемент выбора размера страницы не найден');
-                }
+                        const rows = Array.from(doc.querySelectorAll('tr'));
 
-                const rows = Array.from(doc.querySelectorAll('tr'));
+                        let withdrawAmount = 0;
+                        let balanceAfterBonus = 0;
+                        let bonusAmount = 0;
+                        let waitingForBonus = false;
 
-                let withdrawAmount = 0;
-                let balanceAfterBonus = 0;
-                let bonusAmount = 0;
-                let waitingForBonus = false;
+                        let bonusId = '';
+                        let bonusText = '';
+                        let withdrawId = '';
+                        let withdrawText = '';
+                        let bonusDate = '';
 
-                let bonusId = '';
-                let bonusText = '';
-                let withdrawId = '';
-                let withdrawText = '';
-                let bonusDate = '';
+                        let totalDeposits = 0;
+                        let bonusWithDeposits = 0;
 
-                let totalDeposits = 0;
-                let bonusWithDeposits = 0;
+                        let messageCount = 0;
+                        const maxMessages = 3;
 
-                let messageCount = 0;
-                const maxMessages = 3;
+                        const bonusAssignments = {};
+                        const displayedMessages = {};
 
-                const bonusAssignments = {};
+                        rows.forEach(row => {
+                            if (messageCount >= maxMessages) return;
 
-                const displayedMessages = {};
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length > 0) {
+                                const actionType = cells[1] ? cells[1].innerText.trim() : '';
+                                const bonusInfo = cells[6] ? cells[6].textContent.trim() : '';
+                                const dateTimeStr = cells[5] ? cells[5].textContent.trim() : '';
+                                const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
+                                const dateStr = dateMatch ? dateMatch[1] : '';
 
-                rows.forEach(row => {
-                    if (messageCount >= maxMessages) return;
+                                if (actionType.includes('Вывод средств')) {
+                                    withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0');
+                                    withdrawId = cells[0] ? cells[0].textContent.trim() : '';
+                                    withdrawText = cells[6] ? cells[6].textContent.trim() : '';
+                                    waitingForBonus = true;
+                                } else if (actionType.includes('Ввод средств')) {
+                                    withdrawAmount = 0;
+                                    balanceAfterBonus = 0;
+                                    waitingForBonus = false;
+                                    totalDeposits++;
+                                } else if (actionType.includes('Ручное начисление баланса')) {
+                                    const amount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
+                                    if (amount > 1) {
+                                        showManualBalance(dateStr, bonusInfo);
+                                    }
+                                } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
+                                    bonusAmount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
+                                    balanceAfterBonus = parseFloat(cells[3] ? cells[3].textContent.replace(',', '.') : '0');
+                                    bonusId = cells[0] ? cells[0].textContent.trim() : '';
+                                    bonusText = cells[6] ? cells[6].textContent.trim() : '';
+                                    const fullDate = cells[5] ? cells[5].textContent.trim() : '';
+                                    const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
+                                    bonusDate = dateMatch ? dateMatch[1] : '';
 
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length > 0) {
-                        const actionType = cells[1] ? cells[1].innerText.trim() : '';
-                        const bonusInfo = cells[6] ? cells[6].textContent.trim() : '';
-                        const dateTimeStr = cells[5] ? cells[5].textContent.trim() : '';
-                        const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
-                        const dateStr = dateMatch ? dateMatch[1] : '';
+                                    console.log('Обнаружено отыгрывание бонуса:', { bonusAmount, balanceAfterBonus, bonusId, bonusText, bonusDate });
 
-                        if (actionType.includes('Вывод средств')) {
-                            withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0');
-                            withdrawId = cells[0] ? cells[0].textContent.trim() : '';
-                            withdrawText = cells[6] ? cells[6].textContent.trim() : '';
-                            waitingForBonus = true;
-                        } else if (actionType.includes('Ввод средств')) {
-                            withdrawAmount = 0;
-                            balanceAfterBonus = 0;
-                            waitingForBonus = false;
-                            totalDeposits++;
-                        } else if (actionType.includes('Ручное начисление баланса')) {
-                            const amount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
-                            if (amount > 1) {
-                                showManualBalance(dateStr, bonusInfo);
-                            }
-                        } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
-                            bonusAmount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
-                            balanceAfterBonus = parseFloat(cells[3] ? cells[3].textContent.replace(',', '.') : '0');
-                            bonusId = cells[0] ? cells[0].textContent.trim() : '';
-                            bonusText = cells[6] ? cells[6].textContent.trim() : '';
-                            const fullDate = cells[5] ? cells[5].textContent.trim() : '';
-                            const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
-                            bonusDate = dateMatch ? dateMatch[1] : '';
+                                    if (withdrawAmount > balanceAfterBonus) {
+                                        const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;
+                                        console.log('Проверка на нарушение BTR:', message);
 
-                            console.log('Обнаружено отыгрывание бонуса:', { bonusAmount, balanceAfterBonus, bonusId, bonusText, bonusDate });
+                                        updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
 
-                            if (withdrawAmount > balanceAfterBonus) {
-                                const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;
-                                console.log('Проверка на нарушение BTR:', message);
-
-                                updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
-
-                                messageCount++;
-                            }
-
-                            waitingForBonus = false;
-                        } else if (actionType.includes('Присвоение бонуса')) {
-                            if (bonusInfo.includes("платеж")) {
-                                bonusWithDeposits++;
-                                console.log('Обнаружен депозит с бонусом');
-                            }
-
-                            const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
-                            if (bonusIdMatch) {
-                                const bonusId = bonusIdMatch[1];
-
-                                if (!bonusAssignments[bonusId]) {
-                                    bonusAssignments[bonusId] = {};
-                                }
-
-                                if (!bonusAssignments[bonusId][dateStr]) {
-                                    bonusAssignments[bonusId][dateStr] = 0;
-                                }
-
-                                bonusAssignments[bonusId][dateStr]++;
-
-                                if (bonusAssignments[bonusId][dateStr] > 2) {
-                                    const key = `${bonusId}_${dateStr}`;
-                                    if (!displayedMessages[key]) {
-                                        const additionalMessage = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
-                                        console.log('Проверка на нарушение присвоения бонуса:', additionalMessage);
-
-                                        showBonusViolationMessage(bonusId, dateStr, messageCount);
-
-                                        displayedMessages[key] = true;
                                         messageCount++;
                                     }
+
+                                    waitingForBonus = false;
+                                } else if (actionType.includes('Присвоение бонуса')) {
+                                    const paymentMatch = bonusInfo.match(/платеж № (\d+)/);
+                                    if (paymentMatch) {
+                                        bonusWithDeposits++;
+                                    }
+
+                                    const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
+                                    if (bonusIdMatch) {
+                                        const bonusId = bonusIdMatch[1];
+
+                                        if (!bonusAssignments[bonusId]) {
+                                            bonusAssignments[bonusId] = {};
+                                        }
+
+                                        if (!bonusAssignments[bonusId][dateStr]) {
+                                            bonusAssignments[bonusId][dateStr] = 0;
+                                        }
+
+                                        bonusAssignments[bonusId][dateStr]++;
+
+                                        if (bonusAssignments[bonusId][dateStr] > 2) {
+                                            const key = `${bonusId}_${dateStr}`;
+                                            if (!displayedMessages[key]) {
+                                                const additionalMessage = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
+                                                console.log('Проверка на нарушение присвоения бонуса:', additionalMessage);
+
+                                                showBonusViolationMessage(bonusId, dateStr, messageCount);
+
+                                                displayedMessages[key] = true;
+                                                messageCount++;
+                                            }
+                                        }
+                                    } else {
+                                        console.warn('Не удалось извлечь ID бонуса из строки:', bonusInfo);
+                                    }
                                 }
-                            } else {
-                                console.warn('Не удалось извлечь ID бонуса из строки:', bonusInfo);
                             }
+                        });
+
+                        if (totalDeposits > 0) {
+                            let bonusDepositPercentage = (bonusWithDeposits / totalDeposits) * 100;
+                            console.log(`Загальна кількість депозитів: ${totalDeposits}`);
+                            console.log(`Кількість депозитів з бонусом: ${bonusWithDeposits}`);
+                            console.log(`BRP - ${bonusDepositPercentage.toFixed(2)}%`);
+                            showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage);
+                        } else {
+                            console.log('Депозити відсутні.');
                         }
+                    },
+                    onerror: function(error) {
+                        console.error('Ошибка загрузки данных:', error);
                     }
                 });
-                if (totalDeposits > 0) {
-                    let bonusDepositPercentage = (bonusWithDeposits / totalDeposits) * 100;
-                    console.log(`Загальна кількість депозитів: ${totalDeposits}`);
-                    console.log(`Кількість депозитів з бонусом: ${bonusWithDeposits}`);
-                    console.log(`BRP - ${bonusDepositPercentage.toFixed(2)}%`);
-                    showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage);
-                } else {
-                    console.log('Депозити відсутні.');
-                }
-            },
-            onerror: function(error) {
-                console.error('Ошибка загрузки данных:', error);
             }
         });
     }

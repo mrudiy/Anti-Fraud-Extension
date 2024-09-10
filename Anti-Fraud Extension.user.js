@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      4.0.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -625,6 +625,15 @@
                 }
             })
         );
+
+        function getShortcutFromEvent(event) {
+            const keys = [];
+            if (event.ctrlKey) keys.push('CTRL');
+            if (event.altKey) keys.push('ALT');
+            if (event.shiftKey) keys.push('SHIFT');
+            keys.push(event.code);
+            return keys.join(' + ');
+        }
 
         settingsPopup.appendChild(
             createButton('Задати клавіші', '#FF9800', () => {

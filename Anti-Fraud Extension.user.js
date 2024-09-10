@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.0.2
+// @version      4.0.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -38,6 +38,7 @@
     const ndfDisplayKey = 'ndfDisplay';
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
+    const reminderDisplayKey = 'reminderDisplay';
     const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
     const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
     const sheetId = "1zAAQZ3jJNJc5ZBgL6317WJRAwQ3MAh6zjGgbf1QdF1Q";
@@ -562,6 +563,12 @@
             })
         );
 
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Відображати пам`ятку', GM_getValue(reminderDisplayKey, true), (e) => {
+                GM_setValue(reminderDisplayKey, e.target.checked);
+            })
+        );
+
         const createButton = (text, bgColor, onClick) => {
             const button = document.createElement('button');
             button.innerText = text;
@@ -778,6 +785,86 @@
 
         document.getElementById('add-user-btn').addEventListener('click', createRegisterPopup);
     }
+
+    function createReminderPopup() {
+        const content = `
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }
+        .highlight-red {
+            color: red;
+        }
+        .highlight-blue {
+            color: blue;
+        }
+        .highlight-green {
+            color: green;
+        }
+        .highlight-orange {
+            color: orange;
+        }
+        ul {
+            list-style-type: disc;
+            margin-left: 20px;
+        }
+    </style>
+
+    <h3>Відключаємо Автовиплату, якщо:</h3>
+    <ul>
+        <li>Використана <span class="highlight-red">чужа</span> впровдож місяця (після рефанду, або попередження)</li>
+        <li>Виводиться на невідому або <span class="highlight-red">чужу</span> картку, яка використовувалась в інших акаунтах (<span class="highlight-blue">перетин</span>)</li>
+        <li>Гравець сильно заводить нас в мінус (дивимось прогнозний ПА)</li>
+        <li>Підозра на фотошоп / підозрні транзакції – запитуємо картки і вимикаємо Авто</li>
+        <li>Багато невідомих методів поповнення (4+ за місяць)</li>
+        <li>За рекомендацією Антифроду відділу, при наявності обґрунтованих причин (різка зміна ігрової стратегії + зміна IP + підозра на дропа, ін.)</li>
+    </ul>
+
+    <h4>Який мінус допускаємо:</h4>
+    <ul>
+        <li>відключаємо Авто, якщо прогнозний ПА більше 20%, коли депозит з <span class="highlight-red">чужої</span> та виведення на <span class="highlight-red">чужу</span> (<span class="highlight-blue">чужа-чужа</span>)</li>
+        <li>відключаємо Авто, якщо прогнозний ПА більше 40%, коли депозит з <span class="highlight-red">чужої</span> та виведення на <span class="highlight-red">чужу</span> (<span class="highlight-blue">родичі</span>)</li>
+    </ul>
+
+    <h3>Запитуємо підтвердження Apple Pay/Google Pay, або картки, якщо:</h3>
+    <ul>
+        <li>Якщо не підтверджених Apple Pay/Google Pay 4 і більше в акаунті (виключенням: VIP, де дуже багато депів з невідомих)</li>
+        <li>Якщо виводить на <span class="highlight-red">чужу</span> картку (і гравець буде мінусовим на 20%+)</li>
+        <li>Якщо по картці, на яку виводить є <span class="highlight-blue">перетин</span> з іншим гравцем (незалежна кількість невідомих)</li>
+        <li>Якщо вивід на <span class ="highlight-green">свою</span>, але по ній є перетин з іншим гравцем (незалежна кількість невідомих)</li>
+        <li>Якщо перед депозитами з Apple Pay/Google Pay активно використовувалась <span class="highlight-red">чужа</span>/<span class="highlight-red">чужі</span> картки (незалежна кількість невідомих)</li>
+    </ul>
+
+    <p><span class="highlight-red">! Не запитуємо картку, або Apple Pay/Google Pay,</span> якщо депозити і виведення на одну непідтверджену картку (невідома – невідома), гравець плюсовий, перетинів немає.</p>
+
+    <h3>Оновлення по запиту документів за інструкцією юриста:</h3>
+    <p>Більше 10 методів, на 1-10 депозитів за останні 3 місяці:</p>
+    <ul>
+        <li>невідомі + своя + <span class="highlight-red">чужі</span></li>
+        <li>невідомі + <span class="highlight-red">чужі</span> + <span class="highlight-red">чужі</span></li>
+    </ul>
+    <p>В такому випадку не звертаємо увагу на прибутковість, або наявність своїх карток. Наявність багатьох методів по декілька депів з невідомих та чужих - підозріла!</p>
+    <p>Грати не дозволяємо, одразу відправляємо на додаткову верифікацію.</p>
+    <h3>Обмеження Cashback, депозитних та бездепозитних бонусів:</h3>
+    <ul>
+        <li>Пріоритет 1-5 майже ніколи не обмежуємо, тільки у виняткових випадках</li>
+        <li>Пріоритет 6-7 обмежуємо, якщо гравець при виводі бонусу стане мінусовим і перевищення BTR становить &gt; 10 000 грн.</li>
+        <li>Пріоритет 8 обмежуємо, якщо було 5 депозитів + об'ємного виграшу від 100 000 грн. (підлягає обговоренню)</li>
+    </ul>
+
+     <h3>Коли можемо запитати селфі з паспортом:</h3>
+    <p>(якщо потрібна причина затримати виплату гравцю, або якщо відсутні якісні фото документів)</p>
+    <ul>
+        <li>Сума Balance + Pending  ≥ 100 000 грн. якщо є підозра, що акаунтом користується інша особа (фейкова пошта, невідома картка, інший характер депозитів, ставок) + відключаємо Авто</li>
+        <li>Сума Balance + Pending ≥  100 000 грн. і у разі виведення буде мінусовий на > ніж 70 000 + за останній рік не було свіжого селфі для King, та 6 місяців для 777. І відключаємо Авто.</li>
+    </ul>
+
+    <h4><span class="highlight-red">Якщо знайшли перетин з Малолітнім, або Лудоманом - вказуємо в коментарі, що є акаунт Малолітнього або Лудомана, <a href="https://docs.google.com/document/d/1g88y7W2JB1RJijNwHVkhDnUaT801drCOi_o66uvfa5A/edit" style="text-decoration: underline;">дивимось таблицю з ситуаціями</a> і відправляємо в наш Чат.</span></h4>`;
+
+        createPopup('reminder', 'Пам`ятка', content, () => {});
+    }
+
 
     function createRegisterPopup() {
         const content = `
@@ -2002,6 +2089,24 @@
             createFraudPopup();
         };
         popupBox.appendChild(fraudIcon);
+
+        const showReminder = GM_getValue(reminderDisplayKey, true);
+
+        if (showReminder === true) {
+            const reminderIcon = document.createElement('div');
+            reminderIcon.style.position = 'absolute';
+            reminderIcon.style.top = '70px';
+            reminderIcon.style.left = '10px';
+            reminderIcon.style.fontSize = '20px';
+            reminderIcon.style.cursor = 'pointer';
+            reminderIcon.title = 'Нагляд';
+            reminderIcon.innerHTML = '<i class="fa fa-book"></i>';
+
+            reminderIcon.onclick = () => {
+                createReminderPopup();
+            };
+            popupBox.appendChild(reminderIcon);
+        }
 
         const buttonStyle = `
     font-family: Arial, sans-serif;

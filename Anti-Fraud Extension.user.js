@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.0.3
+// @version      4.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -1022,7 +1022,6 @@
         <button id="add-fraud-btn">Під нагляд</button>
     `;
 
-        // Додати стилі безпосередньо в документ
         const style = document.createElement('style');
         style.textContent = `
         /* Стилі для таблиць у попапі */
@@ -1058,6 +1057,18 @@
         .delete-fraud:hover {
             background-color: #c62828;
         }
+        .edit-fraud {
+    background-color: #FFA500; /* Оранжевый цвет для кнопки */
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.edit-fraud:hover {
+    background-color: #FF8C00; /* Темнее при наведении */
+}
         #add-fraud-btn {
             background-color: #4CAF50;
             color: white;
@@ -1134,17 +1145,28 @@
         #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
             background-color: #f1f1f1;
         }
-        .delete-fraud {
-            background-color: #f44336;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-            border-radius: 3px;
-        }
-        .delete-fraud:hover {
-            background-color: #c62828;
-        }
+.delete-fraud, .edit-fraud {
+    cursor: pointer;
+    margin-right: 10px;
+    font-size: 18px; /* Можно скорректировать размер иконок */
+}
+
+.delete-fraud {
+    color: #f44336;
+}
+
+.delete-fraud:hover {
+    color: #c62828;
+}
+
+.edit-fraud {
+    color: #4CAF50;
+}
+
+.edit-fraud:hover {
+    color: #388E3C;
+}
+
         #add-fraud-btn {
             background-color: #4CAF50;
             color: white;
@@ -1171,15 +1193,27 @@
                 <td><a href="${fraud.url}" target="_blank">${fraud.player_id}</a></td>
                 <td>${fraud.manager}</td>
                 <td>${fraud.comment || ''}</td>
-                <td>${fraud.manager === managerName ? '<button class="delete-fraud">Видалити</button>' : ''}</td>
+${fraud.manager === managerName ? `
+    <td>
+        <i class="fa fa-pencil edit-fraud" title="Редагувати"></i>
+        <i class="fa fa-trash delete-fraud" title="Видалити"></i>
+    </td>
+` : ''}
             `;
 
                 if (fraud.manager === managerName) {
                     myFraudsList.appendChild(row);
                     const deleteButton = row.querySelector('.delete-fraud');
+                    const editButton = row.querySelector('.edit-fraud');
+
                     if (deleteButton) {
                         deleteButton.addEventListener('click', () => deleteFraud(fraud.id));
                     }
+
+                    if (editButton) {
+                        editButton.addEventListener('click', () => editFraud(fraud.id, fraud.comment));
+                    }
+
                 } else {
                     commonFraudsList.appendChild(row);
                 }
@@ -1187,6 +1221,42 @@
         } catch (error) {
             console.error('Error:', error);
         }
+    }
+
+
+    function editFraud(fraudId, currentComment) {
+        const token = localStorage.getItem('authToken');
+
+        Swal.fire({
+            title: 'Редагувати коментар',
+            input: 'textarea',
+            inputValue: currentComment,
+            showCancelButton: true,
+            confirmButtonText: 'Зберегти',
+            preConfirm: (newComment) => {
+                return fetch(`https://vps65001.hyperhost.name/api/edit_fraud/${fraudId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ comment: newComment })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                    if (data.success) {
+                        Swal.fire('Готово!', 'Коментар оновлено.', 'success');
+                        loadFrauds();
+                    } else {
+                        Swal.fire('Помилка!', data.message, 'error');
+                    }
+                })
+                    .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
+                });
+            }
+        });
     }
 
 
@@ -1271,7 +1341,7 @@
             const data = await response.json();
 
             if (data.success) {
-                alert('Користувача додано до списку!');
+                Swal.fire('Готово!', `Користувача було додано до списку.`, 'success');
                 loadFrauds();
                 window.location.reload()
             } else {
@@ -1294,7 +1364,7 @@
             const data = await response.json();
 
             if (data.success) {
-                alert('Користувача видалено зі списку!');
+                Swal.fire('Готово!', `Користувача було видалено зі списку.`, 'success');
                 loadFrauds();
                 window.location.reload()
             } else {
@@ -1458,6 +1528,9 @@
         .daterangepicker {
             z-index: 10001 !important; /* Обеспечиваем, чтобы календарь отображался поверх всплывающего окна */
         }
+        .swal2-container {
+  z-index: 10002; /* Установить более высокий z-index для оповещения */
+}
 `;
     document.head.appendChild(stylePopUps);
 
@@ -1620,6 +1693,7 @@
     }
 
     function createStatisticPopup() {
+        const token = localStorage.getItem('authToken');
         const today = new Date().toISOString().split('T')[0];
 
         const content = `
@@ -1692,6 +1766,22 @@
                 font-size: 16px;
                 margin: 10px 0;
             }
+                    .detail-btn {
+            background-color: #6a5acd;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        .detail-btn:hover {
+            background-color: #5244a8;
+        }
         </style>
         <label for="dateRangePicker">Оберіть період:</label>
         <input type="text" id="dateRangePicker" />
@@ -1713,6 +1803,9 @@
             </thead>
             <tbody id="managersList"></tbody>
         </table>
+
+            <button id="detailStatisticsButton" class="detail-btn">Моя статистика</button>
+
     `;
 
         createPopup('statistic-popup', 'Статистика', content, () => {});
@@ -1726,6 +1819,14 @@
         });
 
         document.getElementById('updateStatisticsButton').addEventListener('click', updateStatisticPopup);
+        document.getElementById('detailStatisticsButton').addEventListener('click', async () => {
+            const userId = await getManagerID(token);
+            if (userId !== null) {
+                getStatistics(userId);
+            } else {
+                console.error('Не удалось получить ID менеджера');
+            }
+        });
 
         loadStatisticData(today, today);
     }
@@ -3772,13 +3873,41 @@
             const data = await response.json();
 
             if (data && data.name) {
-                return data.name; // Возвращаем имя пользователя
+                return data.name; 
             } else {
                 throw new Error('Name not found in response');
             }
         } catch (error) {
             console.error('Error:', error);
-            return null; // Возвращаем null в случае ошибки
+            return null;
+        }
+    }
+
+    async function getManagerID(token) {
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/get_manager_id', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ token })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data && typeof data.id === 'number') {
+                return data.id;
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            return null;
         }
     }
 
@@ -3890,7 +4019,7 @@
                                 console.error('Error processing pending payments:', error);
                             });
                         }
-                    }, 150);
+                    }, 350);
                 }
             }).fail(function(xhr) {
                 console.error('Ошибка при выполнении запроса:', xhr.responseText);

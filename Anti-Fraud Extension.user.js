@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.1.1
+// @version      4.1.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -343,13 +343,14 @@
             checkButton.innerText = 'Check';
             checkButton.onclick = () => {
                 const date = getCurrentDate();
+                const time = getCurrentTime();
                 const initials = GM_getValue(initialsKey);
                 const currentLanguage = GM_getValue(languageKey, 'російська');
                 const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
                 const formattedBalance = formatAmount(Balance);
                 const formattedTotalPending = formatAmount(totalPending);
 
-                let textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
 
                 if (currentLanguage === 'українська') {
 
@@ -1881,7 +1882,12 @@ ${fraud.manager === managerName ? `
     }
 
 
-
+    function getCurrentTime() {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
 
 
     function getCurrentDate() {
@@ -2236,6 +2242,7 @@ ${fraud.manager === managerName ? `
         cleanButton.onmouseout = () => cleanButton.style.backgroundColor = '#28a745';
         cleanButton.addEventListener('click', () => {
             const date = getCurrentDate();
+            const time = getCurrentTime();
             const initials = GM_getValue(initialsKey, '');
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
@@ -2247,7 +2254,7 @@ ${fraud.manager === managerName ? `
 
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
@@ -2259,7 +2266,7 @@ ${fraud.manager === managerName ? `
                 }
                 textToInsert += `играет <b><font color="#14b814">своими</font></b> картами, чист`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
@@ -2284,6 +2291,7 @@ ${fraud.manager === managerName ? `
         foreignButton.onmouseout = () => foreignButton.style.backgroundColor = '#dc3545';
         foreignButton.addEventListener('click', () => {
             const date = getCurrentDate();
+            const time = getCurrentTime();
             const initials = GM_getValue(initialsKey, '');
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
@@ -2293,7 +2301,7 @@ ${fraud.manager === managerName ? `
             const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
@@ -2306,7 +2314,7 @@ ${fraud.manager === managerName ? `
                 textToInsert += `играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`
             }
             else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                     textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
@@ -2339,6 +2347,7 @@ ${fraud.manager === managerName ? `
         pendingPlusButton.onmouseout = () => pendingPlusButton.style.backgroundColor = '#28a745';
         pendingPlusButton.addEventListener('click', () => {
             const date = getCurrentDate();
+            const time = getCurrentTime();
             const initials = GM_getValue(initialsKey, '');
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
@@ -2346,11 +2355,11 @@ ${fraud.manager === managerName ? `
             const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
             }
 
             insertTextIntoField(textToInsert);
@@ -2365,6 +2374,7 @@ ${fraud.manager === managerName ? `
         pendingMinusButton.onmouseout = () => pendingMinusButton.style.backgroundColor = '#dc3545';
         pendingMinusButton.addEventListener('click', () => {
             const date = getCurrentDate();
+            const time = getCurrentTime();
             const initials = GM_getValue(initialsKey, '');
             const currentLanguage = GM_getValue(languageKey, 'російська');
 
@@ -2372,11 +2382,11 @@ ${fraud.manager === managerName ? `
             const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
             if (currentLanguage === 'російська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
             } else {
-                textToInsert = `${date} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
+                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
             }
 
             insertTextIntoField(textToInsert);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.1
+// @version      4.1.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -464,9 +464,9 @@
                 addFraudPageButton(true, data.fraud_id);
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
-                alertDiv.style.backgroundColor = '#6a0dad'; // Ярко фиолетовый
-                alertDiv.style.color = '#fff'; // Текст белый
-                alertDiv.style.borderColor = '#5a00a2'; // Темно фиолетовый
+                alertDiv.style.backgroundColor = '#6a0dad'; 
+                alertDiv.style.color = '#fff'; 
+                alertDiv.style.borderColor = '#5a00a2'; 
 
                 alertDiv.innerHTML = `
                 <strong>Увага!</strong> Користувач під наглядом.
@@ -3916,7 +3916,7 @@ ${fraud.manager === managerName ? `
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
 
         const initials = GM_getValue(initialsKey, '');
-        const currentDate = getCurrentDate();
+        const currentDate = getCurrentDate(); // Формат: 17.09.2024
         const playerID = getPlayerID();
         const project = getProject();
         const url = window.location.href;
@@ -3924,36 +3924,46 @@ ${fraud.manager === managerName ? `
         if (button) {
             button.addEventListener('click', () => {
                 if (!isButtonToSaveClicked) {
-                    isButtonToSaveClicked = true;
-                    getAccessToken().then(accessToken => {
-                        const dataToInsert = {
-                            date: currentDate,
-                            url: url,
-                            project: project,
-                            playerID: playerID,
-                            initials: initials,
-                            comment: textarea.value.replace(/\r?\n/g, ""),
-                        };
+                    const firstLine = textarea.value.split('\n')[0];
+                    const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
 
-                        const token = localStorage.getItem('authToken');
-                        sendDataToServer(dataToInsert, token)
-                            .then(response => {
-                            console.log('Data sent successfully:', response);
-                        })
-                            .catch(err => {
-                            console.error('Error sending data:', err);
+                    // Проверка, содержит ли первая строка дату и инициалы
+                    if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
+                        isButtonToSaveClicked = true;
+
+                        getAccessToken().then(accessToken => {
+                            const dataToInsert = {
+                                date: currentDate,
+                                url: url,
+                                project: project,
+                                playerID: playerID,
+                                initials: initials,
+                                comment: textarea.value.replace(/\r?\n/g, ""),
+                            };
+
+                            const token = localStorage.getItem('authToken');
+                            sendDataToServer(dataToInsert, token)
+                                .then(response => {
+                                console.log('Data sent successfully:', response);
+                            })
+                                .catch(err => {
+                                console.error('Error sending data:', err);
+                            });
+
+                            sendDataToGoogleSheet(accessToken, dataToInsert);
+                        }).catch(err => {
+                            console.error("Error getting Access Token:", err);
                         });
-
-                        sendDataToGoogleSheet(accessToken, dataToInsert);
-                    }).catch(err => {
-                        console.error("Error getting Access Token:", err);
-                    });
+                    } else {
+                        console.log("The first line of the comment does not contain today's date or correct initials.");
+                    }
                 }
             });
         } else {
             console.error("Button not found.");
         }
     }
+
 
     async function sendDataToServer(data, accessToken) {
         try {

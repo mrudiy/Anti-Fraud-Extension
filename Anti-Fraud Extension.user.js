@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.1.3
+// @version      4.1.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -2138,7 +2138,7 @@ ${fraud.manager === managerName ? `
         };
         popupBox.appendChild(statisticIcon);
 
-        ///const status = await checkUserStatus();
+        const status = await checkUserStatus();
 
         if (status === 'Admin') {
             const adminIcon = document.createElement('div');
@@ -2155,7 +2155,7 @@ ${fraud.manager === managerName ? `
                 }
                 createAdminPopup();
             };
-            ///popupBox.appendChild(adminIcon);
+            popupBox.appendChild(adminIcon);
         }
 
         const statusIcon = document.createElement('div');
@@ -4210,8 +4210,8 @@ ${fraud.manager === managerName ? `
 
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
-        ///if (tokenIsValid) {
-            ///sendActivePageInfo();
+        if (tokenIsValid) {
+            sendActivePageInfo();
             if (currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmount();
                 setPageSize1k();
@@ -4232,11 +4232,11 @@ ${fraud.manager === managerName ? `
                 observeDOMChangesTransactions();
             };
         }
-        ///else {
-            ///console.log('User is not logged in or token is invalid');
-            ///localStorage.removeItem('authToken');
-            ///createLoginForm();
-        ///}
-    ///}
+        else {
+            console.log('User is not logged in or token is invalid');
+            localStorage.removeItem('authToken');
+            createLoginForm();
+        }
+    }
                            );
 })();

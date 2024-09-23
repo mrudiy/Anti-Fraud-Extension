@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.1.4
+// @version      4.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
 // @match        https://admin.777.ua/*
+// @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
@@ -4191,10 +4192,94 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    let highlightedValues = [], managerMap = {};
+    const managerColors = {
+        "Максим Рудий": "red", "Аліна Панасюк": "blue",
+        "Максим Умєренников": "green", "Максим Кислий": "orange",
+        "Максим Кириченко": "purple", "Олександр Загоруйко": "pink",
+        "Олександр Ярославцев": "magenta"
+    };
+
+    async function powerBIfetchHighlightedValues() {
+        const sheetName = powerBIgetSheetName(), today = new Date().toISOString().split('T')[0];
+        try {
+            const response = await fetch(`https://vps65001.hyperhost.name/api/powerbi/get?sheet_name=${encodeURIComponent(sheetName)}`);
+            if (response.ok) {
+                const data = await response.json();
+                highlightedValues = data.filter(item => item.date === today).map(item => item.player_id);
+                managerMap = Object.fromEntries(data.map(item => [item.player_id, item.manager_initials]));
+                powerBIhighlightSavedCells();
+            }
+        } catch {}
+    }
+
+    async function powerBIsaveHighlightedValue(cellValue) {
+        const token = localStorage.getItem('authToken');
+        try {
+            await fetch('https://vps65001.hyperhost.name/api/powerbi/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ player_id: cellValue, date: new Date().toISOString().split('T')[0], sheet_name: powerBIgetSheetName() })
+            });
+        } catch {}
+    }
+
+    async function powerBIdeleteHighlightedValue(cellValue) {
+        try {
+            await fetch('https://vps65001.hyperhost.name/api/powerbi/delete', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: cellValue, sheet_name: powerBIgetSheetName() })
+            });
+        } catch {}
+    }
+
+    function powerBIapplyStylesToCell(cell, manager) {
+        const color = managerColors[manager] || 'purple';
+        cell.style.setProperty('background-color', color, 'important');
+        cell.style.setProperty('color', 'white', 'important');
+    }
+
+    function powerBIhighlightSavedCells() {
+        document.querySelectorAll('div[role="gridcell"]').forEach(cell => {
+            const cellValue = cell.textContent.trim();
+            if (highlightedValues.includes(cellValue)) {
+                powerBIapplyStylesToCell(cell, managerMap[cellValue]);
+            }
+        });
+    }
+
+    function powerBImakeCellsClickable() {
+        document.querySelectorAll('div[role="gridcell"]').forEach(cell => {
+            if (!cell.classList.contains('clickable-cell')) {
+                cell.classList.add('clickable-cell');
+                cell.style.cursor = 'pointer';
+                cell.addEventListener('click', function() {
+                    const cellValue = cell.textContent.trim();
+                    if (highlightedValues.includes(cellValue)) {
+                        highlightedValues = highlightedValues.filter(value => value !== cellValue);
+                        cell.style.removeProperty('background-color');
+                        cell.style.removeProperty('color');
+                        powerBIdeleteHighlightedValue(cellValue);
+                    } else {
+                        highlightedValues.push(cellValue);
+                        powerBIapplyStylesToCell(cell, managerMap[cellValue]);
+                        powerBIsaveHighlightedValue(cellValue);
+                    }
+                });
+            }
+        });
+    }
+
+    function powerBIgetSheetName() {
+        const sheetNameElement = document.querySelector('span[role="heading"][aria-level="1"]');
+        return sheetNameElement ? sheetNameElement.textContent.trim() : 'Неизвестный лист';
+    }
+
 
     async function sendActivePageInfo() {
         const token = localStorage.getItem('authToken');
-        const currentUrl = window.location.href; // поточний URL сторінки
+        const currentUrl = window.location.href; 
 
         if (token) {
             await fetch('https://vps65001.hyperhost.name/api/update_active_page', {
@@ -4221,7 +4306,17 @@ ${fraud.manager === managerName ? `
                 checkUserInFraudList();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
-            } else if (currentUrl.includes('playersItems/balanceLog/')) {
+            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
+                powerBIfetchHighlightedValues();
+                powerBImakeCellsClickable();
+            }
+
+            new MutationObserver(() => {
+                powerBIfetchHighlightedValues();
+                powerBImakeCellsClickable();
+            }).observe(document.body, { childList: true, subtree: true });
+
+            if (currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);
             } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
                 depositCardChecker();
@@ -4230,13 +4325,11 @@ ${fraud.manager === managerName ? `
                 initTransactionsPage();
                 processTableRows();
                 observeDOMChangesTransactions();
-            };
-        }
-        else {
+            }
+        } else {
             console.log('User is not logged in or token is invalid');
             localStorage.removeItem('authToken');
             createLoginForm();
         }
-    }
-                           );
+    });
 })();

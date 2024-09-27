@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.2
+// @version      4.2.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -3103,7 +3103,7 @@ ${fraud.manager === managerName ? `
                             }
                         }
 
-                        const cardLabel = row.querySelector('td:nth-child(10) span.label.label-default');
+                        const cardLabel = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
                         if (cardLabel) {
                             const cardNumber = cardLabel.textContent.trim();
                             cardsSet.add(cardNumber);

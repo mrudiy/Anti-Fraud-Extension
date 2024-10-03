@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.3.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -68,6 +68,14 @@
 
     function saveRules(rules) {
         localStorage.setItem(sharedStorageKey, JSON.stringify(rules));
+    }
+
+    function getCurrentDate() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${day}.${month}.${year}`;
     }
 
     function getProject() {
@@ -509,6 +517,14 @@
         }
     }
 
+    function getDateFromField() {
+        const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
+        const firstLine = content.split('\n')[0]; // Берём первую строку
+        const dateRegex = /\d{2}\.\d{2}\.\d{4}/; // Регулярное выражение для даты
+        const dateMatch = firstLine.match(dateRegex); // Ищем дату
+        return dateMatch ? dateMatch[0] : null; // Если дата найдена, возвращаем её, иначе null
+    }
+
     async function checkUserInChecklist() {
         const token = localStorage.getItem('authToken');
         const playerId = getPlayerID();
@@ -526,8 +542,9 @@
 
             const data = await response.json();
             console.log(data);
-
-            const isCheckedToday = data.checklistExists && data.date === getCurrentDate();
+            const dateFromField = getDateFromField();
+            const currentDate = getCurrentDate();
+            const isCheckedToday = (data.date === currentDate) || (dateFromField === currentDate);
 
             const observer = new MutationObserver((mutations, obs) => {
                 const cleanButton = document.querySelector('.clean-button'); // Ищем кнопку по классу
@@ -985,7 +1002,7 @@
         `;
 
             if (status === 'Admin') {
-                content += `<button class="add-article-btn" id="add-article-btn">Добавити новину</button>`;
+                content += `<button class="add-article-btn" id="add-article-btn">Додати новину</button>`;
             }
 
             articles.forEach(article => {
@@ -1001,7 +1018,7 @@
             `;
             });
 
-            createPopup('reminder', 'Пам`ятка', content, () => {});
+            createPopup('reminder', 'Дошка', content, () => {});
 
             if (status === 'Admin') {
                 document.getElementById('add-article-btn').addEventListener('click', () => {
@@ -2187,15 +2204,6 @@ ${fraud.manager === managerName ? `
         const hours = now.getHours().toString().padStart(2, '0');
         const minutes = now.getMinutes().toString().padStart(2, '0');
         return `${hours}:${minutes}`;
-    }
-
-
-    function getCurrentDate() {
-        const today = new Date();
-        const day = String(today.getDate()).padStart(2, '0');
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const year = today.getFullYear();
-        return `${day}.${month}.${year}`;
     }
 
     function getCurrentDateRequest() {

@@ -7,8 +7,8 @@
 // @match        https://admin.slotoking.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://app.powerbi.com/*
-// @updateURL 	 https://github.com/mrudi1y/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
-// @downloadURL  https://github.com/mrudi1y/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue

@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.2.1
+// @version      4.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://app.powerbi.com/*
-// @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
-// @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @updateURL 	 https://github.com/mrudi1y/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @downloadURL  https://github.com/mrudi1y/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -37,6 +37,8 @@
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
     const ndfDisplayKey = 'ndfDisplay';
+    const reminderBlinkKey = 'reminderDisplayBlinkKey';
+    const lastSeenArticleIdKey = 'lastSeenArticleId';
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
@@ -257,6 +259,22 @@
         });
     }
 
+    async function checkForNewArticles() {
+        const articles = await fetchArticles();
+
+        if (articles.length > 0) {
+            const latestArticle = articles[0];
+            const lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+
+            if (latestArticle.id > lastSeenArticleId) {
+                GM_setValue(lastSeenArticleIdKey, latestArticle.id);
+                GM_setValue(reminderBlinkKey, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
     function updateTransactionsPopup() {
         const popup = document.getElementById('color-popup');
         if (popup) {
@@ -341,7 +359,7 @@
             const checkButton = document.createElement('button');
             checkButton.id = 'check-button';
             checkButton.type = 'button';
-            checkButton.innerText = 'Check';
+            checkButton.innerText = 'Коментар';
             checkButton.onclick = () => {
                 const date = getCurrentDate();
                 const time = getCurrentTime();
@@ -466,9 +484,9 @@
                 addFraudPageButton(true, data.fraud_id);
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
-                alertDiv.style.backgroundColor = '#6a0dad'; 
-                alertDiv.style.color = '#fff'; 
-                alertDiv.style.borderColor = '#5a00a2'; 
+                alertDiv.style.backgroundColor = '#6a0dad';
+                alertDiv.style.color = '#fff';
+                alertDiv.style.borderColor = '#5a00a2';
 
                 alertDiv.innerHTML = `
                 <strong>Увага!</strong> Користувач під наглядом.
@@ -490,6 +508,67 @@
             console.error('Error:', error);
         }
     }
+
+    async function checkUserInChecklist() {
+        const token = localStorage.getItem('authToken');
+        const playerId = getPlayerID();
+        const url = window.location.href;
+
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_checklsit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url: url })
+            });
+
+            const data = await response.json();
+            console.log(data);
+
+            const isCheckedToday = data.checklistExists && data.date === getCurrentDate();
+
+            const observer = new MutationObserver((mutations, obs) => {
+                const cleanButton = document.querySelector('.clean-button'); // Ищем кнопку по классу
+                if (cleanButton) {
+                    updateCleanButtonState(cleanButton, isCheckedToday); // Обновляем состояние кнопки
+                    obs.disconnect(); // Останавливаем наблюдение, когда кнопка найдена
+                }
+            });
+
+            // Настраиваем наблюдатель для отслеживания изменений в DOM
+            observer.observe(document.body, {
+                childList: true, // Следим за добавлением и удалением узлов
+                subtree: true // Следим за всеми узлами в дереве
+            });
+
+            if (data.checklistExists) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning';
+                alertDiv.style.backgroundColor = '#7fff00';
+                alertDiv.style.color = '#000000';
+                alertDiv.style.borderColor = '#5a00a2';
+
+                alertDiv.innerHTML =
+                    `<strong>Користувач переглянутий.</strong>
+            <br><strong>Менеджер:</strong> ${data.manager_name}
+            <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
+
+                const table = document.querySelector('#yw1');
+
+                if (table) {
+                    table.parentNode.insertBefore(alertDiv, table);
+                } else {
+                    console.error('Таблиця не знайдена.');
+                }
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
 
     function createSettingsPopup() {
         const settingsPopup = document.createElement('div');
@@ -735,7 +814,7 @@
             if (onClose) onClose();
         });
 
-        dragElement(popup); 
+        dragElement(popup);
     }
 
     function enableResize(popup) {
@@ -788,85 +867,292 @@
         document.getElementById('add-user-btn').addEventListener('click', createRegisterPopup);
     }
 
-    function createReminderPopup() {
-        const content = `
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-        }
-        .highlight-red {
-            color: red;
-        }
-        .highlight-blue {
-            color: blue;
-        }
-        .highlight-green {
-            color: green;
-        }
-        .highlight-orange {
-            color: orange;
-        }
-        ul {
-            list-style-type: disc;
-            margin-left: 20px;
-        }
-    </style>
+    // Подключение Quill CSS и JS через динамическую загрузку
+    function loadQuillResources() {
+        const quillCSS = document.createElement('link');
+        quillCSS.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
+        quillCSS.rel = 'stylesheet';
+        document.head.appendChild(quillCSS);
 
-    <h3>Відключаємо Автовиплату, якщо:</h3>
-    <ul>
-        <li>Використана <span class="highlight-red">чужа</span> впровдож місяця (після рефанду, або попередження)</li>
-        <li>Виводиться на невідому або <span class="highlight-red">чужу</span> картку, яка використовувалась в інших акаунтах (<span class="highlight-blue">перетин</span>)</li>
-        <li>Гравець сильно заводить нас в мінус (дивимось прогнозний ПА)</li>
-        <li>Підозра на фотошоп / підозрні транзакції – запитуємо картки і вимикаємо Авто</li>
-        <li>Багато невідомих методів поповнення (4+ за місяць)</li>
-        <li>За рекомендацією Антифроду відділу, при наявності обґрунтованих причин (різка зміна ігрової стратегії + зміна IP + підозра на дропа, ін.)</li>
-    </ul>
+        const quillJS = document.createElement('script');
+        quillJS.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+        document.head.appendChild(quillJS);
 
-    <h4>Який мінус допускаємо:</h4>
-    <ul>
-        <li>відключаємо Авто, якщо прогнозний ПА більше 20%, коли депозит з <span class="highlight-red">чужої</span> та виведення на <span class="highlight-red">чужу</span> (<span class="highlight-blue">чужа-чужа</span>)</li>
-        <li>відключаємо Авто, якщо прогнозний ПА більше 40%, коли депозит з <span class="highlight-red">чужої</span> та виведення на <span class="highlight-red">чужу</span> (<span class="highlight-blue">родичі</span>)</li>
-    </ul>
-
-    <h3>Запитуємо підтвердження Apple Pay/Google Pay, або картки, якщо:</h3>
-    <ul>
-        <li>Якщо не підтверджених Apple Pay/Google Pay 4 і більше в акаунті (виключенням: VIP, де дуже багато депів з невідомих)</li>
-        <li>Якщо виводить на <span class="highlight-red">чужу</span> картку (і гравець буде мінусовим на 20%+)</li>
-        <li>Якщо по картці, на яку виводить є <span class="highlight-blue">перетин</span> з іншим гравцем (незалежна кількість невідомих)</li>
-        <li>Якщо вивід на <span class ="highlight-green">свою</span>, але по ній є перетин з іншим гравцем (незалежна кількість невідомих)</li>
-        <li>Якщо перед депозитами з Apple Pay/Google Pay активно використовувалась <span class="highlight-red">чужа</span>/<span class="highlight-red">чужі</span> картки (незалежна кількість невідомих)</li>
-    </ul>
-
-    <p><span class="highlight-red">! Не запитуємо картку, або Apple Pay/Google Pay,</span> якщо депозити і виведення на одну непідтверджену картку (невідома – невідома), гравець плюсовий, перетинів немає.</p>
-
-    <h3>Оновлення по запиту документів за інструкцією юриста:</h3>
-    <p>Більше 10 методів, на 1-10 депозитів за останні 3 місяці:</p>
-    <ul>
-        <li>невідомі + своя + <span class="highlight-red">чужі</span></li>
-        <li>невідомі + <span class="highlight-red">чужі</span> + <span class="highlight-red">чужі</span></li>
-    </ul>
-    <p>В такому випадку не звертаємо увагу на прибутковість, або наявність своїх карток. Наявність багатьох методів по декілька депів з невідомих та чужих - підозріла!</p>
-    <p>Грати не дозволяємо, одразу відправляємо на додаткову верифікацію.</p>
-    <h3>Обмеження Cashback, депозитних та бездепозитних бонусів:</h3>
-    <ul>
-        <li>Пріоритет 1-5 майже ніколи не обмежуємо, тільки у виняткових випадках</li>
-        <li>Пріоритет 6-7 обмежуємо, якщо гравець при виводі бонусу стане мінусовим і перевищення BTR становить &gt; 10 000 грн.</li>
-        <li>Пріоритет 8 обмежуємо, якщо було 5 депозитів + об'ємного виграшу від 100 000 грн. (підлягає обговоренню)</li>
-    </ul>
-
-     <h3>Коли можемо запитати селфі з паспортом:</h3>
-    <p>(якщо потрібна причина затримати виплату гравцю, або якщо відсутні якісні фото документів)</p>
-    <ul>
-        <li>Сума Balance + Pending  ≥ 100 000 грн. якщо є підозра, що акаунтом користується інша особа (фейкова пошта, невідома картка, інший характер депозитів, ставок) + відключаємо Авто</li>
-        <li>Сума Balance + Pending ≥  100 000 грн. і у разі виведення буде мінусовий на > ніж 70 000 + за останній рік не було свіжого селфі для King, та 6 місяців для 777. І відключаємо Авто.</li>
-    </ul>
-
-    <h4><span class="highlight-red">Якщо знайшли перетин з Малолітнім, або Лудоманом - вказуємо в коментарі, що є акаунт Малолітнього або Лудомана, <a href="https://docs.google.com/document/d/1g88y7W2JB1RJijNwHVkhDnUaT801drCOi_o66uvfa5A/edit" style="text-decoration: underline;">дивимось таблицю з ситуаціями</a> і відправляємо в наш Чат.</span></h4>`;
-
-        createPopup('reminder', 'Пам`ятка', content, () => {});
+        return new Promise((resolve) => {
+            quillJS.onload = resolve; // Ждём загрузки скрипта
+        });
     }
 
+    async function createReminderPopup() {
+        const status = await checkUserStatus(); // Проверка статуса пользователя
+        fetchArticles().then(articles => {
+            let content = `
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; }
+            .highlight-red { color: red; }
+            .highlight-blue { color: blue; }
+            .highlight-green { color: green; }
+            .highlight-orange { color: orange; }
+            ul { list-style-type: disc; margin-left: 20px; }
+
+            /* Стилизация кнопок */
+            .add-article-btn {
+                background-color: #4CAF50; /* Зеленый */
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .add-article-btn:hover {
+                background-color: #45a049;
+            }
+
+            .save-article-btn {
+                background-color: #2196F3; /* Синий */
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .save-article-btn:hover {
+                background-color: #1976D2;
+            }
+
+            .edit-article-btn {
+                background-color: #FF9800; /* Оранжевый */
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .edit-article-btn:hover {
+                background-color: #FB8C00;
+            }
+
+            .delete-article-btn {
+                background-color: #F44336; /* Красный */
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .delete-article-btn:hover {
+                background-color: #E53935;
+            }
+
+            /* Стилизация поля заголовка */
+            input[type="text"] {
+                width: 100%;
+                padding: 10px;
+                margin: 5px 0 20px 0;
+                display: inline-block;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 16px;
+            }
+
+            /* Стилизация для контейнера редактора */
+            #quill-editor {
+                height: 300px; /* Увеличен размер редактора */
+                margin-bottom: 20px;
+            }
+
+            /* Стилизация контейнеров статей */
+            .article-container {
+                margin-bottom: 20px;
+                max-width: 1650px; /* Ограничение ширины контейнера */
+                word-wrap: break-word; /* Перенос длинных слов */
+                overflow-wrap: break-word; /* Поддержка переноса слов */
+            }
+        </style>
+        `;
+
+            if (status === 'Admin') {
+                content += `<button class="add-article-btn" id="add-article-btn">Добавити новину</button>`;
+            }
+
+            articles.forEach(article => {
+                content += `
+            <div class="article-container" data-id="${article.id}">
+                <h3>${article.title}</h3>
+                <div>${article.content}</div>
+                ${status === 'Admin' ? `
+                    <button class="edit-article-btn">Редагувати</button>
+                    <button class="delete-article-btn">Видалити</button>
+                ` : ''}
+            </div>
+            `;
+            });
+
+            createPopup('reminder', 'Пам`ятка', content, () => {});
+
+            if (status === 'Admin') {
+                document.getElementById('add-article-btn').addEventListener('click', () => {
+                    openArticleEditor();
+                });
+
+                document.querySelectorAll('.edit-article-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const articleId = e.target.closest('.article-container').dataset.id;
+                        openArticleEditor(articleId);
+                    });
+                });
+
+                document.querySelectorAll('.delete-article-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const articleId = e.target.closest('.article-container').dataset.id;
+                        deleteArticle(articleId).then(() => {
+                            Swal.fire('Видалено!', '', 'success');
+                            closePopup('reminder');
+                            createReminderPopup();
+                        });
+                    });
+                });
+            }
+        });
+    }
+
+    function openArticleEditor(articleId = null) {
+        let title = '';
+        let content = '';
+
+        if (articleId) {
+            fetch(`https://vps65001.hyperhost.name/get_article/${articleId}`)
+                .then(response => response.json())
+                .then(article => {
+                title = article.title;
+                content = article.content;
+                showEditorPopup(title, content, articleId);
+            });
+        } else {
+            showEditorPopup(title, content);
+        }
+    }
+
+    function showEditorPopup(title, content, articleId = null) {
+        const editorContent = `
+        <h3>Редагування</h3>
+        <input type="text" id="article-title" value="${title}" placeholder="Заголовок" />
+        <div id="quill-editor"></div>
+        <button class="save-article-btn" id="save-article-btn">Зберегти</button>
+    `;
+        createPopup('editor', 'Редагування', editorContent, () => {});
+
+        loadQuillResources().then(() => {
+            const quill = new Quill('#quill-editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],       
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        ['clean']
+                    ]
+                }
+            });
+
+            if (content) {
+                quill.clipboard.dangerouslyPasteHTML(content);
+            }
+
+            document.getElementById('save-article-btn').addEventListener('click', () => {
+                const newTitle = document.getElementById('article-title').value;
+                const newContent = quill.root.innerHTML;  // Получение форматированного HTML текста из редактора
+
+                if (articleId) {
+                    updateArticle(articleId, newTitle, newContent).then(() => {
+                        closePopup('editor'); // Закрытие редактора
+                        Swal.fire('Збережено!', '', 'success'); // Уведомление об обновлении
+                        closePopup('reminder');
+                        createReminderPopup(); // Обновление списка статей
+                    });
+                } else {
+                    saveArticle(newTitle, newContent).then(() => {
+                        closePopup('editor'); // Закрытие редактора
+                        Swal.fire('Додано!', '', 'success'); // Уведомление о добавлении
+                        closePopup('reminder');
+                        createReminderPopup(); // Обновление списка статей
+                    });
+                }
+            });
+        });
+    }
+
+    // Получение всех статей
+    async function fetchArticles() {
+        const response = await fetch('https://vps65001.hyperhost.name/get_articles');
+        const data = await response.json();
+        return data;
+    }
+
+    // Сохранение новой статьи
+    async function saveArticle(title, content) {
+        const response = await fetch('https://vps65001.hyperhost.name/save_article', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title: title,
+                content: content
+            })
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    // Обновление существующей статьи
+    async function updateArticle(articleId, title, content) {
+        const response = await fetch(`https://vps65001.hyperhost.name/update_article/${articleId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title: title,
+                content: content
+            })
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    // Удаление статьи
+    async function deleteArticle(articleId) {
+        const response = await fetch(`https://vps65001.hyperhost.name/delete_article/${articleId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        const lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+        GM_setValue(lastSeenArticleIdKey, lastSeenArticleId - 1);
+        return data;
+    }
+
+    // Функция для закрытия попапа
+    function closePopup(popupId) {
+        const popup = document.getElementById(popupId);
+        if (popup) {
+            popup.remove();
+        }
+    }
 
     function createRegisterPopup() {
         const content = `
@@ -1343,9 +1629,15 @@ ${fraud.manager === managerName ? `
             const data = await response.json();
 
             if (data.success) {
-                Swal.fire('Готово!', `Користувача було додано до списку.`, 'success');
-                loadFrauds();
-                window.location.reload()
+                Swal.fire({
+                    title: 'Готово!',
+                    text: 'Користувача було додано до списку.',
+                    icon: 'success',
+                    willClose: () => {
+                        window.location.reload(); // Перезагрузка страницы
+                    }
+                });
+                loadFrauds(); // Вызываем функцию загрузки фродов
             } else {
                 alert('Виникла помилка!.');
             }
@@ -1366,9 +1658,15 @@ ${fraud.manager === managerName ? `
             const data = await response.json();
 
             if (data.success) {
-                Swal.fire('Готово!', `Користувача було видалено зі списку.`, 'success');
-                loadFrauds();
-                window.location.reload()
+                Swal.fire({
+                    title: 'Готово!',
+                    text: 'Користувача було видалено зі списку.',
+                    icon: 'success',
+                    willClose: () => {
+                        window.location.reload(); // Перезагрузка страницы
+                    }
+                });
+                loadFrauds(); // Вызываем функцию загрузки фродов
             } else {
                 alert('Ошибка: ' + data.message);
             }
@@ -1376,6 +1674,7 @@ ${fraud.manager === managerName ? `
             console.error('Error:', error);
         }
     }
+
 
     async function registerUser(username, password, managerName, status) {
         try {
@@ -2028,7 +2327,7 @@ ${fraud.manager === managerName ? `
 
         popupBox.style.padding = '20px';
         popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-        popupBox.style.border = `2px solid black`;
+        popupBox.style.border = `2px solid ${borderColor}`; // Используем borderColor
         popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
         popupBox.style.zIndex = '10000';
         popupBox.style.fontFamily = '"Roboto", sans-serif';
@@ -2037,7 +2336,7 @@ ${fraud.manager === managerName ? `
         popupBox.style.flexDirection = 'column';
         popupBox.style.alignItems = 'center';
         popupBox.style.borderRadius = '10px';
-        popupBox.style.animation = 'fadeIn 0.5s ease-in-out, borderGlow 2.5s infinite';
+        popupBox.style.animation = 'glow 1s infinite alternate';
         popupBox.style.resize = 'both';
         popupBox.style.overflow = 'auto';
 
@@ -2199,6 +2498,8 @@ ${fraud.manager === managerName ? `
         popupBox.appendChild(fraudIcon);
 
         const showReminder = GM_getValue(reminderDisplayKey, true);
+        const shouldBlink = GM_getValue(reminderBlinkKey, true);
+        const hasNewArticles = await checkForNewArticles();
 
         if (showReminder === true) {
             const reminderIcon = document.createElement('div');
@@ -2207,13 +2508,20 @@ ${fraud.manager === managerName ? `
             reminderIcon.style.left = '10px';
             reminderIcon.style.fontSize = '20px';
             reminderIcon.style.cursor = 'pointer';
-            reminderIcon.title = 'Нагляд';
+            reminderIcon.title = 'Памятка';
             reminderIcon.innerHTML = '<i class="fa fa-book"></i>';
 
+            if (hasNewArticles || shouldBlink) {
+                reminderIcon.classList.add('blinking');
+            }
+
             reminderIcon.onclick = () => {
-                createReminderPopup();
+                createReminderPopup();  // Открываем попап с памяткой
+                reminderIcon.classList.remove('blinking');  // Убираем мигание после клика
+                GM_setValue(reminderBlinkKey, false);  // Сохраняем, что мигание больше не нужно
             };
-            popupBox.appendChild(reminderIcon);
+
+            popupBox.appendChild(reminderIcon);  // Добавляем иконку в DOM
         }
 
         const buttonStyle = `
@@ -2236,52 +2544,57 @@ ${fraud.manager === managerName ? `
         firstRowButtonContainer.style.gap = '10px';
 
         const cleanButton = document.createElement('button');
-        cleanButton.innerText = 'Чистий';
+        cleanButton.className = 'clean-button';
+        cleanButton.innerText = 'Checked';
         cleanButton.style.cssText = buttonStyle;
         cleanButton.style.backgroundColor = '#28a745';
-        cleanButton.onmouseover = () => cleanButton.style.backgroundColor = '#218838';
-        cleanButton.onmouseout = () => cleanButton.style.backgroundColor = '#28a745';
+
         cleanButton.addEventListener('click', () => {
-            const date = getCurrentDate();
-            const time = getCurrentTime();
+            if (cleanButton.disabled) return; // Игнорируем клик, если кнопка отключена
+
             const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська');
+            const currentDate = getCurrentDate();
+            const playerID = getPlayerID();
+            const project = getProject();
+            const url = window.location.href;
+            const time = getCurrentTime();
 
-            let textToInsert;
+            const dataToInsert = {
+                date: currentDate,
+                url: url,
+                project: project,
+                playerID: playerID,
+                initials: initials,
+                comment: `Переглянутий в ${time}`,
+            };
 
-            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-            const formattedBalance = formatAmount(Balance);
-            const formattedTotalPending = formatAmount(totalPending);
+            const token = localStorage.getItem('authToken');
 
-
-            if (currentLanguage === 'російська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1000) {
-                    const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
-                }
-
-                if (totalPending > 1) {
-                    const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `;
-                }
-                textToInsert += `играет <b><font color="#14b814">своими</font></b> картами, чист`;
-            } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1000) {
-                    const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
-                }
-
-                if (totalPending > 1) {
-                    const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `;
-                }
-                textToInsert += `грає <b><font color="#14b814">власними</font></b> картками, чистий`
-            }
-
-            insertTextIntoField(textToInsert);
+            sendDataToServer(dataToInsert, token)
+                .then(response => {
+                console.log('Data sent successfully:', response);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Успішно!',
+                    text: 'Користувач позначений як переглянутий',
+                    confirmButtonText: 'ОК'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        location.reload();
+                    }
+                });
+            })
+                .catch(err => {
+                console.error('Error sending data:', err);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Помилка!',
+                    text: 'Не вдалося надіслати дані.',
+                    confirmButtonText: 'ОК'
+                });
+            });
         });
+
         firstRowButtonContainer.appendChild(cleanButton);
 
         const foreignButton = document.createElement('button');
@@ -2329,8 +2642,6 @@ ${fraud.manager === managerName ? `
             }
             insertTextIntoField(textToInsert);
         });
-        firstRowButtonContainer.appendChild(foreignButton);
-
         popupBox.appendChild(firstRowButtonContainer);
 
         const secondRowButtonContainer = document.createElement('div');
@@ -2665,15 +2976,15 @@ ${fraud.manager === managerName ? `
     @keyframes borderGlow {
         0% {
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
-            border-color: gray;
+            border-color: ${borderColor};
         }
         50% {
             box-shadow: 0 0 15px gray;
-            border-color: gray;
+            border-color: ${borderColor};
         }
         100% {
             box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
-            border-color: gray;
+            border-color: ${borderColor};
         }
     }
 
@@ -2685,6 +2996,21 @@ ${fraud.manager === managerName ? `
             opacity: 1;
         }
     }
+                                        @keyframes glow {
+                                        0% { box-shadow: 0 0 5px ${borderColor}; }
+                                        100% { box-shadow: 0 0 25px ${borderColor}; }
+                                    }
+
+
+    @keyframes blink-red {
+    0% { background-color: transparent; }
+    50% { background-color: red; }
+    100% { background-color: transparent; }
+}
+
+.blinking {
+    animation: blink-red 1s infinite;
+}
 `;
         document.head.appendChild(styleSheet);
         document.body.appendChild(popupBox);
@@ -2885,6 +3211,32 @@ ${fraud.manager === managerName ? `
             </center>
         `;
             textElement.appendChild(newMessage);
+        };
+    }
+
+    function updateCleanButtonState(cleanButton, isCheckedToday) {
+        if (isCheckedToday) {
+            cleanButton.innerText = 'Checked ✔'; // Добавляем галочку
+            cleanButton.style.backgroundColor = '#d3d3d3'; // Серый цвет
+            cleanButton.style.color = '#000'; // Черный текст
+            cleanButton.style.border = '2px solid #000'; // Черная обводка
+            cleanButton.disabled = true; // Делаем кнопку неактивной
+        } else {
+            cleanButton.innerText = 'Checked';
+            cleanButton.style.backgroundColor = '#28a745'; // Зеленый по умолчанию
+            cleanButton.disabled = false; // Активная кнопка
+        }
+
+        cleanButton.onmouseover = () => {
+            if (!cleanButton.disabled) {
+                cleanButton.style.backgroundColor = '#218838';
+            }
+        };
+
+        cleanButton.onmouseout = () => {
+            if (!cleanButton.disabled) {
+                cleanButton.style.backgroundColor = '#28a745';
+            }
         };
     }
 
@@ -3884,7 +4236,7 @@ ${fraud.manager === managerName ? `
             const data = await response.json();
 
             if (data && data.name) {
-                return data.name; 
+                return data.name;
             } else {
                 throw new Error('Name not found in response');
             }
@@ -3927,7 +4279,7 @@ ${fraud.manager === managerName ? `
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
 
         const initials = GM_getValue(initialsKey, '');
-        const currentDate = getCurrentDate(); // Формат: 17.09.2024
+        const currentDate = getCurrentDate(); 
         const playerID = getPlayerID();
         const project = getProject();
         const url = window.location.href;
@@ -3938,7 +4290,6 @@ ${fraud.manager === managerName ? `
                     const firstLine = textarea.value.split('\n')[0];
                     const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
 
-                    // Проверка, содержит ли первая строка дату и инициалы
                     if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
                         isButtonToSaveClicked = true;
 
@@ -4273,13 +4624,13 @@ ${fraud.manager === managerName ? `
 
     function powerBIgetSheetName() {
         const sheetNameElement = document.querySelector('span[role="heading"][aria-level="1"]');
-        return sheetNameElement ? sheetNameElement.textContent.trim() : 'Неизвестный лист';
+        return sheetNameElement ? sheetNameElement.textContent.trim() : 'Невідомий лист';
     }
 
 
     async function sendActivePageInfo() {
         const token = localStorage.getItem('authToken');
-        const currentUrl = window.location.href; 
+        const currentUrl = window.location.href;
 
         if (token) {
             await fetch('https://vps65001.hyperhost.name/api/update_active_page', {
@@ -4304,6 +4655,7 @@ ${fraud.manager === managerName ? `
                 addForeignButton();
                 buttonToSave();
                 checkUserInFraudList();
+                checkUserInChecklist();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {

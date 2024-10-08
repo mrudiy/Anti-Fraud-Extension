@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.3.1
+// @version      4.3.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -4652,6 +4652,44 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function activeUrlsManagers() {
+        const currentURL = window.location.href;
+        const playerId = getPlayerID();
+
+        fetch('https://vps65001.hyperhost.name/api/get_active_users', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+            const activeUsers = data.filter(user =>
+                                            user.active_url.includes(playerId) || user.active_url.includes(userId)
+                                           );
+
+            if (activeUsers.length > 0) {
+                const managerNames = activeUsers.map(user => user.manager_name).join(', ');
+                console.log(managerNames);
+
+                const targetElement = document.querySelector('tr.even td span.fa');
+                const rowElement = targetElement.closest('tr');
+                rowElement.style.backgroundColor = '#f8f8d9';
+
+                if (targetElement) {
+                    const newSpan = document.createElement('span');
+                    newSpan.textContent = ` Переглядають: ${managerNames}`;
+                    newSpan.style.fontWeight = 'bold';
+                    newSpan.style.color = '#007BFF';
+                    newSpan.style.marginLeft = '10px';
+
+                    targetElement.parentNode.appendChild(newSpan);
+                }
+            }
+        })
+            .catch(error => console.error('Error:', error));
+    }
+
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
         if (tokenIsValid) {
@@ -4663,18 +4701,18 @@ ${fraud.manager === managerName ? `
                 addForeignButton();
                 buttonToSave();
                 checkUserInFraudList();
+                activeUrlsManagers();
                 checkUserInChecklist();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
                 powerBIfetchHighlightedValues();
                 powerBImakeCellsClickable();
+                new MutationObserver(() => {
+                    powerBIfetchHighlightedValues();
+                    powerBImakeCellsClickable();
+                }).observe(document.body, { childList: true, subtree: true });
             }
-
-            new MutationObserver(() => {
-                powerBIfetchHighlightedValues();
-                powerBImakeCellsClickable();
-            }).observe(document.body, { childList: true, subtree: true });
 
             if (currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);

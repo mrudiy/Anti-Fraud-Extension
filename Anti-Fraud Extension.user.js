@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.3.2
+// @version      4.3.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -2238,14 +2238,15 @@ ${fraud.manager === managerName ? `
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
             if (row.textContent.includes('Номер игрока')) {
-                const cells = row.querySelectorAll('td');
-                if (cells.length > 0) {
-                    return cells[0].textContent.trim();
+                const span = row.querySelector('td span');
+                if (span) {
+                    return span.textContent.trim();
                 }
             }
         }
         return '0.00';
     }
+
     function insertTextIntoField(text) {
         const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
         if (field) {
@@ -3061,7 +3062,6 @@ ${fraud.manager === managerName ? `
                 data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(playerID)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
                 onload: function(response) {
                     if (response.status >= 200 && response.status < 300) {
-                        console.log('HTML-ответ:', response.responseText);
 
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(response.responseText, 'text/html');

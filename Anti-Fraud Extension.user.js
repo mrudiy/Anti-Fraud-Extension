@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.4.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -4785,7 +4785,7 @@ ${fraud.manager === managerName ? `
                 const header = row.querySelector('th');
                 const cell = row.querySelector('td');
                 if (header && header.textContent.trim() === 'Фамилия' && cell) {
-                    firstThreeLetters = cell.textContent.trim().slice(0, 3).toLowerCase();
+                    firstThreeLetters = cell.textContent.trim().slice(0, 4).toLowerCase();
                 }
             });
 

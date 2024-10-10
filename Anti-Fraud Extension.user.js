@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.3.3
+// @version      4.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -4690,6 +4690,112 @@ ${fraud.manager === managerName ? `
             .catch(error => console.error('Error:', error));
     }
 
+    function createCheckIPButton() {
+        const checkIPButton = document.createElement('button');
+        checkIPButton.textContent = 'Check IP';
+        checkIPButton.classList.add('btn', 'btn-primary');
+
+        checkIPButton.addEventListener('click', removeNAPlayersAndEmptyBlocks);
+
+        const firstAlert = document.querySelector('.alert.alert-warning');
+        if (firstAlert) {
+            firstAlert.parentNode.insertBefore(checkIPButton, firstAlert);
+        }
+    }
+
+    const months = {
+        "січня": "01", "января": "01",
+        "лютого": "02", "февраля": "02",
+        "березня": "03", "марта": "03",
+        "квітня": "04", "апреля": "04",
+        "травня": "05", "мая": "05",
+        "червня": "06", "июня": "06",
+        "липня": "07", "июля": "07",
+        "серпня": "08", "августа": "08",
+        "вересня": "09", "сентября": "09",
+        "жовтня": "10", "октября": "10",
+        "листопада": "11", "ноября": "11",
+        "грудня": "12", "декабря": "12"
+    };
+
+    const parseDate = dateString => {
+        const [day, month, year, ...timeParts] = dateString.split(' ');
+        const monthNumber = months[month] || null;
+        if (!monthNumber) return null;
+        const formattedDate = `${year}-${monthNumber}-${day}T${timeParts.join(' ')}`;
+        return new Date(formattedDate);
+    };
+
+    const processPlayerCard = (card, firstThreeLetters, ownerCards, oneWeekAgo) => {
+        const content = card.getAttribute('data-content');
+        if (content.includes('имя: n/a')) {
+            card.parentElement.remove();
+            return;
+        }
+
+        const cardNameMatch = content.match(/имя: ([^<]+)/);
+        if (cardNameMatch) {
+            const surnameFromCard = cardNameMatch[1].split(' ')[2]?.toLowerCase();
+            if (surnameFromCard?.startsWith(firstThreeLetters)) {
+                colorCard(card, 'purple');
+            }
+        }
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: card.querySelector('a').href,
+            onload: function(response) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+
+                const targetCards = [...tempDiv.querySelectorAll('#payments-cards-masks-grid tbody tr td:nth-child(2) strong')].map(c => c.textContent.trim());
+                const lastActiveDateStr = [...tempDiv.querySelectorAll('tr')].find(row => row.querySelector('th')?.textContent.trim() === 'Последнее изменение баланса')?.querySelector('td')?.textContent.trim();
+                const lastActiveDatePlayer = lastActiveDateStr ? parseDate(lastActiveDateStr) : null;
+
+                if (lastActiveDatePlayer >= oneWeekAgo) colorCard(card, 'orange');
+                if (targetCards.some(c => ownerCards.includes(c))) colorCard(card, 'brown');
+                const alertSuccessLink = card.querySelector('a.alert-success');
+                if (alertSuccessLink) {
+                    card.parentElement.remove();
+                }
+            }
+        });
+    };
+
+    const colorCard = (card, color) => {
+        card.querySelectorAll('.alert-success').forEach(link => {
+            link.classList.remove('alert-success');
+            link.style.color = 'white';
+            link.style.backgroundColor = color;
+        });
+        card.style.backgroundColor = color;
+    };
+
+    const removeNAPlayersAndEmptyBlocks = () => {
+        document.querySelectorAll('.ajax-load-more').forEach(button => {
+            button.click();
+        });
+
+        setTimeout(() => {
+            const playerCards = document.querySelectorAll('.player_card');
+            let firstThreeLetters = '';
+            let lastActiveDate;
+
+            document.querySelectorAll('tr').forEach(row => {
+                const header = row.querySelector('th');
+                const cell = row.querySelector('td');
+                if (header && header.textContent.trim() === 'Фамилия' && cell) {
+                    firstThreeLetters = cell.textContent.trim().slice(0, 3).toLowerCase();
+                }
+            });
+
+            const ownerCards = [...document.querySelectorAll('#payments-cards-masks-grid tbody tr td:nth-child(2) strong')].map(cell => cell.textContent.trim());
+            const oneWeekAgo = new Date(new Date().setDate(new Date().getDate() - 3));
+
+            playerCards.forEach(card => processPlayerCard(card, firstThreeLetters, ownerCards, oneWeekAgo));
+        }, 2000);
+    };
+
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
         if (tokenIsValid) {
@@ -4705,6 +4811,7 @@ ${fraud.manager === managerName ? `
                 checkUserInChecklist();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
+                createCheckIPButton();
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
                 powerBIfetchHighlightedValues();
                 powerBImakeCellsClickable();

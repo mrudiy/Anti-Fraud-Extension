@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.5
+// @version      4.5.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -265,10 +265,10 @@
     async function checkForNewArticles() {
         const articles = await fetchArticles();
 
+
         if (articles.length > 0) {
             const latestArticle = articles[0];
             const lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
-
             if (latestArticle.id > lastSeenArticleId) {
                 GM_setValue(lastSeenArticleIdKey, latestArticle.id);
                 GM_setValue(reminderBlinkKey, true);
@@ -887,8 +887,16 @@
     }
 
     async function createReminderPopup() {
-        const status = await checkUserStatus(); // Проверка статуса пользователя
+        const status = await checkUserStatus();
+
         fetchArticles().then(articles => {
+            let lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+
+            if (!lastSeenArticleId && articles.length > 0) {
+                const lastArticle = articles[articles.length - 1];
+                GM_setValue(lastSeenArticleIdKey, lastArticle.id);
+                lastSeenArticleId = lastArticle.id;
+            }
             let content = `
         <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; }

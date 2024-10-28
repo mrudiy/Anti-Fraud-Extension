@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6
+// @version      4.6.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -4774,7 +4774,10 @@ ${fraud.manager === managerName ? `
                 const statusInput = document.querySelector('input[name="Players[status]"]');
                 const currentStatus = statusInput.value;
 
-                if (currentStatus === 'UNCONFIRMED') {
+                const reasonInput = document.querySelector('input[name="Players[inactive_reason]"]');
+                const inactiveReason = reasonInput.value;
+
+                if (currentStatus === 'UNCONFIRMED' && (inactiveReason === 'VIOLATION_RULES' || inactiveReason === 'VIOLATION_RULES_FRAUD')) {
                     Swal.fire({
                         title: 'Ви бажаєте відправити гравця на верифікацію по схемі юриста?',
                         icon: 'warning',
@@ -4807,7 +4810,6 @@ ${fraud.manager === managerName ? `
                                 updateButton.form.submit();
                             }
                         } else {
-                            updateButton.form.submit();
                         }
                     });
                 } else {

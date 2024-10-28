@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.5.1
+// @version      4.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -505,10 +505,10 @@
 
     function getDateFromField() {
         const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
-        const firstLine = content.split('\n')[0]; // Берём первую строку
-        const dateRegex = /\d{2}\.\d{2}\.\d{4}/; // Регулярное выражение для даты
-        const dateMatch = firstLine.match(dateRegex); // Ищем дату
-        return dateMatch ? dateMatch[0] : null; // Если дата найдена, возвращаем её, иначе null
+        const firstLine = content.split('\n')[0];
+        const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
+        const dateMatch = firstLine.match(dateRegex);
+        return dateMatch ? dateMatch[0] : null;
     }
 
     async function checkUserInChecklist() {
@@ -533,17 +533,16 @@
             const isCheckedToday = (data.date === currentDate) || (dateFromField === currentDate);
 
             const observer = new MutationObserver((mutations, obs) => {
-                const cleanButton = document.querySelector('.clean-button'); // Ищем кнопку по классу
+                const cleanButton = document.querySelector('.clean-button');
                 if (cleanButton) {
-                    updateCleanButtonState(cleanButton, isCheckedToday); // Обновляем состояние кнопки
-                    obs.disconnect(); // Останавливаем наблюдение, когда кнопка найдена
+                    updateCleanButtonState(cleanButton, isCheckedToday);
+                    obs.disconnect();
                 }
             });
 
-            // Настраиваем наблюдатель для отслеживания изменений в DOM
             observer.observe(document.body, {
-                childList: true, // Следим за добавлением и удалением узлов
-                subtree: true // Следим за всеми узлами в дереве
+                childList: true,
+                subtree: true
             });
 
             if (data.checklistExists) {
@@ -2913,14 +2912,9 @@ ${fraud.manager === managerName ? `
                             rows.forEach((row) => {
                                 const playerCard = row.querySelector('td span.player_card');
                                 if (playerCard) {
-                                    // Клонируем HTML-код карточки для изменения
                                     let cardHtml = playerCard.outerHTML;
-
-                                    // Создаем временный элемент для обработки
                                     let cardTempDiv = document.createElement('div');
                                     cardTempDiv.innerHTML = cardHtml;
-
-                                    // Находим все ссылки внутри cardTempDiv и изменяем их href
                                     cardTempDiv.querySelectorAll('a').forEach(link => {
                                         let href = link.getAttribute('href');
                                         if (href) {
@@ -3218,15 +3212,15 @@ ${fraud.manager === managerName ? `
 
     function updateCleanButtonState(cleanButton, isCheckedToday) {
         if (isCheckedToday) {
-            cleanButton.innerText = 'Checked ✔'; // Добавляем галочку
-            cleanButton.style.backgroundColor = '#d3d3d3'; // Серый цвет
-            cleanButton.style.color = '#000'; // Черный текст
-            cleanButton.style.border = '2px solid #000'; // Черная обводка
-            cleanButton.disabled = true; // Делаем кнопку неактивной
+            cleanButton.innerText = 'Checked ✔';
+            cleanButton.style.backgroundColor = '#d3d3d3';
+            cleanButton.style.color = '#000';
+            cleanButton.style.border = '2px solid #000';
+            cleanButton.disabled = true;
         } else {
             cleanButton.innerText = 'Checked';
-            cleanButton.style.backgroundColor = '#28a745'; // Зеленый по умолчанию
-            cleanButton.disabled = false; // Активная кнопка
+            cleanButton.style.backgroundColor = '#28a745';
+            cleanButton.disabled = false;
         }
 
         cleanButton.onmouseover = () => {
@@ -4158,7 +4152,7 @@ ${fraud.manager === managerName ? `
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ token }) // Отправка токена в теле запроса
+                body: JSON.stringify({ token })
             });
 
             if (!response.ok) {
@@ -4769,6 +4763,61 @@ ${fraud.manager === managerName ? `
 
         window.addEventListener('beforeunload', () => clearInterval(checkInterval));
     }
+
+    function updateBanButton() {
+        const updateButton = document.getElementById('yw2');
+
+        if (updateButton) {
+            updateButton.addEventListener('click', function(event) {
+                event.preventDefault();
+
+                const statusInput = document.querySelector('input[name="Players[status]"]');
+                const currentStatus = statusInput.value;
+
+                if (currentStatus === 'UNCONFIRMED') {
+                    Swal.fire({
+                        title: 'Ви бажаєте відправити гравця на верифікацію по схемі юриста?',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Так',
+                        cancelButtonText: 'Ні'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            const currentDate = getCurrentDate();
+                            const initials = GM_getValue(initialsKey, '');
+                            const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br>`;
+
+                            const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
+                            commentField.innerHTML = message + commentField.innerHTML;
+
+                            const inputEvent = new Event('input', {
+                                bubbles: true,
+                                cancelable: true,
+                            });
+                            commentField.dispatchEvent(inputEvent);
+
+                            const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
+                            if (updateCommentButton) {
+                                updateCommentButton.click();
+
+                                setTimeout(() => {
+                                    updateButton.form.submit();
+                                }, 100);
+                            } else {
+                                updateButton.form.submit();
+                            }
+                        } else {
+                            updateButton.form.submit();
+                        }
+                    });
+                } else {
+                    updateButton.form.submit();
+                }
+            });
+        }
+    }
+
+
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
         if (tokenIsValid) {
@@ -4782,6 +4831,7 @@ ${fraud.manager === managerName ? `
                 checkUserInFraudList();
                 activeUrlsManagers();
                 checkUserInChecklist();
+                updateBanButton();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
                 createCheckIPButton();

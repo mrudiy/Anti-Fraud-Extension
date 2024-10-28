@@ -4785,7 +4785,7 @@ ${fraud.manager === managerName ? `
                         if (result.isConfirmed) {
                             const currentDate = getCurrentDate();
                             const initials = GM_getValue(initialsKey, '');
-                            const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br>`;
+                            const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
 
                             const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
                             commentField.innerHTML = message + commentField.innerHTML;

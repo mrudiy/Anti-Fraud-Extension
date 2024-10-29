@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.3
+// @version      4.6.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,6 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
+    const currentVersion = "4.6.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4832,6 +4833,50 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    async function checkForUpdates() {
+        try {
+            const response = await fetch('http://127.0.0.1:5000/api/version');
+            const data = await response.json();
+
+            if (data.version && currentVersion !== data.version) {
+                const style = document.createElement("style");
+                style.textContent = `
+                #update-icon {
+                    position: fixed;
+                    width: 200px;
+                    height: 250px;
+                    z-index: 1000;
+                    cursor: pointer;
+                    transition: top 0.3s ease, left 0.3s ease; /* Плавное перемещение */
+                }
+            `;
+                document.head.appendChild(style);
+
+                const img = document.createElement("img");
+                img.src = 'https://i.pinimg.com/originals/91/b1/ca/91b1ca6fdbfd199856cb5300e21e85dc.gif';
+                img.id = "update-icon";
+                document.body.appendChild(img);
+
+                img.addEventListener("click", () => {
+                    window.open("https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js", "_blank");
+                });
+
+                function moveIconSmoothly() {
+                    const x = Math.floor(Math.random() * (window.innerWidth - 50));
+                    const y = Math.floor(Math.random() * (window.innerHeight - 50));
+
+                    img.style.left = `${x}px`;
+                    img.style.top = `${y}px`;
+
+                    setTimeout(moveIconSmoothly, 900);
+                }
+
+                moveIconSmoothly();
+            }
+        } catch (error) {
+            console.error("Ошибка при проверке версии:", error);
+        }
+    }
 
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
@@ -4847,6 +4892,7 @@ ${fraud.manager === managerName ? `
                 activeUrlsManagers();
                 checkUserInChecklist();
                 updateBanButton();
+                checkForUpdates();
                 document.addEventListener('keydown', handleShortcut);
                 setTimeout(handlePopup, 200);
                 createCheckIPButton();

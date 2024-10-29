@@ -4835,7 +4835,7 @@ ${fraud.manager === managerName ? `
 
     async function checkForUpdates() {
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/version');
+            const response = await fetch('https://vps65001.hyperhost.name/api/version');
             const data = await response.json();
 
             if (data.version && currentVersion !== data.version) {
@@ -4885,6 +4885,7 @@ ${fraud.manager === managerName ? `
             if (currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmount();
                 setPageSize1k();
+                checkForUpdates();
             } else if (currentUrl.includes('playersItems/update')) {
                 addForeignButton();
                 buttonToSave();
@@ -4899,6 +4900,7 @@ ${fraud.manager === managerName ? `
                 checkAutoPayment();
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
                 powerBIfetchHighlightedValues();
+                checkForUpdates();
                 powerBImakeCellsClickable();
                 new MutationObserver(() => {
                     powerBIfetchHighlightedValues();

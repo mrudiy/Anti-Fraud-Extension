@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.1
+// @version      4.6.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -528,14 +528,27 @@
 
             const data = await response.json();
             console.log(data);
-            const dateFromField = getDateFromField();
-            const currentDate = getCurrentDate();
-            const isCheckedToday = (data.date === currentDate) || (dateFromField === currentDate);
+
+            const commentField = document.getElementById('PlayersComments_comment_antifraud_manager');
+            let commentDate = null;
+            if (commentField && commentField.value) {
+                const firstLine = commentField.value.split('\n')[0];
+                const dateMatch = firstLine.match(/(\d{2}\.\d{2}\.\d{4})/);
+                if (dateMatch) {
+                    const [day, month, year] = dateMatch[0].split('.');
+                    commentDate = new Date(`${year}-${month}-${day}`);
+                }
+            }
+
+            const databaseDate = new Date(data.date);
+            if (commentDate && commentDate > databaseDate) {
+                return;
+            }
 
             const observer = new MutationObserver((mutations, obs) => {
                 const cleanButton = document.querySelector('.clean-button');
                 if (cleanButton) {
-                    updateCleanButtonState(cleanButton, isCheckedToday);
+                    updateCleanButtonState(cleanButton, data.isCheckedToday);
                     obs.disconnect();
                 }
             });
@@ -558,7 +571,6 @@
             <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
 
                 const table = document.querySelector('#yw1');
-
                 if (table) {
                     table.parentNode.insertBefore(alertDiv, table);
                 } else {
@@ -570,6 +582,7 @@
             console.error('Error:', error);
         }
     }
+
 
 
     function createSettingsPopup() {

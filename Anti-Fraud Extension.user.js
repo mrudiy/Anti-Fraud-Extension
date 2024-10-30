@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.5
+// @version      4.6.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.6.5";
+    const currentVersion = "4.6.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -430,7 +430,6 @@
                 button.innerHTML = '<i class="fa fa-eye-slash"></i> Видалити';
                 button.onclick = async (event) => {
                     event.preventDefault();
-                    console.log(fraudId)
                     if (fraudId) {
                         await deleteFraud(fraudId);
                     }
@@ -528,7 +527,6 @@
             });
 
             const data = await response.json();
-            console.log(data);
 
             const commentField = document.getElementById('PlayersComments_comment_antifraud_manager');
             let commentDate = null;
@@ -541,10 +539,17 @@
                 }
             }
 
-            const databaseDate = new Date(data.date);
-            if (commentDate && commentDate > databaseDate) {
+            // Преобразование даты из data.date
+            let databaseDate = null;
+            if (data.date) {
+                const [day, month, year] = data.date.split('.');
+                databaseDate = new Date(`${year}-${month}-${day}`);
+            }
+
+            if (commentDate && databaseDate && commentDate > databaseDate) {
                 return;
             }
+
 
             const observer = new MutationObserver((mutations, obs) => {
                 const cleanButton = document.querySelector('.clean-button');
@@ -2019,7 +2024,6 @@ ${fraud.manager === managerName ? `
 
     function updateStatistics(userId) {
         const selectedDate = document.getElementById('datePicker').value;
-        console.log(selectedDate)
         fetchStatistics(userId, selectedDate);
     }
 
@@ -2173,7 +2177,6 @@ ${fraud.manager === managerName ? `
             });
 
             const data = await response.json();
-            console.log(data);
 
             if (response.ok) {
                 document.getElementById('totalPeriod').textContent = data.totalForPeriod;
@@ -3362,8 +3365,6 @@ ${fraud.manager === managerName ? `
                                     const fullDate = cells[5] ? cells[5].textContent.trim() : '';
                                     const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                                     bonusDate = dateMatch ? dateMatch[1] : '';
-
-                                    console.log('Обнаружено отыгрывание бонуса:', { bonusAmount, balanceAfterBonus, bonusId, bonusText, bonusDate });
 
                                     if (withdrawAmount > balanceAfterBonus) {
                                         const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;

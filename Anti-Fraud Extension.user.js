@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.4
+// @version      4.6.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.6.4";
+    const currentVersion = "4.6.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1975,6 +1975,7 @@ ${fraud.manager === managerName ? `
                             <tr>
                                 <th>ID Гравця</th>
                                 <th>Проект</th>
+                                <th>Авто</th>
                                 <th>Коментар</th>
                             </tr>
                         </thead>
@@ -1983,6 +1984,11 @@ ${fraud.manager === managerName ? `
                                 <tr>
                                     <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
                                     <td>${entry.project}</td>
+                                        <td>
+        ${entry.autopayment === false ?
+                                               '<span style="color: green;">&#10004;</span>' :
+                                               '<span style="color: red;">&#10008;</span>'}
+    </td>
                                     <td>${entry.comment || ''}</td>
                                 </tr>
                             `).join('')}

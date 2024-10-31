@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.6
+// @version      4.6.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.6.6";
+    const currentVersion = "4.6.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -527,34 +527,15 @@
             });
 
             const data = await response.json();
-
-            const commentField = document.getElementById('PlayersComments_comment_antifraud_manager');
-            let commentDate = null;
-            if (commentField && commentField.value) {
-                const firstLine = commentField.value.split('\n')[0];
-                const dateMatch = firstLine.match(/(\d{2}\.\d{2}\.\d{4})/);
-                if (dateMatch) {
-                    const [day, month, year] = dateMatch[0].split('.');
-                    commentDate = new Date(`${year}-${month}-${day}`);
-                }
-            }
-
-            // Преобразование даты из data.date
-            let databaseDate = null;
-            if (data.date) {
-                const [day, month, year] = data.date.split('.');
-                databaseDate = new Date(`${year}-${month}-${day}`);
-            }
-
-            if (commentDate && databaseDate && commentDate > databaseDate) {
-                return;
-            }
-
+            console.log(data);
+            const dateFromField = getDateFromField();
+            const currentDate = getCurrentDate();
+            const isCheckedToday = (data.date === currentDate) || (dateFromField === currentDate);
 
             const observer = new MutationObserver((mutations, obs) => {
                 const cleanButton = document.querySelector('.clean-button');
                 if (cleanButton) {
-                    updateCleanButtonState(cleanButton, data.isCheckedToday);
+                    updateCleanButtonState(cleanButton, isCheckedToday);
                     obs.disconnect();
                 }
             });
@@ -564,7 +545,7 @@
                 subtree: true
             });
 
-            if (data.checklistExists) {
+            if (data.checklistExists && dateFromField <= data.date) {
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
                 alertDiv.style.backgroundColor = '#7fff00';
@@ -577,6 +558,7 @@
             <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
 
                 const table = document.querySelector('#yw1');
+
                 if (table) {
                     table.parentNode.insertBefore(alertDiv, table);
                 } else {
@@ -2575,7 +2557,7 @@ ${fraud.manager === managerName ? `
         cleanButton.style.backgroundColor = '#28a745';
 
         cleanButton.addEventListener('click', () => {
-            if (cleanButton.disabled) return; // Игнорируем клик, если кнопка отключена
+            if (cleanButton.disabled) return;
 
             const initials = GM_getValue(initialsKey, '');
             const currentDate = getCurrentDate();

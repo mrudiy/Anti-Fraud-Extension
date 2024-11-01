@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.7
+// @version      4.6.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.6.7";
+    const currentVersion = "4.6.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -544,8 +544,9 @@
                 childList: true,
                 subtree: true
             });
+            console.log(data.checklistExists, dateFromField, data.date)
 
-            if (data.checklistExists && dateFromField <= data.date) {
+            if (data.checklistExists && dateFromField <= data.date || isCheckedToday) {
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
                 alertDiv.style.backgroundColor = '#7fff00';

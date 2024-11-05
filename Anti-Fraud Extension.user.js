@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.6.9
+// @version      4.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.6.9";
+    const currentVersion = "4.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -511,6 +511,12 @@
         return dateMatch ? dateMatch[0] : null;
     }
 
+    function correctData(dateString) {
+        if (!dateString) return null;
+        const [day, month, year] = dateString.split('.').map(Number);
+        return new Date(year, month - 1, day);
+    }
+
     async function checkUserInChecklist() {
         const token = localStorage.getItem('authToken');
         const playerId = getPlayerID();
@@ -528,9 +534,18 @@
 
             const data = await response.json();
             console.log(data);
-            const dateFromField = getDateFromField();
-            const currentDate = getCurrentDate();
-            const isCheckedToday = (data.date === currentDate) || (dateFromField === currentDate);
+
+            const dataDate = correctData(data.date);
+            const dateFromField = correctData(getDateFromField());
+            const currentDate = correctData(getCurrentDate());
+
+            // Определяем переменные для проверки на текущую дату
+            const isDataDateValid = dataDate !== null;
+            const isDateFromFieldValid = dateFromField !== null;
+            const isCurrentDateValid = currentDate !== null;
+
+            const isCheckedToday = (isDataDateValid && currentDate && dataDate.getTime() === currentDate.getTime()) ||
+                  (isDateFromFieldValid && currentDate && dateFromField.getTime() === currentDate.getTime());
 
             const observer = new MutationObserver((mutations, obs) => {
                 const cleanButton = document.querySelector('.clean-button');
@@ -544,9 +559,13 @@
                 childList: true,
                 subtree: true
             });
-            console.log(data.checklistExists, dateFromField, data.date)
 
-            if (data.checklistExists && dateFromField <= data.date || data.checklistExists && isCheckedToday) {
+            console.log(dataDate, dateFromField, currentDate);
+
+            if (
+                (data.checklistExists && isDateFromFieldValid && isDataDateValid && dateFromField <= dataDate) ||
+                (data.checklistExists && isCheckedToday && isDataDateValid && currentDate <= dataDate)
+            ) {
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
                 alertDiv.style.backgroundColor = '#7fff00';
@@ -555,8 +574,8 @@
 
                 alertDiv.innerHTML =
                     `<strong>Користувач переглянутий.</strong>
-            <br><strong>Менеджер:</strong> ${data.manager_name}
-            <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
+                <br><strong>Менеджер:</strong> ${data.manager_name}
+                <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
 
                 const table = document.querySelector('#yw1');
 
@@ -571,6 +590,7 @@
             console.error('Error:', error);
         }
     }
+
 
 
 

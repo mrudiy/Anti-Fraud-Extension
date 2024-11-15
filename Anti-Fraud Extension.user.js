@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.7
+// @version      4.7.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.7";
+    const currentVersion = "4.7.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -883,12 +883,14 @@
         <tbody id="users-list"></tbody>
     </table>
     <button id="add-user-btn">Додати користувача</button>
+    <button id="alerts-settings-btn">Налаштування Alerts</button>
     `;
         createPopup('admin-popup', 'Менеджери', content, () => {});
 
         loadUsers();
 
         document.getElementById('add-user-btn').addEventListener('click', createRegisterPopup);
+        document.getElementById('alerts-settings-btn').addEventListener('click', createAlertSettingsPopup);
     }
 
     // Подключение Quill CSS и JS через динамическую загрузку
@@ -1816,6 +1818,19 @@ ${fraud.manager === managerName ? `
 }
 #add-user-btn:hover {
     background-color: #0056b3;
+}
+#alerts-settings-btn {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #8A2BE2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#alerts-settings-btn:hover {
+    background-color: #9400D3;
 }
 #register-popup input, #register-popup select {
     width: 100%;
@@ -2949,6 +2964,15 @@ ${fraud.manager === managerName ? `
                                     });
 
                                     cardHtml = cardTempDiv.innerHTML;
+                                    let spanElement = cardTempDiv.querySelector('.player_card');
+
+                                    if (spanElement) {
+                                        spanElement.removeAttribute('rel');
+                                        spanElement.removeAttribute('data-content');
+                                    }
+
+                                    cardHtml = cardTempDiv.innerHTML;
+                                    console.log(cardHtml)
                                     const first6 = card.slice(0, 6);
                                     const last4 = card.slice(-4);
 
@@ -4633,10 +4657,11 @@ ${fraud.manager === managerName ? `
 
                 if (targetElement) {
                     const newSpan = document.createElement('span');
-                    newSpan.textContent = ` Переглядають: ${managerNames}`;
+                    newSpan.textContent = `Переглядають: ${managerNames}`;
                     newSpan.style.fontWeight = 'bold';
                     newSpan.style.color = '#007BFF';
                     newSpan.style.marginLeft = '10px';
+                    newSpan.style.userSelect = 'none';
 
                     targetElement.parentNode.appendChild(newSpan);
                 }
@@ -4886,6 +4911,485 @@ ${fraud.manager === managerName ? `
         } catch (error) {
             console.error("Ошибка при проверке версии:", error);
         }
+    }
+
+    function createAlertSettingsPopup() {
+        const style = document.createElement('style');
+        style.textContent = `
+    /* Общий стиль для попапа */
+    #alert-settings-popup {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        max-width: 600px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Стили для выпадающих списков */
+    #project-select,
+    #alert-type-select {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        background-color: #ffffff;
+        font-size: 16px;
+        appearance: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+     #pendings-priority-select,
+    #payout-priority-select {
+    width: 100%;
+    height: 160px;
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 5px;
+    font-size: 14px;
+    box-sizing: border-box;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+    #project-select:focus,
+    #alert-type-select:focus,
+    #pendings-priority-select:focus,
+    #payout-priority-select:focus {
+        outline: none;
+        border-color: #80bdff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    }
+
+    /* Стиль для множественного выбора */
+    #pendings-priority-select option,
+    #payout-priority-select option {
+        padding-left: 25px; /* Отступ для галочки */
+        position: relative;
+    }
+
+    #pendings-priority-select option.selected::before,
+    #payout-priority-select option.selected::before {
+        content: '✔'; /* Галочка */
+        position: absolute;
+        left: 5px;
+        color: green;
+        font-weight: bold;
+    }
+
+    /* Стили для кнопок */
+    #pendings-update-btn,
+    #payout-update-btn {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    #pendings-update-btn:hover,
+    #payout-update-btn:hover {
+        background-color: #218838;
+    }
+
+    /* Стили для сообщений об ошибках и успехах */
+    .error {
+        color: #dc3545;
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+    .success {
+        color: #28a745;
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+    /* Стили для полей ввода */
+    #pendings-total-amount,
+    #payout-total-amount {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 16px;
+        background-color: #ffffff;
+        color: #495057;
+    }
+
+    #pendings-total-amount:focus,
+    #payout-total-amount:focus {
+        outline: none;
+        border-color: #80bdff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    }
+
+    /* Стиль для контейнера с приоритетом и суммой */
+    .priority-amount-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    /* Стили для чекбокса автоотключения */
+    #payout-auto-disable {
+        margin-right: 10px;
+        transform: scale(1.2); /* Увеличим чекбокс для лучшей видимости */
+    }
+
+    /* Стиль для контейнера чекбокса и подписи */
+    .checkbox-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+    }
+
+    #alert-error-msg,
+    #alert-success-msg {
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+       #update-deposits-btn {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    #update-deposits-btn:hover {
+        background-color: #218838;
+    }
+
+    /* Стили для контейнера "Deposits" */
+    .deposit-priority-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .deposit-priority-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .priority-label {
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .amount-input,
+    .bonus-input {
+        width: 150px;
+        padding: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+    }
+
+    .card-select {
+        width: 100px;
+        padding: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+    }
+
+    #inefficient-transaction-percent {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 16px;
+        background-color: #ffffff;
+        color: #495057;
+    }
+`;
+
+
+        document.head.appendChild(style);
+
+        const content = `
+        <select id="project-select" required>
+            <option value="" disabled selected>Оберіть проєкт</option>
+            <option value="Slotoking">Slotoking</option>
+            <option value="777">777</option>
+        </select>
+
+        <div id="alert-type-section" style="display: none;">
+            <select id="alert-type-select" required>
+                <option value="" disabled selected>Оберіть алерт</option>
+                <option value="Pendings">Pendings</option>
+                <option value="PayOut">PayOut</option>
+                <option value="Deposits">Deposits</option>
+            </select>
+        </div>
+
+        <div id="pendings-settings" style="display: none;">
+            <div class="priority-amount-container">
+                <label for="pendings-priority-select">Пріоритет:</label>
+                <select id="pendings-priority-select" multiple required></select>
+                <label for="pendings-total-amount">Сума:</label>
+                <input type="text" id="pendings-total-amount">
+            </div>
+            <button id="pendings-update-btn">Оновити</button>
+        </div>
+
+        <div id="payout-settings" style="display: none;">
+            <div class="priority-amount-container">
+                <label for="payout-priority-select">Пріоритет:</label>
+                <select id="payout-priority-select" multiple required></select>
+                <label for="payout-total-amount">Мінімальна сума виплати:</label>
+                <input type="text" id="payout-total-amount">
+                <label for="payout-auto-disable">Автоматичне відключення авто:</label>
+                <input type="checkbox" id="payout-auto-disable">
+            </div>
+            <button id="payout-update-btn">Оновити</button>
+        </div>
+
+        <div id="deposits-settings" style="display: none;">
+            <div class="deposit-priority-container">
+                ${["1 (75к)", "2 (65к)", "3 (60к)", "4 (50к)", "5 (45к)", "6 (30к)", "7 (20к)"].map(priority => `
+                    <div class="deposit-priority-item">
+                        <span class="priority-label">Приоритет ${priority}</span>
+                        <input type="text" class="amount-input" placeholder="Сума" />
+                        <input type="text" class="bonus-input" placeholder="Сума з бонусом" />
+                        <select class="card-select" multiple>
+                            <option value="foreign">Чужа</option>
+                            <option value="own">Своя</option>
+                            <option value="unknown">Невідома</option>
+                        </select>
+                    </div>
+                `).join('')}
+            </div>
+            <label for="inefficient-transaction-percent">Відсоток недоцільних транзакцій:</label>
+            <input type="text" id="inefficient-transaction-percent" placeholder="Введіть відсоток (приклад): 10%" />
+            <button id="update-deposits-btn">Оновити</button>
+        </div>
+
+        <div class="error" id="alert-error-msg"></div>
+        <div class="success" id="alert-success-msg"></div>
+    `;
+
+        createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {});
+
+        document.getElementById('project-select').addEventListener('change', (e) => {
+            document.getElementById('alert-type-select').selectedIndex = 0;
+            document.getElementById('alert-type-section').style.display = e.target.value ? 'block' : 'none';
+            document.getElementById('pendings-settings').style.display = 'none';
+            document.getElementById('payout-settings').style.display = 'none';
+            document.getElementById('deposits-settings').style.display = 'none';
+        });
+
+        document.getElementById('alert-type-select').addEventListener('change', (e) => {
+            const project = document.getElementById('project-select').value;
+            const selectedType = e.target.value;
+            if (selectedType === 'Pendings') {
+                document.getElementById('pendings-settings').style.display = 'block';
+                document.getElementById('payout-settings').style.display = 'none';
+                document.getElementById('deposits-settings').style.display = 'none';
+                loadSettings('Pendings', project);
+            } else if (selectedType === 'PayOut') {
+                document.getElementById('payout-settings').style.display = 'block';
+                document.getElementById('deposits-settings').style.display = 'none';
+                document.getElementById('pendings-settings').style.display = 'none';
+                loadSettings('PayOut', project);
+            } else if (selectedType === 'Deposits') {
+                document.getElementById('deposits-settings').style.display = 'block';
+                document.getElementById('pendings-settings').style.display = 'none';
+                document.getElementById('payout-settings').style.display = 'none';
+                loadSettings('Deposits', project);
+            }
+        });
+
+        document.getElementById('pendings-update-btn').addEventListener('click', () => updateSettings('Pendings'));
+        document.getElementById('payout-update-btn').addEventListener('click', () => updateSettings('PayOut'));
+        document.getElementById('update-deposits-btn').addEventListener('click', () => updateSettings('Deposits'));
+    }
+
+    function loadSettings(alertType, project) {
+        const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
+
+        fetch(`https://vps65001.hyperhost.name/get_settings?alert_type=${alertType}&project=${project}`)
+            .then(response => response.json())
+            .then(data => {
+            if (alertType === 'Deposits') {
+                const depositItems = document.querySelectorAll('.deposit-priority-item');
+                depositItems.forEach((item, index) => {
+                    const priorityData = data.settings ? data.settings[index] : null;
+
+                    if (priorityData) {
+                        const amountInput = item.querySelector('.amount-input');
+                        const bonusInput = item.querySelector('.bonus-input');
+                        const cardSelect = item.querySelector('.card-select');
+
+                        amountInput.value = priorityData.amount || '';
+                        bonusInput.value = priorityData.bonusAmount || '';
+
+                        Array.from(cardSelect.options).forEach(option => {
+                            option.selected = priorityData.cards.includes(option.value);
+                        });
+                    }
+                });
+
+                const inefficientTransactionInput = document.getElementById('inefficient-transaction-percent');
+                if (data.inefficient_transaction_percent !== undefined) {
+                    inefficientTransactionInput.value = `${data.inefficient_transaction_percent * 100}%`;
+                }
+            } else {
+                const prioritySelect = document.getElementById(`${prefix}-priority-select`);
+                prioritySelect.innerHTML = '';
+
+                const defaultPriorities = [
+                    "Приоритет 1 (75к)", "Приоритет 2 (65к)", "Приоритет 3 (60к)",
+                    "Приоритет 4 (50к)", "Приоритет 5 (45к)", "Приоритет 6 (30к)",
+                    "Приоритет 7 (20к)", "n/a"
+                ];
+                defaultPriorities.forEach(priority => {
+                    const option = document.createElement('option');
+                    option.value = priority;
+                    option.textContent = priority;
+                    if (data.priorities && data.priorities.includes(priority)) {
+                        option.classList.add('selected');
+                    }
+                    option.addEventListener('click', () => option.classList.toggle('selected'));
+                    prioritySelect.appendChild(option);
+                });
+
+                document.getElementById(`${prefix}-total-amount`).value = data.total_amount || '';
+                const autoDisableCheckbox = document.getElementById(`${prefix}-auto-disable`);
+                if (autoDisableCheckbox) {
+                    autoDisableCheckbox.checked = data.auto_disable === "True";
+                }
+            }
+        })
+            .catch(error => console.error('Ошибка при загрузке настроек:', error));
+    }
+
+
+    function updateSettings(alertType) {
+        const project = document.getElementById('project-select').value;
+
+        if (alertType === 'Deposits') {
+            const depositSettings = Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => {
+                return {
+                    priority: item.querySelector('.priority-label').textContent.trim(),
+                    amount: item.querySelector('.amount-input').value.trim(),
+                    bonusAmount: item.querySelector('.bonus-input').value.trim(),
+                    cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
+                };
+            });
+
+            const inefficientTransactionPercent = document.getElementById('inefficient-transaction-percent').value.trim();
+
+            if (depositSettings.some(setting => !/^\d+$/.test(setting.amount) || !/^\d+$/.test(setting.bonusAmount))) {
+                document.getElementById('alert-error-msg').textContent = "Усі поля суми мають бути заповнені коректними числовими значеннями.";
+                return;
+            }
+
+            if (!/^\d+%$/.test(inefficientTransactionPercent)) {
+                document.getElementById('alert-error-msg').textContent = "Введіть коректний відсоток (наприклад, 10%).";
+                return;
+            }
+
+            const data = {
+                alert_type: alertType,
+                project: project,
+                settings: depositSettings,
+                inefficient_transaction_percent: inefficientTransactionPercent
+            };
+
+            console.log(data)
+
+            fetch('https://vps65001.hyperhost.name/update_settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+                .then(response => response.json())
+                .then(result => {
+                if (result.success) {
+                    document.getElementById('alert-success-msg').textContent = "Успішно оновлено.";
+                    document.getElementById('alert-error-msg').textContent = '';
+                } else {
+                    document.getElementById('alert-error-msg').textContent = result.message || "Виникла помилка.";
+                }
+            })
+                .catch(error => {
+                document.getElementById('alert-error-msg').textContent = "Виникла помилка при відправці даних.";
+                console.error('Ошибка:', error);
+            });
+
+            return;
+        }
+        const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
+
+        const selectedPriorities = Array.from(document.getElementById(`${prefix}-priority-select`).options)
+        .filter(option => option.classList.contains('selected'))
+        .map(option => option.value);
+
+        const totalAmount = document.getElementById(`${prefix}-total-amount`).value.trim();
+        const autoDisable = alertType === 'PayOut' && document.getElementById('payout-auto-disable').checked;
+
+        if (selectedPriorities.length === 0) {
+            document.getElementById('alert-error-msg').textContent = "Виберіть хоча б один приорітет.";
+            return;
+        }
+
+        if (!/^\d+$/.test(totalAmount)) {
+            document.getElementById('alert-error-msg').textContent = "Введіть корректну суму (лише цифри).";
+            return;
+        }
+
+        const data = {
+            alert_type: alertType,
+            project: project,
+            amount: parseInt(totalAmount),
+            priorities: selectedPriorities,
+            auto_disable: autoDisable
+        };
+
+        fetch('https://vps65001.hyperhost.name/update_settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(result => {
+            if (result.success) {
+                document.getElementById('alert-success-msg').textContent = "Успішно оновлено.";
+                document.getElementById('alert-error-msg').textContent = '';
+            } else {
+                document.getElementById('alert-error-msg').textContent = result.message || "Виникла помилка.";
+            }
+        })
+            .catch(error => {
+            document.getElementById('alert-error-msg').textContent = "Виникла помилка при відправці даних.";
+            console.error('Ошибка:', error);
+        });
     }
 
     window.addEventListener('load', async function() {

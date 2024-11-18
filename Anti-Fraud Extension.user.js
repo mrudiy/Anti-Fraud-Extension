@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.7.1
+// @version      4.7.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.7.1";
+    const currentVersion = "4.7.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5168,7 +5168,7 @@ ${fraud.manager === managerName ? `
 
         <div id="deposits-settings" style="display: none;">
             <div class="deposit-priority-container">
-                ${["1 (75к)", "2 (65к)", "3 (60к)", "4 (50к)", "5 (45к)", "6 (30к)", "7 (20к)"].map(priority => `
+                ${["1 (75к)", "2 (65к)", "3 (60к)", "4 (50к)", "5 (45к)", "6 (30к)", "7 (20к)", "8 (20к)"].map(priority => `
                     <div class="deposit-priority-item">
                         <span class="priority-label">Приоритет ${priority}</span>
                         <input type="text" class="amount-input" placeholder="Сума" />
@@ -5262,7 +5262,7 @@ ${fraud.manager === managerName ? `
                 const defaultPriorities = [
                     "Приоритет 1 (75к)", "Приоритет 2 (65к)", "Приоритет 3 (60к)",
                     "Приоритет 4 (50к)", "Приоритет 5 (45к)", "Приоритет 6 (30к)",
-                    "Приоритет 7 (20к)", "n/a"
+                    "Приоритет 7 (20к)", "Приоритет 8 (20к)", "n/a"
                 ];
                 defaultPriorities.forEach(priority => {
                     const option = document.createElement('option');

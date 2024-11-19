@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.7.2
+// @version      4.7.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,9 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.7.2";
+    const currentVersion = "4.7.3";
+    const kingSheet = 'KING Листопад🍂';
+    const sevensSheet = 'SEVENS🎰';
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -539,7 +541,6 @@
             const dateFromField = correctData(getDateFromField());
             const currentDate = correctData(getCurrentDate());
 
-            // Определяем переменные для проверки на текущую дату
             const isDataDateValid = dataDate !== null;
             const isDateFromFieldValid = dateFromField !== null;
             const isCurrentDateValid = currentDate !== null;
@@ -893,7 +894,6 @@
         document.getElementById('alerts-settings-btn').addEventListener('click', createAlertSettingsPopup);
     }
 
-    // Подключение Quill CSS и JS через динамическую загрузку
     function loadQuillResources() {
         const quillCSS = document.createElement('link');
         quillCSS.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
@@ -1137,7 +1137,6 @@
         return data;
     }
 
-    // Сохранение новой статьи
     async function saveArticle(title, content) {
         const response = await fetch('https://vps65001.hyperhost.name/save_article', {
             method: 'POST',
@@ -1153,7 +1152,6 @@
         return data;
     }
 
-    // Обновление существующей статьи
     async function updateArticle(articleId, title, content) {
         const response = await fetch(`https://vps65001.hyperhost.name/update_article/${articleId}`, {
             method: 'POST',
@@ -1169,7 +1167,6 @@
         return data;
     }
 
-    // Удаление статьи
     async function deleteArticle(articleId) {
         const response = await fetch(`https://vps65001.hyperhost.name/delete_article/${articleId}`, {
             method: 'DELETE'
@@ -1180,7 +1177,6 @@
         return data;
     }
 
-    // Функция для закрытия попапа
     function closePopup(popupId) {
         const popup = document.getElementById(popupId);
         if (popup) {
@@ -2295,8 +2291,8 @@ ${fraud.manager === managerName ? `
 
     function formatAmount(balance) {
         let formattedBalance;
-        const isNegative = balance < 0; // Проверяем, отрицательное ли значение
-        const absoluteBalance = Math.abs(balance); // Преобразуем в абсолютное значение
+        const isNegative = balance < 0;
+        const absoluteBalance = Math.abs(balance);
 
         if (absoluteBalance >= 1000000) {
             formattedBalance = absoluteBalance / 1000000;
@@ -2305,10 +2301,10 @@ ${fraud.manager === managerName ? `
             formattedBalance = absoluteBalance / 1000;
             formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
         } else {
-            formattedBalance = absoluteBalance.toFixed(2); // Возвращаем абсолютное значение, если оно меньше 1000
+            formattedBalance = absoluteBalance.toFixed(2);
         }
 
-        return isNegative ? `-${formattedBalance}` : formattedBalance; // Добавляем знак минуса, если значение было отрицательным
+        return isNegative ? `-${formattedBalance}` : formattedBalance;
     }
 
     function handleShortcut(event) {
@@ -2361,9 +2357,8 @@ ${fraud.manager === managerName ? `
         popupBox = document.createElement('div');
         popupBox.style.position = 'fixed';
         popupBox.style.top = '20px';
-        popupBox.style.right = ''; // Забираємо значення з правої сторони
+        popupBox.style.right = '';
 
-        // Розміщуємо попап справа через обчислення left
         const popupWidth = 270;
         popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`; // 20px - відступ від правого краю
         popupBox.style.width = `${popupWidth}px`; // Задаємо ширину попапу
@@ -2422,7 +2417,7 @@ ${fraud.manager === managerName ? `
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
         }
-
+        const provider = await verificationProvider();
         const maintext = document.createElement('div');
         maintext.className = 'popup-main-text';
         maintext.innerHTML = `
@@ -2445,7 +2440,14 @@ ${fraud.manager === managerName ? `
         `).join('<br>')}
         </center>` : ''}
 `;
-
+        if (provider === 'Kycaid' || provider === 'SumSub') {
+            maintext.innerHTML += `
+            <center>
+                <span style="color: red; font-weight: bold;">
+                  Верифікація: ${provider}
+                </span>
+            </center>`;
+        }
 
         popupBox.appendChild(maintext);
 
@@ -2559,12 +2561,12 @@ ${fraud.manager === managerName ? `
             }
 
             reminderIcon.onclick = () => {
-                createReminderPopup();  // Открываем попап с памяткой
-                reminderIcon.classList.remove('blinking');  // Убираем мигание после клика
-                GM_setValue(reminderBlinkKey, false);  // Сохраняем, что мигание больше не нужно
+                createReminderPopup();
+                reminderIcon.classList.remove('blinking');
+                GM_setValue(reminderBlinkKey, false);
             };
 
-            popupBox.appendChild(reminderIcon);  // Добавляем иконку в DOM
+            popupBox.appendChild(reminderIcon);
         }
 
         const buttonStyle = `
@@ -4788,24 +4790,84 @@ ${fraud.manager === managerName ? `
             const newValue = checkbox.checked;
             if (!newValue) {
                 const token = localStorage.getItem('authToken');
-                console.log(token)
+                console.log(token);
                 const initials = GM_getValue(initialsKey, '');
                 const currentDate = getCurrentDate();
                 const playerID = getPlayerID();
                 const project = getProject();
                 const url = window.location.href;
                 const time = getCurrentTime();
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+                const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
 
-                const dataToInsert = {
-                    date: currentDate,
-                    url: url,
-                    project: project,
-                    playerID: playerID,
-                    initials: initials,
-                    comment: `Вимкнув автовиплату в ${time}`,
-                    autopayment: true,
-                };
-                sendAutoPaymentDataToServer(dataToInsert, token);
+
+
+                const fieldDate = getDateFromField();
+                const today = getCurrentDate();
+
+                const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+                if (!gatewayElement) {
+                    console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
+                    return;
+                }
+                let insertText = '';
+                if (currentLanguage === 'українська') {
+                    insertText = `Вимкнув автовиплату в ${time}`;
+                } else {
+                    insertText = `Отключил автовыплату в ${time}`;
+                }
+
+                if (fieldDate === today) {
+                    const lines = gatewayElement.innerHTML.trim().split('<br>');
+                    if (lines.length > 1) {
+                        const secondLine = lines[1];
+                        const lastPipeIndex = secondLine.lastIndexOf('|');
+                        if (lastPipeIndex !== -1) {
+                            const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                            const updatedSecondLine = `${beforePipe} ${insertText} | ${afterPipe}`.trim();
+                            lines[1] = updatedSecondLine;
+                            gatewayElement.innerHTML = lines.join('<br>');
+                            gatewayElement.dispatchEvent(new Event('input'));
+                            if (doneButton) {
+                                doneButton.click();
+                            }
+                        } else {
+                            console.warn('Symbol "|" not found in the second line.');
+                        }
+                    } else {
+                        console.warn('Not enough lines to process the second line.');
+                    }
+                } else {
+                    const checkButton = document.getElementById('check-button');
+                    if (checkButton) {
+                        checkButton.click();
+
+
+                        const lines = gatewayElement.innerHTML.trim().split('<br>');
+                        if (lines.length > 1) {
+                            const secondLine = lines[1];
+                            const lastPipeIndex = secondLine.lastIndexOf('|');
+                            if (lastPipeIndex !== -1) {
+                                const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                                const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                                const updatedSecondLine = `${beforePipe} ${afterPipe} ${insertText} |`.trim();
+                                lines[1] = updatedSecondLine;
+                                gatewayElement.innerHTML = lines.join('<br>');
+                                gatewayElement.dispatchEvent(new Event('input'));
+                                if (doneButton) {
+                                    doneButton.click();
+                                }
+                            } else {
+                                console.warn('Symbol "|" not found in the second line.');
+                            }
+                        } else {
+                            console.warn('Not enough lines to process the second line.');
+                        }
+                    } else {
+                        console.warn('Button with id "check-button" not found.');
+                    }
+                }
                 clearInterval(checkInterval);
             }
         }, 500);
@@ -4817,7 +4879,7 @@ ${fraud.manager === managerName ? `
         const updateButton = document.getElementById('yw2');
 
         if (updateButton) {
-            updateButton.addEventListener('click', function(event) {
+            updateButton.addEventListener('click', function (event) {
                 event.preventDefault();
 
                 const statusInput = document.querySelector('input[name="Players[status]"]');
@@ -4825,6 +4887,7 @@ ${fraud.manager === managerName ? `
 
                 const reasonInput = document.querySelector('input[name="Players[inactive_reason]"]');
                 const inactiveReason = reasonInput.value;
+                const playerID = getPlayerID();
 
                 if (currentStatus === 'UNCONFIRMED' && (inactiveReason === 'VIOLATION_RULES' || inactiveReason === 'VIOLATION_RULES_FRAUD')) {
                     Swal.fire({
@@ -4835,30 +4898,99 @@ ${fraud.manager === managerName ? `
                         cancelButtonText: 'Ні'
                     }).then((result) => {
                         if (result.isConfirmed) {
-                            const currentDate = getCurrentDate();
-                            const initials = GM_getValue(initialsKey, '');
-                            const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+                            const reasons = [
+                                'Після рефанду використовує чужу картку',
+                                'Підозра на малолітнього',
+                                'Підозра на Лудомана',
+                                'Схемщик/потенц. фрод',
+                                'Більше двох чужих карток в місяць',
+                                'Картка родича, неприбутковий',
+                                'Недоцільні транзакції',
+                                'Картковий фрод',
+                                'Фін претензія',
+                                'Cascad'
+                            ];
 
-                            const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
-                            commentField.innerHTML = message + commentField.innerHTML;
-
-                            const inputEvent = new Event('input', {
-                                bubbles: true,
-                                cancelable: true,
+                            const selectElement = document.createElement('select');
+                            selectElement.id = 'reasonSelect';
+                            selectElement.innerHTML = '<option value="">Виберіть причину</option>';
+                            reasons.forEach((reason) => {
+                                const option = document.createElement('option');
+                                option.value = reason;
+                                option.textContent = reason;
+                                selectElement.appendChild(option);
                             });
-                            commentField.dispatchEvent(inputEvent);
 
-                            const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
-                            if (updateCommentButton) {
-                                updateCommentButton.click();
+                            const confirmButton = Swal.fire({
+                                title: 'Виберіть причину:',
+                                html: selectElement.outerHTML,
+                                showCancelButton: true,
+                                confirmButtonText: 'Підтвердити',
+                                cancelButtonText: 'Відміна',
+                                preConfirm: () => {
+                                    const selectedReason = document.getElementById('reasonSelect').value;
+                                    if (!selectedReason) {
+                                        Swal.showValidationMessage('Будь ласка, виберіть причину!');
+                                    }
+                                    return selectedReason;
+                                }
+                            });
 
-                                setTimeout(() => {
-                                    updateButton.form.submit();
-                                }, 100);
-                            } else {
-                                updateButton.form.submit();
-                            }
-                        } else {
+                            confirmButton.then((result) => {
+                                if (result.isConfirmed) {
+                                    const selectedReason = result.value;
+                                    const currentDate = getCurrentDate();
+                                    const initials = GM_getValue(initialsKey, '');
+                                    const project = getProject();
+                                    const name = Array.from(document.querySelectorAll('tr'))
+                                    .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
+                                    .map(row => row.querySelector('td').textContent.trim())
+                                    .join(' ');
+                                    const email = Array.from(document.querySelectorAll('tr.odd'))
+                                    .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
+                                    ?.querySelector('td')?.textContent.trim().split('\n')[0];
+
+                                    const sheetName = project === 'slotoking' ? kingSheet: sevensSheet;
+
+                                    getAccessToken().then(accessToken => {
+                                        const dataToInsert = {
+                                            url: window.location.href,
+                                            playerID: playerID,
+                                            date: '',
+                                            name: name,
+                                            email: email,
+                                            department: 'Anti Fraud',
+                                            reason: selectedReason
+                                        };
+
+                                        sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+                                    }).catch(err => {
+                                        console.error("Error getting Access Token:", err);
+                                    });
+
+                                    const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+
+                                    const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
+                                    commentField.innerHTML = message + commentField.innerHTML;
+
+                                    const inputEvent = new Event('input', {
+                                        bubbles: true,
+                                        cancelable: true,
+                                    });
+                                    commentField.dispatchEvent(inputEvent);
+
+                                    const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
+                                    if (updateCommentButton) {
+                                        updateCommentButton.click();
+
+                                        setTimeout(() => {
+                                            updateButton.form.submit();
+                                        }, 300);
+                                    } else {
+                                        updateButton.form.submit();
+                                    }
+                                }
+                            });
                         }
                     });
                 } else {
@@ -4867,6 +4999,8 @@ ${fraud.manager === managerName ? `
             });
         }
     }
+
+
 
     async function checkForUpdates() {
         try {
@@ -5391,6 +5525,247 @@ ${fraud.manager === managerName ? `
             console.error('Ошибка:', error);
         });
     }
+    function verificationProvider() {
+        return new Promise((resolve, reject) => {
+            const playerId = getPlayerID();
+            const project = getProject();
+
+            const url = `https://admin.${project}.ua/players/playerIdentityVerification/index/`;
+
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: url,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                data: `backend_modules_players_models_PlayerIdentityVerificationSearchForm[login]=${encodeURIComponent(playerId)}`,
+                onload: function (response) {
+                    if (response.status === 200) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const rows = doc.querySelectorAll('tbody tr');
+                        for (let row of rows) {
+                            const cells = row.querySelectorAll('td');
+                            const verificationCount = cells[1]?.textContent.trim();
+                            if (verificationCount === '1') {
+                                const provider = cells[7]?.textContent.trim();
+                                console.log('Найден провайдер:', provider);
+                                resolve(provider);
+                                return;
+                            }
+                        }
+                        resolve(null);
+                    } else {
+                        reject(new Error(`Ошибка запроса: ${response.status} ${response.statusText}`));
+                    }
+                },
+                onerror: function (error) {
+                    reject(new Error(`Ошибка сети: ${error}`));
+                }
+            });
+        });
+    }
+
+    const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
+    const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
+    const sheetId = "11D8k58HcQOBHlK3CpmaWbFOj8vUk1xhE_5VQ88fxBvk";
+
+    const scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
+
+    function getAccessToken() {
+        return new Promise((resolve, reject) => {
+            console.log("Generating JWT...");
+            const iat = Math.floor(Date.now() / 1000);
+            const exp = iat + 3600;
+
+            const oHeader = { alg: "RS256", typ: "JWT" };
+            const oPayload = {
+                iss: clientEmail,
+                scope: scopes,
+                aud: "https://oauth2.googleapis.com/token",
+                exp: exp,
+                iat: iat
+            };
+
+            const sHeader = JSON.stringify(oHeader);
+            const sPayload = JSON.stringify(oPayload);
+
+            const sJWT = KJUR.jws.JWS.sign("RS256", sHeader, sPayload, privateKey);
+
+            fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`
+            })
+                .then(response => response.json())
+                .then(data => {
+                if (data.access_token) {
+                    resolve(data.access_token);
+                } else {
+                    reject("No access_token found in response.");
+                }
+            })
+                .catch(err => {
+                console.error("Error during token request:", err);
+                reject(err);
+            });
+        });
+    }
+
+    function sendDataToGoogleSheet(accessToken, sheetName, data) {
+        console.log("Sending data to Google Sheets...");
+        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}!A1:append?valueInputOption=RAW`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken,
+            },
+            body: JSON.stringify({
+                values: [[
+                    data.url,
+                    data.playerID,
+                    data.date,
+                    data.name,
+                    data.email,
+                    data.department,
+                    data.reason
+                ]]
+            })
+        }).then(response => response.json())
+            .then(data => {
+        })
+            .catch((error) => {
+            console.error("Error sending data to Google Sheets:", error);
+        });
+    }
+
+    function goToGoogleSheet() {
+        if (document.querySelector('.attention-header')?.textContent.includes('Не подтвержден!')) {
+            const targetDiv = document.querySelector('.form-actions');
+            if (targetDiv) {
+                const button = document.createElement('button');
+                button.id = 'custom-verification-button';
+                button.className = 'btn btn-info';
+                button.innerHTML = '<i class="fa fa-plus"></i> На верифікацію';
+                button.style.marginLeft = '10px';
+                targetDiv.appendChild(button);
+
+                button.addEventListener('click', (event) => {
+                    event.preventDefault();
+
+                    Swal.fire({
+                        title: "Відправити на верифікацію",
+                        html: `
+                        <style>
+                            .swal2-popup .swal2-html-container {
+                                overflow: visible !important; /* Убираем ограничения области отображения */
+                            }
+                            .swal2-select {
+                                height: auto !important; /* Убираем фиксированную высоту */
+                                max-height: 150px; /* Ограничиваем максимальную высоту */
+                                width: 85%; /* Растягиваем на всю ширину */
+                                margin-bottom: 10px; /* Добавляем отступ */
+                                overflow-y: auto; /* Прокрутка при большом количестве элементов */
+                                box-sizing: border-box; /* Учитываем паддинги */
+                            }
+                            select {
+                                max-width: 100%; /* Ограничиваем ширину */
+                                font-size: 14px; /* Делаем текст аккуратным */
+                                padding: 5px; /* Добавляем внутренний отступ */
+                            }
+                            option {
+                                font-size: 14px; /* Текст для опций меньше */
+                                padding: 4px; /* Внутренний отступ для опций */
+                            }
+                        </style>
+                        <label for="department-select">Оберіь відділ</label>
+                        <select id="department-select" class="swal2-select">
+                            <option value="">Оберіть...</option>
+                            <option value="PayOut">PayOut</option>
+                            <option value="Managers">Managers</option>
+                            <option value="Cascad">Cascad</option>
+                            <option value="Anti Fraud">Anti Fraud</option>
+                        </select>
+                        <label for="reason-select">Вкажіть причину</label>
+                        <select id="reason-select" class="swal2-select">
+                            <option value="">Оберіть...</option>
+                            ${[
+                                'Після рефанду використовує чужу картку',
+                                'Підозра на малолітнього',
+                                'Підозра на Лудомана',
+                                'Схемщик/потенц. фрод',
+                                'Більше двох чужих карток в місяць',
+                                'Картка родича, неприбутковий',
+                                'Недоцільні транзакції',
+                                'Картковий фрод',
+                                'Фін претензія',
+                                'Cascad'
+                            ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
+                        </select>
+                    `,
+                        showCancelButton: true,
+                        confirmButtonText: "Відправити",
+                        cancelButtonText: "Скасувати",
+                        preConfirm: () => {
+                            const department = document.getElementById('department-select').value;
+                            const reason = document.getElementById('reason-select').value;
+
+                            if (!department || !reason) {
+                                Swal.showValidationMessage("Будь ласка, оберіть всі параметри");
+                                return false;
+                            }
+                            return { department, reason };
+                        }
+                    }).then(result => {
+                        if (result.isConfirmed) {
+                            const { department, reason } = result.value;
+                            const playerID = getPlayerID();
+                            const project = getProject();
+                            const name = Array.from(document.querySelectorAll('tr'))
+                            .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
+                            .map(row => row.querySelector('td').textContent.trim())
+                            .join(' ');
+                            const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
+                            .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
+                            ?.querySelector('td > div')
+                            ?.childNodes[0]?.textContent.trim();
+                            console.log('email', email);
+
+
+                            const sheetName = project === 'slotoking' ? kingSheet: sevensSheet;
+
+                            getAccessToken().then(accessToken => {
+                                const dataToInsert = {
+                                    url: window.location.href,
+                                    playerID: playerID,
+                                    date: '',
+                                    name: name,
+                                    email: email,
+                                    department: department,
+                                    reason: reason
+                                };
+                                console.log(dataToInsert)
+                                sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+                            }).catch(err => {
+                                console.error("Error getting Access Token:", err);
+                            });
+
+                            Swal.fire({
+                                icon: "success",
+                                title: "Успішно!",
+                                text: `Додали у таблицю.\nВідділ: ${department}\nПричина: ${reason}`,
+                            });
+                        }
+                    });
+                });
+            }
+        }
+    }
+
+
 
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
@@ -5412,6 +5787,7 @@ ${fraud.manager === managerName ? `
                 setTimeout(handlePopup, 200);
                 createCheckIPButton();
                 checkAutoPayment();
+                goToGoogleSheet();
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();

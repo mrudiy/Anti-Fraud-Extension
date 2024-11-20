@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.7.3
+// @version      4.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,7 +42,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.7.3";
+    const currentVersion = "4.8";
     const kingSheet = 'KING Листопад🍂';
     const sevensSheet = 'SEVENS🎰';
 
@@ -5765,6 +5765,124 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function makeBonusClickable() {
+        document.querySelectorAll('td').forEach(td => {
+            const bonusMatch = td.textContent.match(/бонус(а)? №\s*(\d+)/i);
+            if (bonusMatch) {
+                const bonusNumber = bonusMatch[2];
+
+                const link = document.createElement('a');
+                link.href = '#';
+                link.textContent = `№ ${bonusNumber}`;
+                link.style.color = 'blue';
+                link.style.cursor = 'pointer';
+                link.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    fetchBonusInfo(bonusNumber);
+                });
+
+                td.innerHTML = td.innerHTML.replace(
+                    bonusMatch[0],
+                    `бонуса <a href="#" style="color: blue; cursor: pointer;">№ ${bonusNumber}</a>`
+                );
+                td.querySelector('a').addEventListener('click', (event) => {
+                    event.preventDefault();
+                    fetchBonusInfo(bonusNumber);
+                });
+            }
+        });
+    }
+
+    function fetchBonusInfo(bonusNumber) {
+        const project = getProject();
+        const url = `https://admin.${project}.ua/bonuses/bonusesItems/preview/${bonusNumber}/`;
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                "accept": "*/*",
+                "x-requested-with": "XMLHttpRequest"
+            },
+            credentials: 'include'
+        })
+            .then(response => response.text())
+            .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            let modalContent = doc.querySelector('.modal-content');
+
+            if (modalContent) {
+                const closeButton = modalContent.querySelector('button.close');
+                if (closeButton) {
+                    closeButton.remove();
+                }
+
+                showPopup(modalContent.innerHTML);
+            } else {
+                alert('Ошибка: не удалось получить данные о бонусе.');
+            }
+        })
+            .catch(error => {
+            console.error('Ошибка при запросе бонуса:', error);
+        });
+    }
+
+
+    function showPopup(content) {
+        let popup = document.getElementById('custom-popup');
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.id = 'custom-popup';
+            popup.style.position = 'fixed';
+            popup.style.top = '10%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, 0)';
+            popup.style.backgroundColor = '#fff';
+            popup.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+            popup.style.zIndex = '9999';
+            popup.style.width = '60%';
+            popup.style.padding = '20px';
+            popup.style.borderRadius = '8px';
+            popup.style.overflowY = 'auto';
+            popup.style.maxHeight = '80%';
+
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Закрыть';
+            closeButton.style.position = 'absolute';
+            closeButton.style.top = '10px';
+            closeButton.style.right = '10px';
+            closeButton.style.backgroundColor = 'red';
+            closeButton.style.color = 'white';
+            closeButton.style.border = 'none';
+            closeButton.style.padding = '5px 10px';
+            closeButton.style.cursor = 'pointer';
+            closeButton.addEventListener('click', () => {
+                popup.remove();
+            });
+
+            popup.appendChild(closeButton);
+            document.body.appendChild(popup);
+        }
+
+        popup.innerHTML = content;
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '&times;'; // Крестик
+        closeButton.style.position = 'absolute';
+        closeButton.style.top = '10px';
+        closeButton.style.right = '10px';
+        closeButton.style.backgroundColor = 'transparent';
+        closeButton.style.color = 'red';
+        closeButton.style.border = 'none';
+        closeButton.style.fontSize = '24px';
+        closeButton.style.cursor = 'pointer';
+
+        closeButton.addEventListener('click', () => {
+            popup.remove();
+        });
+        popup.innerHTML = content;
+        popup.appendChild(closeButton);
+    }
+
 
 
     window.addEventListener('load', async function() {
@@ -5807,6 +5925,7 @@ ${fraud.manager === managerName ? `
                 initTransactionsPage();
                 processTableRows();
                 observeDOMChangesTransactions();
+                makeBonusClickable();
             }
         } else {
             console.log('User is not logged in or token is invalid');

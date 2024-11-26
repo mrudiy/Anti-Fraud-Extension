@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.8
+// @version      4.8.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,9 +42,10 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const currentVersion = "4.8";
     const kingSheet = 'KING Листопад🍂';
     const sevensSheet = 'SEVENS🎰';
+    const currentVersion = "4.8.1";
+
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4262,7 +4263,9 @@ ${fraud.manager === managerName ? `
 
         if (button) {
             button.addEventListener('click', () => {
-                const firstLine = textarea.value.split('\n')[0];
+                const lines = textarea.value.split('<br>');
+                const firstLine = lines[0];
+                const secondLine = lines[1];
                 const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
 
                 if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
@@ -4275,7 +4278,14 @@ ${fraud.manager === managerName ? `
                         comment: textarea.value.replace(/\r?\n/g, ""),
                     };
 
+                    if (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) {
+                        dataToInsert.autopayment = 1;
+                    } else {
+                        dataToInsert.autopayment = 0;
+                    }
+
                     const token = localStorage.getItem('authToken');
+                    console.log(dataToInsert)
                     sendDataToServer(dataToInsert, token)
                         .then(response => {
                         console.log('Data sent successfully:', response);
@@ -4292,33 +4302,9 @@ ${fraud.manager === managerName ? `
         }
     }
 
-
-
     async function sendDataToServer(data, accessToken) {
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/working', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
-                },
-                body: JSON.stringify(data)
-            });
-
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
-            return await response.json();
-        } catch (error) {
-            console.error('Error:', error);
-            throw error;
-        }
-    }
-
-    async function sendAutoPaymentDataToServer(data, accessToken) {
-        try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/autopayment', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.8.1
+// @version      4.8.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -44,7 +44,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Листопад🍂';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.8.1";
+    const currentVersion = "4.8.2";
 
 
     const stylerangePicker = document.createElement('style');
@@ -5892,7 +5892,7 @@ ${fraud.manager === managerName ? `
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
-            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205')) {
+            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
                 powerBImakeCellsClickable();

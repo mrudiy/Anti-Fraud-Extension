@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.8.4
+// @version      4.8.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -44,7 +44,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.8.4";
+    const currentVersion = "4.8.5";
 
 
     const stylerangePicker = document.createElement('style');
@@ -525,6 +525,30 @@
         const playerId = getPlayerID();
         const url = window.location.href;
 
+        function parseDateFromISO(dateString) {
+            const [year, month, day] = dateString.split('-');
+            return new Date(year, month - 1, day);
+        }
+
+        function parseDateFromCustom(dateString) {
+            const [day, month, year] = dateString.split('.');
+            return new Date(year, month - 1, day);
+        }
+
+        function parseDate(dateString) {
+            if (!dateString || typeof dateString !== 'string') {
+                return null;
+            }
+
+            if (dateString.includes('-')) {
+                return parseDateFromISO(dateString);
+            } else if (dateString.includes('.')) {
+                return parseDateFromCustom(dateString);
+            } else {
+                return null;
+            }
+        }
+
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_checklsit', {
                 method: 'POST',
@@ -537,10 +561,11 @@
 
             const data = await response.json();
             console.log(data);
+            console.log(data.date);
 
-            const dataDate = correctData(data.date);
-            const dateFromField = correctData(getDateFromField());
-            const currentDate = correctData(getCurrentDate());
+            const dataDate = parseDate(data.date);
+            const dateFromField = parseDate(getDateFromField());
+            const currentDate = parseDate(getCurrentDate());
 
             const isDataDateValid = dataDate !== null;
             const isDateFromFieldValid = dateFromField !== null;
@@ -576,8 +601,8 @@
 
                 alertDiv.innerHTML =
                     `<strong>Користувач переглянутий.</strong>
-                <br><strong>Менеджер:</strong> ${data.manager_name}
-                <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
+            <br><strong>Менеджер:</strong> ${data.manager_name}
+            <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
 
                 const table = document.querySelector('#yw1');
 

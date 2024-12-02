@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.8.2
+// @version      4.8.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -42,9 +42,9 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const kingSheet = 'KING Листопад🍂';
+    const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.8.2";
+    const currentVersion = "4.8.3";
 
 
     const stylerangePicker = document.createElement('style');
@@ -2186,7 +2186,7 @@ ${fraud.manager === managerName ? `
         const token = localStorage.getItem('authToken');
 
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
+            const response = await fetch(`http://127.0.0.1:5000/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });

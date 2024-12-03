@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.8.5
+// @version      4.9
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -44,7 +44,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.8.5";
+    const currentVersion = "4.9";
 
 
     const stylerangePicker = document.createElement('style');
@@ -2290,6 +2290,17 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
+    function getInnerBalanceValue() {
+        const input = document.querySelector('input[data-field="inner_balance"]');
+
+        if (input) {
+            const value = input.value;
+            return parseFloat(value) || 0;
+        } else {
+            return 0;
+        }
+    }
+
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
@@ -3151,10 +3162,11 @@ ${fraud.manager === managerName ? `
                             });
 
                             let cleanBalance = parseFloat(Balance);
-
+                            const safeBalance = getInnerBalanceValue();
                             const profit = (depositsTotal - redeemsTotal);
-                            const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance);
-                            const PrognosePA = ((redeemsTotal + totalPending + cleanBalance) / depositsTotal) * 100;
+                            const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
+                            const TotalPA = (redeemsTotal / depositsTotal) * 100;
+                            const PrognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
                             const formattedProfit = formatAmount(profit)
                             const formattedPrognoseInOut = formatAmount(PrognoseInOut)
                             const showAmount = GM_getValue(amountDisplayKey, true);
@@ -3163,6 +3175,11 @@ ${fraud.manager === managerName ? `
 
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += `
+        <div><b>Total PA:
+            <span style="color: ${TotalPA < 75 ? 'green' : (TotalPA < 100 ? 'orange' : 'red')}">
+                ${TotalPA.toFixed(2)}%
+            </span>
+        </b></div>
     <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}₴</b></div>
     ${(totalPending > 1 || cleanBalance > 1) ? `
         <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}₴</b></div>

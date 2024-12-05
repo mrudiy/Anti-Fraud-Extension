@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.9
+// @version      4.9.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -44,7 +44,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.9";
+    const currentVersion = "4.9.1";
 
 
     const stylerangePicker = document.createElement('style');
@@ -4974,9 +4974,10 @@ ${fraud.manager === managerName ? `
                                     .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
                                     .map(row => row.querySelector('td').textContent.trim())
                                     .join(' ');
-                                    const email = Array.from(document.querySelectorAll('tr.odd'))
+                                    const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
                                     .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
-                                    ?.querySelector('td')?.textContent.trim().split('\n')[0];
+                                    ?.querySelector('td > div')
+                                    ?.childNodes[0]?.textContent.trim();
 
                                     const sheetName = project === 'slotoking' ? kingSheet: sevensSheet;
 

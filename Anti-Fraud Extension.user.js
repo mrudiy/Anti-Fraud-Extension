@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      5.0.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -49,7 +49,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "5.0";
+    const currentVersion = "5.0.1";
 
 
     const stylerangePicker = document.createElement('style');
@@ -6120,6 +6120,7 @@ ${fraud.manager === managerName ? `
             popupBox.appendChild(statisticIcon);
 
             const status = await checkUserStatus();
+            console.log(status)
 
             if (status === 'Admin') {
                 const adminIcon = document.createElement('div');
@@ -6706,7 +6707,7 @@ ${fraud.manager === managerName ? `
     }
 
     window.addEventListener('load', async function() {
-        const tokenIsValid = await checkToken
+        const tokenIsValid = await checkToken();
         const currentHost = window.location.hostname;
         if (tokenIsValid) {
             sendActivePageInfo();
@@ -6748,8 +6749,7 @@ ${fraud.manager === managerName ? `
                     powerBImakeCellsClickable();
                 }).observe(document.body, { childList: true, subtree: true });
             }
-
-            if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
+            else if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);
             } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
                 depositCardChecker();

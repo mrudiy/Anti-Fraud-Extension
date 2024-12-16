@@ -1,11 +1,16 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      4.9.1
+// @version      5.0
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
 // @match        https://admin.777.ua/*
+// @match        https://admin.funrize.com/*
+// @match        https://admin.nolimitcoins.com/*
+// @match        https://admin.taofortune.com/*
+// @match        https://admin.funzcity.com/*
+// @match        https://admin.fortunewheelz.com/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -44,7 +49,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "4.9.1";
+    const currentVersion = "5.0";
 
 
     const stylerangePicker = document.createElement('style');
@@ -833,6 +838,47 @@
 
         const text = document.createElement('div');
         text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}₴</b></center>`;
+        popupBoxWithDraw.appendChild(text);
+
+        document.body.appendChild(popupBoxWithDraw);
+    }
+
+    function calculatePendingAmountUSA() {
+        let totalPending = 0;
+
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const statusSpan = row.querySelector('span.label');
+            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                const amountCode = row.querySelector('td:nth-child(6) code');
+                if (amountCode) {
+                    const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                    const amount = parseFloat(amountText.replace(',', '.'));
+                    if (!isNaN(amount)) {
+                        totalPending += amount;
+                    }
+                }
+            }
+        });
+
+        const popupBoxWithDraw = document.createElement('div');
+        popupBoxWithDraw.style.position = 'fixed';
+        popupBoxWithDraw.style.top = '10px';
+        popupBoxWithDraw.style.right = '10px';
+        popupBoxWithDraw.style.padding = '10px';
+        popupBoxWithDraw.style.backgroundColor = 'white';
+        popupBoxWithDraw.style.border = '2px solid black';
+        popupBoxWithDraw.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+        popupBoxWithDraw.style.zIndex = '10000';
+        popupBoxWithDraw.style.fontFamily = 'Arial, sans-serif';
+        popupBoxWithDraw.style.fontSize = '16px';
+        popupBoxWithDraw.style.display = 'flex';
+        popupBoxWithDraw.style.flexDirection = 'column';
+        popupBoxWithDraw.style.alignItems = 'center';
+        popupBoxWithDraw.style.borderRadius = '10px';
+
+        const text = document.createElement('div');
+        text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}$</b></center>`;
         popupBoxWithDraw.appendChild(text);
 
         document.body.appendChild(popupBoxWithDraw);
@@ -2304,7 +2350,7 @@ ${fraud.manager === managerName ? `
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
-            if (row.textContent.includes('Номер игрока')) {
+            if (row.textContent.includes('Номер игрока') || row.textContent.includes('Player number')) {
                 const span = row.querySelector('td span');
                 if (span) {
                     return span.textContent.trim();
@@ -2397,12 +2443,12 @@ ${fraud.manager === managerName ? `
         popupBox.style.right = '';
 
         const popupWidth = 270;
-        popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`; // 20px - відступ від правого краю
-        popupBox.style.width = `${popupWidth}px`; // Задаємо ширину попапу
+        popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`;
+        popupBox.style.width = `${popupWidth}px`;
 
         popupBox.style.padding = '20px';
         popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-        popupBox.style.border = `2px solid ${borderColor}`; // Используем borderColor
+        popupBox.style.border = `2px solid ${borderColor}`; 
         popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
         popupBox.style.zIndex = '10000';
         popupBox.style.fontFamily = '"Roboto", sans-serif';
@@ -3398,7 +3444,7 @@ ${fraud.manager === managerName ? `
                         let bonusWithDeposits = 0;
 
                         let messageCount = 0;
-                        const maxMessages = 3;
+                        const maxMessages = 2;
 
                         const bonusAssignments = {};
                         const displayedMessages = {};
@@ -5912,17 +5958,766 @@ ${fraud.manager === managerName ? `
         popup.appendChild(closeButton);
     }
 
+    function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings) {
+        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+        if (formatableTextDiv) {
+            const existingButton = document.getElementById('check-button');
+            if (existingButton) {
+                existingButton.remove();
+            }
 
+            const checkButton = document.createElement('button');
+            checkButton.id = 'check-button';
+            checkButton.type = 'button';
+            checkButton.innerText = 'Коментар';
+            checkButton.onclick = () => {
+                const date = getCurrentDate();
+                const time = getCurrentTime();
+                const initials = GM_getValue(initialsKey);
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
+                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${moneyFromOfferPercentage}% | Freemoney From Activities: ${activityMoneyPercentage.toFixed(2)}%</b> `;
+                if (totalPendings > 1) {
+                    const balanceStyle = totalPendings > 2000 ? 'color: red;' : '';
+                    textToInsert += `<b>| На выплате:</b> <b style="${balanceStyle}">${totalPendings}$</b> | `;
+                }
+                insertTextIntoField(textToInsert);
+            };
+
+            formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+        }
+    }
+
+    async function createUSAPopupBox() {
+        let popupBox = document.getElementById('custom-popup-box');
+        if (popupBox) {
+            return;
+        }
+        async function fetchMonthAndTotalPA() {
+            async function getInOutUrl() {
+                const scripts = document.querySelectorAll('script');
+                for (const script of scripts) {
+                    const scriptContent = script.textContent;
+                    if (scriptContent.includes('#show-player-in-out')) {
+                        const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
+                        if (urlMatch) {
+                            return urlMatch[1];
+                        }
+                    }
+                }
+                return null;
+            }
+
+            try {
+                const url = await getInOutUrl();
+                if (!url) {
+                    console.error('URL не найден');
+                    return null;
+                }
+                const response = await $.ajax({
+                    type: 'GET',
+                    url: url,
+                });
+                const { totalInOut: TotalPA, monthInOut: MonthPA } = response;
+                if (TotalPA === undefined || MonthPA === undefined) {
+                    console.error('Не удалось получить TotalPA или MonthPA');
+                    return null;
+                }
+                return { TotalPA, MonthPA };
+            } catch (error) {
+                console.error('Ошибка при получении данных:', error);
+                return null;
+            }
+        }
+        setTimeout(async function() {
+
+            const result = await fetchMonthAndTotalPA();
+            const TotalPA = result.TotalPA;
+            const MonthPA = result.MonthPA;
+
+            const entries = document.querySelector('#Players_balance').value.trim();
+            const winnings = getWinnings();
+            popupBox = document.createElement('div');
+            popupBox.style.position = 'fixed';
+            popupBox.style.top = '20px';
+            popupBox.style.right = '';
+
+            const popupWidth = 305;
+            popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`;
+            popupBox.style.width = `${popupWidth}px`;
+
+            const dragHandle = document.createElement('div');
+            dragHandle.style.position = 'absolute';
+            dragHandle.style.top = '0';
+            dragHandle.style.left = '0';
+            dragHandle.style.width = '100%';
+            dragHandle.style.height = '20px';
+            dragHandle.style.cursor = 'move';
+            popupBox.appendChild(dragHandle);
+
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            dragHandle.addEventListener('mousedown', function (e) {
+                isDragging = true;
+                offsetX = e.clientX - popupBox.getBoundingClientRect().left;
+                offsetY = e.clientY - popupBox.getBoundingClientRect().top;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+
+            function onMouseMove(e) {
+                if (!isDragging) return;
+                popupBox.style.left = `${e.clientX - offsetX}px`;
+                popupBox.style.top = `${e.clientY - offsetY}px`;
+            }
+
+            function onMouseUp() {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            popupBox.style.padding = '20px';
+            popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+            popupBox.style.border = `2px solid black`;
+            popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
+            popupBox.style.zIndex = '10000';
+            popupBox.style.fontFamily = '"Roboto", sans-serif';
+            popupBox.style.fontSize = '16px';
+            popupBox.style.display = 'flex';
+            popupBox.style.flexDirection = 'column';
+            popupBox.style.alignItems = 'center';
+            popupBox.style.borderRadius = '10px';
+            popupBox.style.animation = 'glow 1s infinite alternate';
+            popupBox.style.resize = 'both';
+            popupBox.style.overflow = 'auto';
+
+            const settingsIcon = document.createElement('div');
+            settingsIcon.innerHTML = '<i class="fa fa-cog"></i>';
+            settingsIcon.style.position = 'absolute';
+            settingsIcon.style.top = '10px';
+            settingsIcon.style.right = '10px';
+            settingsIcon.style.cursor = 'pointer';
+            settingsIcon.style.fontSize = '20px';
+            settingsIcon.title = 'Налаштування';
+            settingsIcon.onclick = () => {
+                createSettingsPopup();
+            };
+            popupBox.appendChild(settingsIcon);
+
+            const statisticIcon = document.createElement('div');
+            statisticIcon.innerHTML = '<i class="fa fa-signal"></i>';
+            statisticIcon.style.position = 'absolute';
+            statisticIcon.style.top = '35px';
+            statisticIcon.style.right = '10px';
+            statisticIcon.style.cursor = 'pointer';
+            statisticIcon.style.fontSize = '20px';
+            statisticIcon.title = 'Статистика';
+            statisticIcon.onclick = () => {
+                createStatisticPopup();
+            };
+            popupBox.appendChild(statisticIcon);
+
+            const status = await checkUserStatus();
+
+            if (status === 'Admin') {
+                const adminIcon = document.createElement('div');
+                adminIcon.innerHTML = '<i class="fa fa-users"></i>';
+                adminIcon.style.position = 'absolute';
+                adminIcon.style.top = '70px';
+                adminIcon.style.right = '10px';
+                adminIcon.style.cursor = 'pointer';
+                adminIcon.style.fontSize = '18px';
+                adminIcon.title = 'Користувачі';
+                adminIcon.onclick = () => {
+                    if (document.getElementById('admin-popup')) {
+                        return;
+                    }
+                    createAdminPopup();
+                };
+                popupBox.appendChild(adminIcon);
+            }
+
+            const fraudIcon = document.createElement('div');
+            fraudIcon.style.position = 'absolute';
+            fraudIcon.style.top = '10px';
+            fraudIcon.style.left = '10px';
+            fraudIcon.style.cursor = 'pointer';
+            fraudIcon.style.fontSize = '20px';
+            fraudIcon.title = 'Нагляд';
+            fraudIcon.innerHTML = '<i class="fa fa-eye"></i>';
+
+            fraudIcon.onclick = () => {
+                createFraudPopup();
+            };
+            popupBox.appendChild(fraudIcon);
+
+            const showReminder = GM_getValue(reminderDisplayKey, true);
+            const shouldBlink = GM_getValue(reminderBlinkKey, true);
+            const hasNewArticles = await checkForNewArticles();
+
+            if (showReminder === true) {
+                const reminderIcon = document.createElement('div');
+                reminderIcon.style.position = 'absolute';
+                reminderIcon.style.top = '40px';
+                reminderIcon.style.left = '10px';
+                reminderIcon.style.fontSize = '20px';
+                reminderIcon.style.cursor = 'pointer';
+                reminderIcon.title = 'Памятка';
+                reminderIcon.innerHTML = '<i class="fa fa-book"></i>';
+
+                if (hasNewArticles || shouldBlink) {
+                    reminderIcon.classList.add('blinking');
+                }
+
+                reminderIcon.onclick = () => {
+                    createReminderPopup();
+                    reminderIcon.classList.remove('blinking');
+                    GM_setValue(reminderBlinkKey, false);
+                };
+
+                popupBox.appendChild(reminderIcon);
+            }
+
+            const maintext = document.createElement('div');
+            maintext.className = 'popup-main-text';
+            maintext.innerHTML = `
+                        <center><h3 id="freemoney-info"></center>
+                        <center><b>Entries: ${entries}$ | Winnings: ${winnings}$</center>
+                        <center>Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA >= 0.75 && MonthPA < 1 ? 'orange' : 'red')}">${MonthPA}</span> | Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red')}">${TotalPA}</span></center>
+                        <center id="pending-info"></center>
+                        <center id="offer-info">Loading deposit analysis...</center>
+                        <center id="activitymoney-info"></center>
+
+                    `;
+            popupBox.appendChild(maintext);
+
+            const firstRowButtonContainer = document.createElement('div');
+            firstRowButtonContainer.style.marginTop = '10px';
+            firstRowButtonContainer.style.display = 'flex';
+            firstRowButtonContainer.style.gap = '10px';
+
+            popupBox.appendChild(firstRowButtonContainer);
+
+            const cleanButton = document.createElement('button');
+            cleanButton.className = 'clean-button';
+            cleanButton.innerText = 'Checked';
+            cleanButton.style.padding = '5px 10px';
+            cleanButton.style.backgroundColor = '#2196F3';
+            cleanButton.style.color = 'white';
+            cleanButton.style.border = 'none';
+            cleanButton.style.borderRadius = '5px';
+            cleanButton.style.cursor = 'pointer';
+
+            cleanButton.addEventListener('click', () => {
+                if (cleanButton.disabled) return;
+
+                const initials = GM_getValue(initialsKey, '');
+                const currentDate = getCurrentDate();
+                const playerID = getPlayerID();
+                const project = getProject();
+                const url = window.location.href;
+                const time = getCurrentTime();
+
+                const dataToInsert = {
+                    date: currentDate,
+                    url: url,
+                    project: project,
+                    playerID: playerID,
+                    initials: initials,
+                    comment: `Переглянутий в ${time}`,
+                };
+
+                const token = localStorage.getItem('authToken');
+
+                sendDataToServer(dataToInsert, token)
+                    .then(response => {
+                    console.log('Data sent successfully:', response);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Успішно!',
+                        text: 'Користувач позначений як переглянутий',
+                        confirmButtonText: 'ОК'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            location.reload();
+                        }
+                    });
+                })
+                    .catch(err => {
+                    console.error('Error sending data:', err);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Помилка!',
+                        text: 'Не вдалося надіслати дані.',
+                        confirmButtonText: 'ОК'
+                    });
+                });
+            });
+
+            firstRowButtonContainer.appendChild(cleanButton);
+
+            const secondRowButtonContainer = document.createElement('div');
+            secondRowButtonContainer.style.marginTop = '10px';
+            secondRowButtonContainer.style.display = 'block';
+            secondRowButtonContainer.style.justifyContent = 'center';
+            secondRowButtonContainer.style.alignItems = 'center';
+            secondRowButtonContainer.style.textAlign = 'center';
+            getPendings(function(totalPending) {
+
+                const pendingInfoElement = document.getElementById('pending-info');
+                if (totalPending === 0) {
+                    pendingInfoElement.remove();
+                } else {
+                    pendingInfoElement.textContent = `Total Pending: ${totalPending}$`;
+                }
+                let isProfitButtonClicked = false;
+
+                const profitButton = document.createElement('button');
+                profitButton.innerText = 'Total InOut';
+                profitButton.style.padding = '5px 10px';
+                profitButton.style.backgroundColor = '#2196F3';
+                profitButton.style.color = 'white';
+                profitButton.style.border = 'none';
+                profitButton.style.borderRadius = '5px';
+                profitButton.style.cursor = 'pointer';
+                profitButton.addEventListener('click', () => {
+                    if (!isProfitButtonClicked) {
+                        isProfitButtonClicked = true;
+                        fetchProfit(totalPending, winnings);
+                    }
+                });
+                secondRowButtonContainer.appendChild(profitButton);
+            })
+
+            popupBox.appendChild(secondRowButtonContainer);
+
+
+            document.body.appendChild(popupBox);
+
+            analyzePayments(function(offerPercentage, totalMoneyFromOffer, totalDeposits, moneyFromOfferPercentage, totalDepositsAmount, depositsWithOffer) {
+                const offerInfoElement = document.getElementById('offer-info');
+
+                if (offerInfoElement) {
+                    const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
+
+                    const offerPercentageText = colorText(`Deposits With Offer: ${offerPercentage}%`, offerPercentage >= 50);
+                    const moneyFromOfferPercentageText = colorText(`Money From Offer: ${moneyFromOfferPercentage}%`, moneyFromOfferPercentage >= 25);
+
+                    offerInfoElement.innerHTML = `${offerPercentageText}<br>${moneyFromOfferPercentageText}`;
+                    offerInfoElement.title = `Кількість депозитів: ${totalDeposits}\nКількість оферів: ${depositsWithOffer}\nСума депозитів: ${totalDepositsAmount}$\nСума entries: ${totalMoneyFromOffer}$`;
+                }
+                analyzeTransaction(function(totalUSD) {
+                    const activityMoneyInfoElement = document.getElementById('activitymoney-info');
+                    const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : 0;
+
+                    if (activityMoneyInfoElement) {
+                        const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
+                        const activityMoneyPercentageText = colorText(`Activity Money: ${activityMoneyPercentage.toFixed(2)}%`, activityMoneyPercentage >= 50);
+
+                        activityMoneyInfoElement.innerHTML = `${activityMoneyPercentageText}`;
+                        activityMoneyInfoElement.title = `Activity Money: ${totalUSD}$`;
+
+                        const freeMoneyInfoElement = document.getElementById('freemoney-info');
+                        let freeMoneyTotal = activityMoneyPercentage + parseFloat(moneyFromOfferPercentage)
+                        let textColor;
+                        if (freeMoneyTotal < 10) {
+                            textColor = 'green';
+                        } else if (freeMoneyTotal >= 10 && freeMoneyTotal < 50) {
+                            textColor = 'orange';
+                        } else {
+                            textColor = 'red';
+                        }
+                        freeMoneyInfoElement.innerHTML = `Free Money: ${freeMoneyTotal.toFixed(2)}%`;
+                        freeMoneyInfoElement.style.color = textColor;
+                        popupBox.style.borderColor = textColor;
+                        popupBox.style.animation = `glow 1s infinite alternate`;
+
+                        const style = document.createElement('style');
+                        style.textContent = `
+                                    @keyframes glow {
+                                        0% { box-shadow: 0 0 5px ${textColor}; }
+                                        100% { box-shadow: 0 0 25px ${textColor}; }
+                                    }
+                                `;
+                        document.head.appendChild(style);
+                        getPendingss().then(totalPendings => {
+                            addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings);
+                        }).catch(error => {
+                            console.error('Ошибка при получении данных:', error);
+                        });
+
+
+                    }
+                });
+            });
+
+            function fetchProfit(totalPending, winnings) {
+                const loader = document.createElement('div');
+                loader.style.border = '8px solid #f3f3f3';
+                loader.style.borderTop = '8px solid #3498db';
+                loader.style.borderRadius = '50%';
+                loader.style.width = '50px';
+                loader.style.height = '50px';
+                loader.style.animation = 'spin 2s linear infinite';
+                loader.style.marginBottom = '10px';
+                secondRowButtonContainer.appendChild(loader);
+
+                const style = document.createElement('style');
+                style.textContent = `
+                                @keyframes spin {
+                                    0% { transform: rotate(0deg); }
+                                    100% { transform: rotate(360deg); }
+                                }
+                                #popup-container {
+                                    min-height: 200px;
+                                    overflow-y: auto;
+                                    white-space: normal;
+                                    word-wrap: break-word;
+                                }
+                            `;
+                document.head.appendChild(style);
+
+                const playerID = getPlayerID();
+                const project = getProject();
+                const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: baseURL,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(playerID)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
+                    onload: function(response) {
+                        if (response.status >= 200 && response.status < 300) {
+                            console.log('HTML-ответ:', response.responseText);
+
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                            const table = doc.querySelector('.detail-view');
+                            let depositsTotal = 0;
+                            let redeemsTotal = 0;
+
+                            if (table) {
+                                const rows = table.querySelectorAll('tr');
+
+                                rows.forEach(row => {
+                                    const key = row.querySelector('th')?.textContent.trim();
+                                    const value = row.querySelector('td')?.textContent.trim();
+
+                                    if (key === 'Deposits Total') {
+                                        depositsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+                                    } else if (key === 'Redeems Total') {
+                                        redeemsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+                                    }
+                                });
+
+                                let cleanBalance = parseFloat(winnings);
+
+                                const profit = depositsTotal - redeemsTotal;
+                                const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance);
+                                const PrognosePA = ((redeemsTotal + totalPending + cleanBalance) / depositsTotal) * 100;
+
+                                secondRowButtonContainer.removeChild(loader);
+                                secondRowButtonContainer.innerHTML += `
+                                                <div><b>Total InOut: ${profit.toFixed(2)}$</b></div>
+                                                ${(totalPending > 1 || cleanBalance > 1) ? `
+                                                    <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}$</b></div>
+                                                    <div><b>Prognose PA: ${PrognosePA.toFixed(2)}%</b></div>
+                                                ` : ''}
+                                            `;
+                            } else {
+                                secondRowButtonContainer.removeChild(loader);
+                                secondRowButtonContainer.innerHTML += 'Таблица с результатами не найдена.';
+                            }
+                        } else {
+                            console.error('Ошибка ответа:', response.statusText);
+                            document.body.removeChild(loader);
+                            secondRowButtonContainer.innerHTML += `Ошибка получения данных: ${response.statusText}`;
+                        }
+                    },
+                    onerror: function(error) {
+                        console.error('Ошибка запроса:', error);
+                        document.body.removeChild(loader);
+                        secondRowButtonContainer.innerHTML += 'Ошибка запроса: ' + error.message;
+                    }
+                });
+            }
+            ;
+        }, 300);
+    }
+
+    function analyzePayments(callback) {
+        const playerID = getPlayerID();
+        const project = getProject();
+
+        if (!project) {
+            console.error('Project not found!');
+            return;
+        }
+
+        const requestUrl = `https://admin.${project}.com/payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=${playerID}`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: requestUrl,
+            onload: function(response) {
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                const select = doc.querySelector('#newPageSize');
+                if (select) {
+                    select.value = '500';
+                    const event = new Event('change', { bubbles: true });
+                    select.dispatchEvent(event);
+                }
+
+                setTimeout(() => {
+                    const rows = doc.querySelectorAll('tr.even, tr.odd');
+                    let totalDeposits = 0;
+                    let totalDepositsAmount = 0;
+                    let totalMoneyFromOffer = 0;
+                    let depositsWithOffer = 0;
+                    let moneyFromOfferPercentage = 0;
+
+
+                    rows.forEach(row => {
+                        const status = row.children[2].textContent.trim();
+                        const depositAmountText = row.children[4].textContent.trim();
+                        const offerDetailsText = row.children[6].textContent.trim();
+
+
+                        if (status === 'closed') {
+                            totalDeposits++;
+                            const depositAmountMatch = depositAmountText.match(/([\d.]+) USD/);
+                            const depositAmount = depositAmountMatch ? parseFloat(depositAmountMatch[1]) : 0;
+
+                            const entriesMatch = offerDetailsText.match(/(\d+\.?\d*) entries/);
+                            const entriesCount = entriesMatch ? parseFloat(entriesMatch[1]) : 0;
+                            totalDepositsAmount += depositAmount;
+
+
+                            if (entriesCount > 0) {
+                                depositsWithOffer++;
+                                const moneyFromOffer = entriesCount - depositAmount;
+
+                                totalMoneyFromOffer += moneyFromOffer;
+                                if (totalDepositsAmount > 0) {
+                                    moneyFromOfferPercentage = (totalMoneyFromOffer / totalDepositsAmount) * 100;
+
+                                }
+
+                            } else {
+                                console.log('No entries found in offer details.');
+                            }
+                        } else {
+                        }
+                    });
+
+                    if (totalDeposits > 0) {
+                        const offerPercentage = (depositsWithOffer / totalDeposits) * 100;
+                        callback(offerPercentage.toFixed(2), totalMoneyFromOffer.toFixed(2), totalDeposits, moneyFromOfferPercentage.toFixed(2), totalDepositsAmount.toFixed(2), depositsWithOffer);
+                    } else {
+                        console.log('No deposits found.');
+                        callback(0, 0, 0);
+                    }
+                }, 1);
+            }
+        });
+    }
+
+    function analyzeTransaction(callback) {
+        const userId = window.location.pathname.split('/')[4];
+        const project = getProject();
+
+        const requestUrl = `https://admin.${project}.com/players/playersItems/transactionLog/${userId}`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: requestUrl,
+            onload: function(response) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+                const formData = new FormData();
+                formData.append('pageSize', '10000');
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: requestUrl,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    data: new URLSearchParams(formData).toString(),
+                    onload: function(response) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const rows = doc.querySelectorAll('tbody tr');
+
+                        let totalUSD = 0;
+
+                        rows.forEach((row) => {
+                            const secondCell = row.querySelector('td:nth-child(2)');
+                            const amountCell = row.querySelector('td:nth-child(3)');
+                            const commentCell = row.querySelector('td:nth-child(8)');
+                            const secondCellText = secondCell.textContent.trim().toLowerCase();
+
+                            if (secondCell) {
+                                if (secondCellText.includes("entries")) {
+                                    const entryAmount = parseFloat(amountCell.textContent.trim());
+                                    totalUSD += entryAmount;
+                                }
+                            }
+
+                            if (commentCell) {
+                                const commentText = commentCell.textContent.trim();
+
+                                if (commentText.toLowerCase().includes("change balance when exchanging")) {
+                                    return;
+                                }
+
+                                if (commentText) {
+                                    const usdMatch = commentText.match(/(\d+(\.\d+)?)\s*USD/);
+                                    if (usdMatch) {
+                                        const amount = parseFloat(usdMatch[1]);
+                                        totalUSD += amount;
+                                    }
+                                    if (commentText.toLowerCase().includes("entries") && !secondCellText.includes("entries")) {
+                                        const entryAmount = parseFloat(amountCell.textContent.trim());
+                                        totalUSD += entryAmount;
+                                    }
+                                }
+                            }
+                        });
+                        if (callback) {
+                            callback(totalUSD.toFixed(2));
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    function getPendings(callback) {
+        const playerID = getPlayerID();
+        const project = getProject();
+        const baseURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+
+        let totalPending = 0;
+        console.log(baseURL)
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: baseURL,
+            onload: function(response) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                const select = doc.querySelector('#newPageSize');
+                if (select) {
+                    select.value = '500';
+                    const event = new Event('change', { bubbles: true });
+                    select.dispatchEvent(event);
+                }
+                const rows = doc.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const statusSpan = row.querySelector('span.label');
+                    if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                        const amountCode = row.querySelector('td:nth-child(6) code');
+                        if (amountCode) {
+                            const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                            const amount = parseFloat(amountText.replace(',', '.'));
+                            if (!isNaN(amount)) {
+                                totalPending += amount;
+                            }
+                        }
+                    }
+                });
+                callback(totalPending);
+            }
+        });
+    }
+
+    function getPendingss() {
+        return new Promise((resolve, reject) => {
+            const playerID = getPlayerID();
+            const project = getProject();
+            const baseURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+
+            let totalPending = 0;
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: baseURL,
+                onload: function(response) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const select = doc.querySelector('#newPageSize');
+                        if (select) {
+                            select.value = '500';
+                            const event = new Event('change', { bubbles: true });
+                            select.dispatchEvent(event);
+                        }
+
+                        const rows = doc.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const statusSpan = row.querySelector('span.label');
+                            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                                const amountCode = row.querySelector('td:nth-child(6) code');
+                                if (amountCode) {
+                                    const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                                    const amount = parseFloat(amountText.replace(',', '.'));
+                                    if (!isNaN(amount)) {
+                                        totalPending += amount;
+                                    }
+                                }
+                            }
+                        });
+                        resolve(totalPending);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                onerror: function() {
+                    reject('Error fetching data');
+                }
+            });
+        });
+    }
+
+    function getWinnings() {
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (row.textContent.includes('Winnings')) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    return cells[0].textContent.trim();
+                }
+            }
+        }
+
+        return '0.00';
+    }
 
     window.addEventListener('load', async function() {
-        const tokenIsValid = await checkToken();
+        const tokenIsValid = await checkToken
+        const currentHost = window.location.hostname;
         if (tokenIsValid) {
             sendActivePageInfo();
-            if (currentUrl.includes('paymentsItemsOut/index')) {
+            if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmountUSA();
+            }
+            else if (currentHost.endsWith('.ua') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmount();
                 setPageSize1k();
                 checkForUpdates();
-            } else if (currentUrl.includes('playersItems/update')) {
+            } else if (currentHost.endsWith('.ua') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();
                 checkUserInFraudList();
@@ -5935,6 +6730,15 @@ ${fraud.manager === managerName ? `
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
+            } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
+                createUSAPopupBox();
+                analyzeTransaction();
+                buttonToSave();
+                checkUserInFraudList();
+                checkUserInChecklist();
+                activeUrlsManagers();
+            } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
+                setPageSize1k()
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
@@ -5945,7 +6749,7 @@ ${fraud.manager === managerName ? `
                 }).observe(document.body, { childList: true, subtree: true });
             }
 
-            if (currentUrl.includes('playersItems/balanceLog/')) {
+            if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);
             } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
                 depositCardChecker();

@@ -1,15 +1,17 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.0.1
+// @version      5.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
+// @match        https://admin.vegas.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.funrize.com/*
 // @match        https://admin.nolimitcoins.com/*
 // @match        https://admin.taofortune.com/*
 // @match        https://admin.funzcity.com/*
+// @match        https://admin.wildwinz.com/*
 // @match        https://admin.fortunewheelz.com/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -19,6 +21,8 @@
 // @grant        GM_getValue
 // @connect      admin.777.ua
 // @connect      admin.slotoking.ua
+// @connect      admin.vegas.ua
+// @connect      admin.wildwinz.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
 // @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
@@ -35,9 +39,13 @@
     const initialsKey = 'userInitials';
     const urlPath = window.location.pathname;
     const userId = urlPath.split('/')[4];
-    const ProjectUrl = window.location.hostname.includes('777.ua')
-    ? 'https://admin.777.ua/'
-    : 'https://admin.slotoking.ua/';
+    const ProjectUrl = {
+        '777.ua': 'https://admin.777.ua/',
+        'slotoking.ua': 'https://admin.slotoking.ua/',
+        'vegas.ua': 'https://admin.vegas.ua/',
+        'wildwinz.com': 'https://admin.wildwinz.com/',
+    }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
+
     const initialUrl = window.location.href;
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
@@ -49,8 +57,12 @@
     const reminderDisplayKey = 'reminderDisplay';
     const kingSheet = 'KING Грудень⛄';
     const sevensSheet = 'SEVENS🎰';
-    const currentVersion = "5.0.1";
-
+    const currencySymbols = new Map([
+        ['UAH', '₴'],
+        ['CAD', '$'],
+        ['EUR', '€']
+    ]);
+    const currentVersion = "5.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -371,6 +383,8 @@
                 const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
                 const formattedBalance = formatAmount(Balance);
                 const formattedTotalPending = formatAmount(totalPending);
+                const currency = getCurrency();
+                let currencySymbol = currencySymbols.get(currency) || '';
 
                 let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
 
@@ -378,23 +392,23 @@
 
                     if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
+                        textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
                     }
 
                     if (totalPending > 1) {
                         const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `;
+                        textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
                     }
 
                 } else {
                     if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
+                        textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
                     }
 
                     if (totalPending > 1000) {
                         const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `;
+                        textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
                     }
                 }
 
@@ -880,6 +894,56 @@
         const text = document.createElement('div');
         text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}$</b></center>`;
         popupBoxWithDraw.appendChild(text);
+
+        document.body.appendChild(popupBoxWithDraw);
+    }
+
+    function calculatePendingAmountWildWinz() {
+        let totalPendingCAD = 0;
+        let totalPendingEUR = 0;
+
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const statusSpan = row.querySelector('span.label');
+            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                const amountCode = row.querySelector('td:nth-child(5) code');
+                if (amountCode) {
+                    const amountText = amountCode.textContent.trim();
+                    const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, '')); // Очистка от валюты и посторонних символов
+                    if (!isNaN(amount)) {
+                        if (amountText.includes('CAD')) {
+                            totalPendingCAD += amount;
+                        } else if (amountText.includes('EUR')) {
+                            totalPendingEUR += amount;
+                        }
+                    }
+                }
+            }
+        });
+
+        const popupBoxWithDraw = document.createElement('div');
+        popupBoxWithDraw.style.position = 'fixed';
+        popupBoxWithDraw.style.top = '10px';
+        popupBoxWithDraw.style.right = '10px';
+        popupBoxWithDraw.style.padding = '10px';
+        popupBoxWithDraw.style.backgroundColor = 'white';
+        popupBoxWithDraw.style.border = '2px solid black';
+        popupBoxWithDraw.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+        popupBoxWithDraw.style.zIndex = '10000';
+        popupBoxWithDraw.style.fontFamily = 'Arial, sans-serif';
+        popupBoxWithDraw.style.fontSize = '16px';
+        popupBoxWithDraw.style.display = 'flex';
+        popupBoxWithDraw.style.flexDirection = 'column';
+        popupBoxWithDraw.style.alignItems = 'center';
+        popupBoxWithDraw.style.borderRadius = '10px';
+
+        const textCAD = document.createElement('div');
+        textCAD.innerHTML = `<center><b>Сума pending CAD: ${totalPendingCAD.toFixed(2)}$</b></center>`;
+        popupBoxWithDraw.appendChild(textCAD);
+
+        const textEUR = document.createElement('div');
+        textEUR.innerHTML = `<center><b>Сума pending EUR: ${totalPendingEUR.toFixed(2)}€</b></center>`;
+        popupBoxWithDraw.appendChild(textEUR);
 
         document.body.appendChild(popupBoxWithDraw);
     }
@@ -2360,6 +2424,19 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
+    function getCurrency() {
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (row.textContent.includes('Валюта') || row.textContent.includes('Currency')) {
+                const span = row.querySelector('td');
+                if (span) {
+                    return span.textContent.trim();
+                }
+            }
+        }
+        return '0.00';
+    }
+
     function insertTextIntoField(text) {
         const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
         if (field) {
@@ -2461,6 +2538,66 @@ ${fraud.manager === managerName ? `
         popupBox.style.resize = 'both';
         popupBox.style.overflow = 'auto';
 
+        const snowContainer = document.createElement('div');
+        snowContainer.style.position = 'absolute';
+        snowContainer.style.top = '-20px';  // За пределами верхней границы окна
+        snowContainer.style.left = '0';
+        snowContainer.style.zIndex = '9999';
+        snowContainer.style.width = '100%';
+        snowContainer.style.height = '100%';  // Увеличиваем высоту для удобства
+        snowContainer.style.pointerEvents = 'none';  // Чтобы снег не мешал взаимодействовать с попапом
+        snowContainer.classList.add('snow-container'); // Класс для стилизации
+
+        popupBox.appendChild(snowContainer);
+
+        // Добавляем всплывающее окно
+        document.body.appendChild(popupBox);
+
+        // Настроим добавление снежинок:
+        generateSnowflakes();
+
+        // Функция для генерации снега
+        function generateSnowflakes() {
+            for (let i = 0; i < 10; i++) {  // Создаем 20 снежинок
+                const snowflake = document.createElement('span');
+                snowflake.classList.add('snowflake');
+                snowflake.textContent = '❄';  // Используем emoji-снежинку
+                snowContainer.appendChild(snowflake);
+
+                // Добавляем случайное положение и скорость
+                snowflake.style.left = `${Math.random() * 100}%`;  // Позиция по горизонтали
+                snowflake.style.animationDuration = `${Math.random() * 3 + 4}s`;  // случайная скорость (3-6 секунд)
+                snowflake.style.animationDelay = `${Math.random() * 2}s`;  // случайная задержка анимации
+            }
+        }
+
+        // Стиль для снега
+        const style = document.createElement('style');
+        style.innerHTML = `
+        .snow-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            font-size: 18px;  /* Размер снежинки */
+            color: #9af0f5;  /* Цвет снежинки */
+            opacity: 0.4;
+            animation: fall 4s linear infinite;
+        }
+        @keyframes fall {
+            0% {
+                top: -10px;
+                opacity: 0.9;
+            }
+            100% {
+                top: 100%;
+                opacity: 0.7;
+            }
+        }
+    `;
+        document.head.appendChild(style);
 
         const showNDFL = GM_getValue(ndfDisplayKey, true);
         const showAmount = GM_getValue(amountDisplayKey, true);
@@ -2502,15 +2639,17 @@ ${fraud.manager === managerName ? `
         }
         const provider = await verificationProvider();
         const maintext = document.createElement('div');
+        const currency = getCurrency();
+        let currencySymbol = currencySymbols.get(currency) || '';
         maintext.className = 'popup-main-text';
         maintext.innerHTML = `
-    ${showAmount ? `<center><b>Баланс: ${formattedBalance}₴</b></center>` : `<center><b>Баланс: ${Balance}₴</b></center>`}
-    ${showNDFL ? (showAmount ? `<center><b>НДФЛ: ${formattedNDFL}₴</b></center>` : `<center><b>НДФЛ: ${NDFL}₴</b></center>`) : ''}
+    ${showAmount ? `<center><b>Баланс: ${formattedBalance}${currencySymbol}</b></center>` : `<center><b>Баланс: ${Balance}${currencySymbol}</b></center>`}
+    ${showNDFL && NDFL !== 0 ? (showAmount ? `<center><b>НДФЛ: ${formattedNDFL}${currencySymbol}</b></center>` : `<center><b>НДФЛ: ${NDFL}${currencySymbol}</b></center>`) : ''}
     <center><b>
         Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA < 1 ? 'orange' : 'red')}">${MonthPA}</span> |
         Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red')}">${TotalPA}</span>
     </b></center>
-    ${totalPending > 0 ? (showAmount ? `<center><b>На виплаті: ${formattedTotalPending}₴</b></center>` : `<center><b>На виплаті: ${totalPending}₴</b></center>`) : ''}    ${cards.length > 0 ? `
+    ${totalPending > 0 ? (showAmount ? `<center><b>На виплаті: ${formattedTotalPending}${currencySymbol}</b></center>` : `<center><b>На виплаті: ${totalPending}${currencySymbol}</b></center>`) : ''}    ${cards.length > 0 ? `
         <center><b>Картки для верифікації:</b><br>
         ${cards.map(card => `
             <div style="display: inline-block; margin-top: 5px;">
@@ -2746,12 +2885,12 @@ ${fraud.manager === managerName ? `
                 textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
+                    textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
                 }
 
                 if (totalPending > 1) {
                     const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `
+                    textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `
                 }
                 textToInsert += `играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`
             }
@@ -2759,12 +2898,12 @@ ${fraud.manager === managerName ? `
                 textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
                 if (Balance > 1000) {
                     const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}₴</b> | `;
+                    textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
                 }
 
                 if (totalPending > 1) {
                     const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}₴ </b>| `
+                    textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `
                 }
                 textToInsert += `грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`
             }
@@ -2847,21 +2986,13 @@ ${fraud.manager === managerName ? `
         projectButtonContainer.style.alignItems = 'center';
         projectButtonContainer.style.textAlign = 'center';
 
-        const projectImageUrl = window.location.hostname.includes('777.ua')
-        ? 'https://admin.slotoking.ua/img/slotoking.png'
-        : 'https://admin.777.ua/img/777.png'
-
-        const projectImage = document.createElement('img');
-        projectImage.src = projectImageUrl;
-        projectImage.style.cursor = 'pointer';
-        if (projectImageUrl.includes('slotoking')) {
-            projectImage.style.width = '100px';
-            projectImage.style.height = 'auto';
-        } else if (projectImageUrl.includes('777')) {
-            projectImage.style.width = '75px';
-            projectImage.style.height = 'auto';
-        }
-        projectImage.addEventListener('click', () => {
+        const searchImage = document.createElement('img');
+        searchImage.src = 'https://cdn-icons-png.flaticon.com/512/64/64673.png';
+        searchImage.style.cursor = 'pointer';
+        searchImage.width = '50'
+        searchImage.height = '50'
+        searchImage.addEventListener('click', () => {
+            searchImage.remove();
 
             function getValueByLabel(doc, labelText) {
                 const rows = doc.querySelectorAll('tr');
@@ -2889,30 +3020,27 @@ ${fraud.manager === managerName ? `
                 return 'Не найдено';
             }
 
-            function searchUser(query, fieldType) {
-                const searchUrl = window.location.hostname.includes('777.ua')
-                ? 'https://admin.slotoking.ua/players/playersItems/search/'
-                : 'https://admin.777.ua/players/playersItems/search/';
-
+            function searchUser(query, fieldType, projectUrl) {
                 GM_xmlhttpRequest({
                     method: "POST",
-                    url: searchUrl,
+                    url: projectUrl,
                     headers: {
                         "Content-Type": "application/x-www-form-urlencoded"
                     },
                     data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
-                    onload: function(response) {
+                    onload: function (response) {
                         if (response.finalUrl.includes('/update/')) {
                             getUserInfo(response.finalUrl, fieldType);
                         } else {
-                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не знайдено</div>`;
+                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не найдено (${projectUrl})</div>`;
                         }
                     },
-                    onerror: function() {
-                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'}.</div>`;
+                    onerror: function () {
+                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'} (${projectUrl}).</div>`;
                     }
                 });
             }
+
 
 
             function getUserInfo(url, fieldType) {
@@ -2930,16 +3058,10 @@ ${fraud.manager === managerName ? `
                         const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
                         attentionHeaders.forEach(header => {
                             const headerText = header.textContent.trim();
-                            if (headerText.includes('Дубликат')) {
-                                status = 'danger';
-                            } else if (headerText.includes('Отключен')) {
-                                status = 'danger';
-                            } else if (headerText.includes('Ограничение по возрасту!')) {
+                            if (headerText.includes('Дубликат') || headerText.includes('Отключен') || headerText.includes('Ограничение по возрасту!') || headerText.includes('Не подтвержден')) {
                                 status = 'danger';
                             } else if (headerText.includes('Лудоман')) {
                                 status = 'info';
-                            } else if (headerText.includes('Не подтвержден')) {
-                                status = 'danger';
                             }
                         });
 
@@ -2951,17 +3073,42 @@ ${fraud.manager === managerName ? `
                             status = 'default';
                         }
 
+                        const projectImageUrls = {
+                            slotoking: 'https://admin.slotoking.ua/img/slotoking.png',
+                            '777': 'https://admin.777.ua/img/777.png',
+                            vegas: 'https://admin.vegas.ua/img/vegas.png'
+                        };
+
+                        const currentProject = url.includes('slotoking')
+                        ? 'slotoking'
+                        : (url.includes('777') ? '777' : 'vegas');
+
+                        const projectImageUrl = projectImageUrls[currentProject] || '';
+
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
+                        if (fieldType === 'inn') {
+                            projectButtonContainer.innerHTML += `
+                    <div style="text-align: center; margin-bottom: 10px;">
+                        <img src="${projectImageUrl}" alt="${currentProject}" style="width: 75px; height: auto;">
+                    </div>
+                `;
+                        }
+
                         projectButtonContainer.innerHTML += `
-                <div><b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>
+                <div>
+                    <b>${searchTypeLabel}:</b>
+                    <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>
+                </div>
             `;
+
                     },
                     onerror: function() {
                         projectButtonContainer.innerHTML += '<div>Ошибка при получении данных пользователя.</div>';
                     }
                 });
             }
+
 
             function getAjaxUrl() {
                 const scripts = document.querySelectorAll('script');
@@ -2991,9 +3138,24 @@ ${fraud.manager === managerName ? `
                         const email = getFirstValueByLabel('E-mail');
                         const phone = getFirstValueByLabel('Телефон');
 
-                        searchUser(inn, 'inn');
-                        searchUser(email, 'email');
-                        searchUser(phone, 'phone');
+                        const projectUrls = {
+                            slotoking: 'https://admin.slotoking.ua/players/playersItems/search/',
+                            '777': 'https://admin.777.ua/players/playersItems/search/',
+                            vegas: 'https://admin.vegas.ua/players/playersItems/search/'
+                        };
+
+                        const currentProject = window.location.hostname.includes('slotoking')
+                        ? 'slotoking'
+                        : (window.location.hostname.includes('777') ? '777' : 'vegas');
+
+                        const otherProjects = Object.keys(projectUrls).filter(project => project !== currentProject);
+
+                        otherProjects.forEach(project => {
+                            searchUser(inn, 'inn', projectUrls[project]);
+                            searchUser(email, 'email', projectUrls[project]);
+                            searchUser(phone, 'phone', projectUrls[project]);
+                        });
+
                         setTimeout(function() {
                             processCards();
                         }, 3000);
@@ -3074,9 +3236,10 @@ ${fraud.manager === managerName ? `
         }
 
 
-        popupBox.appendChild(projectButtonContainer);
-        projectButtonContainer.appendChild(projectImage);
-
+        if (!window.location.hostname.includes('admin.wildwinz.com')) {
+            popupBox.appendChild(projectButtonContainer);
+            projectButtonContainer.appendChild(searchImage);
+        }
 
         const resultButton = document.createElement('button');
         resultButton.innerText = 'Total InOut';
@@ -3175,7 +3338,7 @@ ${fraud.manager === managerName ? `
 
             const playerID = getPlayerID();
             const baseURL = `${ProjectUrl}players/playersDetail/index/`;
-
+            console.log(baseURL)
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: baseURL,
@@ -3211,7 +3374,6 @@ ${fraud.manager === managerName ? `
                             const safeBalance = getInnerBalanceValue();
                             const profit = (depositsTotal - redeemsTotal);
                             const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
-                            const TotalPA = (redeemsTotal / depositsTotal) * 100;
                             const PrognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
                             const formattedProfit = formatAmount(profit)
                             const formattedPrognoseInOut = formatAmount(PrognoseInOut)
@@ -3221,14 +3383,9 @@ ${fraud.manager === managerName ? `
 
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += `
-        <div><b>Total PA:
-            <span style="color: ${TotalPA < 75 ? 'green' : (TotalPA < 100 ? 'orange' : 'red')}">
-                ${TotalPA.toFixed(2)}%
-            </span>
-        </b></div>
-    <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}₴</b></div>
+    <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}${currencySymbol}</b></div>
     ${(totalPending > 1 || cleanBalance > 1) ? `
-        <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}₴</b></div>
+        <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}${currencySymbol}</b></div>
         <div><b>Prognose PA:
             <span style="color: ${PrognosePA < 75 ? 'green' : (PrognosePA < 100 ? 'orange' : 'red')}">
                 ${PrognosePA.toFixed(2)}%
@@ -3465,7 +3622,7 @@ ${fraud.manager === managerName ? `
                                     withdrawId = cells[0] ? cells[0].textContent.trim() : '';
                                     withdrawText = cells[6] ? cells[6].textContent.trim() : '';
                                     waitingForBonus = true;
-                                } else if (actionType.includes('Ввод средств')) {
+                                } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase')) {
                                     withdrawAmount = 0;
                                     balanceAfterBonus = 0;
                                     waitingForBonus = false;
@@ -3494,7 +3651,7 @@ ${fraud.manager === managerName ? `
                                     }
 
                                     waitingForBonus = false;
-                                } else if (actionType.includes('Присвоение бонуса')) {
+                                } else if (actionType.includes('Присвоение бонуса') || actionType.includes('Bonus assignment')) {
                                     const paymentMatch = bonusInfo.match(/платеж № (\d+)/);
                                     if (paymentMatch) {
                                         bonusWithDeposits++;
@@ -4461,6 +4618,49 @@ ${fraud.manager === managerName ? `
             });
         } else {
             console.log('Не удалось найти URL для запроса.');
+        }
+    }
+
+    function handlePopupWildWinz() {
+        function getInOutUrl() {
+            const scripts = document.querySelectorAll('script');
+            for (const script of scripts) {
+                const scriptContent = script.textContent;
+                if (scriptContent.includes('#show-player-in-out')) {
+                    const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
+                    if (urlMatch) {
+                        return urlMatch[1];
+                    }
+                }
+            }
+            return null;
+        }
+
+        const url = getInOutUrl();
+        if (url) {
+            $.ajax({
+                type: 'GET',
+                url: url,
+            }).done(function(data) {
+                const TotalPA = data.totalInOut;
+                const MonthPA = data.monthInOut;
+                const Balance = getBalance();
+
+                setTimeout(() => {
+                    const NDFL = 0;
+                    fetchAndProcessPending().then(({ totalPending, cards }) => {
+                        console.log(cards);
+                        fetchAndProcessData();
+                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
+                        addCheckButton(TotalPA, Balance, totalPending);
+                    }).catch(error => {
+                        console.error('Error processing pending payments:', error);
+                    });
+                }, 350);
+
+            }).fail(function(xhr) {
+                console.error('Ошибка при выполнении запроса:', xhr.responseText);
+            });
         }
     }
 
@@ -5603,9 +5803,8 @@ ${fraud.manager === managerName ? `
     function verificationProvider() {
         return new Promise((resolve, reject) => {
             const playerId = getPlayerID();
-            const project = getProject();
 
-            const url = `https://admin.${project}.ua/players/playerIdentityVerification/index/`;
+            const url = `${ProjectUrl}/players/playerIdentityVerification/index/`;
 
             GM_xmlhttpRequest({
                 method: 'POST',
@@ -6711,7 +6910,11 @@ ${fraud.manager === managerName ? `
         const currentHost = window.location.hostname;
         if (tokenIsValid) {
             sendActivePageInfo();
-            if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
+            if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmountWildWinz();
+
+            }
+            else if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();
             }
             else if (currentHost.endsWith('.ua') && currentUrl.includes('paymentsItemsOut/index')) {
@@ -6727,10 +6930,19 @@ ${fraud.manager === managerName ? `
                 updateBanButton();
                 checkForUpdates();
                 document.addEventListener('keydown', handleShortcut);
-                setTimeout(handlePopup, 200);
+                handlePopup();
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
+            } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
+                addForeignButton();
+                buttonToSave();
+                checkUserInFraudList();
+                activeUrlsManagers();
+                checkUserInChecklist();
+                updateBanButton();
+                checkForUpdates();
+                handlePopupWildWinz();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();

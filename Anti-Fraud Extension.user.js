@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1
+// @version      5.1.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -62,7 +62,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1";
+    const currentVersion = "5.1.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3021,6 +3021,18 @@ ${fraud.manager === managerName ? `
             }
 
             function searchUser(query, fieldType, projectUrl) {
+
+                const projectImageUrls = {
+                    slotoking: 'https://admin.slotoking.ua/img/slotoking.png',
+                    '777': 'https://admin.777.ua/img/777.png',
+                    vegas: 'https://admin.vegas.ua/img/vegas.png'
+                };
+
+                const currentProject = projectUrl.includes('slotoking')
+                ? 'slotoking'
+                : (url.includes('777') ? '777' : 'vegas');
+
+                const projectImageUrl = projectImageUrls[currentProject] || '';
                 GM_xmlhttpRequest({
                     method: "POST",
                     url: projectUrl,
@@ -3032,11 +3044,18 @@ ${fraud.manager === managerName ? `
                         if (response.finalUrl.includes('/update/')) {
                             getUserInfo(response.finalUrl, fieldType);
                         } else {
-                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не найдено (${projectUrl})</div>`;
+                            if (fieldType === 'inn') {
+                                projectButtonContainer.innerHTML += `
+                    <div style="text-align: center; margin-bottom: 10px;">
+                        <img src="${projectImageUrl}" alt="${currentProject}" style="width: 75px; height: auto;">
+                    </div>
+                `;
+                            }
+                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не найдено</div>`;
                         }
                     },
                     onerror: function () {
-                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'} (${projectUrl}).</div>`;
+                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'}.</div>`;
                     }
                 });
             }

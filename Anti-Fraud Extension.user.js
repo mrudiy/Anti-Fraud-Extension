@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.3
+// @version      5.1.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -62,7 +62,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.3";
+    const currentVersion = "5.1.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3153,12 +3153,10 @@ ${fraud.manager === managerName ? `
                             searchUser(inn, 'inn', projectUrls[project], projectContainer);
                             searchUser(email, 'email', projectUrls[project], projectContainer);
                             searchUser(phone, 'phone', projectUrls[project], projectContainer);
+
+                            processProjectCards(project, projectUrls[project], projectContainer);
+
                         });
-
-
-                        setTimeout(function() {
-                            processCards();
-                        }, 3000);
                     },
                     onerror: function() {
                         projectButtonContainer.innerHTML += '<div>Ошибка при получении данных ИНН.</div>';
@@ -3169,72 +3167,71 @@ ${fraud.manager === managerName ? `
             }
         });
 
-        async function processCards() {
-            const data = await fetchAllCards();
-            const cards = data.cards;
+        function processProjectCards(project, projectUrl, projectContainer) {
+            fetchAllCards().then(data => {
+                const cards = data.cards;
 
-            const searchUrl = window.location.hostname.includes('777.ua')
-            ? 'https://admin.slotoking.ua/payments/paymentsItemsOut/requisite/'
-            : 'https://admin.777.ua/payments/paymentsItemsOut/requisite/';
+                const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+                const openUrl = projectUrl.replace('/players/playersItems/search/', '');
 
-            const openUrl = window.location.hostname.includes('777.ua')
-            ? 'https://admin.slotoking.ua'
-            : 'https://admin.777.ua';
+                cards.forEach(card => {
+                    const cardContainer = document.createElement('div');
 
-            for (const card of cards) {
-                GM_xmlhttpRequest({
-                    method: "POST",
-                    url: searchUrl,
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
-                    onload: function(response) {
-                        let tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = response.responseText;
-                        const table = tempDiv.querySelector('table.items tbody');
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: searchUrl,
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        },
+                        data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                        onload: function (response) {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = response.responseText;
+                            const table = tempDiv.querySelector('table.items tbody');
 
-                        if (table) {
-                            const rows = table.querySelectorAll('tr');
+                            if (table) {
+                                const rows = table.querySelectorAll('tr');
 
-                            rows.forEach((row) => {
-                                const playerCard = row.querySelector('td span.player_card');
-                                if (playerCard) {
-                                    let cardHtml = playerCard.outerHTML;
-                                    let cardTempDiv = document.createElement('div');
-                                    cardTempDiv.innerHTML = cardHtml;
-                                    cardTempDiv.querySelectorAll('a').forEach(link => {
-                                        let href = link.getAttribute('href');
-                                        if (href) {
-                                            link.setAttribute('href', `${openUrl}${href}`);
+                                rows.forEach((row) => {
+                                    const playerCard = row.querySelector('td span.player_card');
+                                    if (playerCard) {
+                                        let cardHtml = playerCard.outerHTML;
+                                        let cardTempDiv = document.createElement('div');
+                                        cardTempDiv.innerHTML = cardHtml;
+                                        cardTempDiv.querySelectorAll('a').forEach(link => {
+                                            let href = link.getAttribute('href');
+                                            if (href) {
+                                                link.setAttribute('href', `${openUrl}${href}`);
+                                            }
+                                        });
+
+                                        cardHtml = cardTempDiv.innerHTML;
+                                        let spanElement = cardTempDiv.querySelector('.player_card');
+
+                                        if (spanElement) {
+                                            spanElement.removeAttribute('rel');
+                                            spanElement.removeAttribute('data-content');
                                         }
-                                    });
 
-                                    cardHtml = cardTempDiv.innerHTML;
-                                    let spanElement = cardTempDiv.querySelector('.player_card');
+                                        cardHtml = cardTempDiv.innerHTML;
+                                        const first6 = card.slice(0, 6);
+                                        const last4 = card.slice(-4);
 
-                                    if (spanElement) {
-                                        spanElement.removeAttribute('rel');
-                                        spanElement.removeAttribute('data-content');
+                                        projectContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
                                     }
-
-                                    cardHtml = cardTempDiv.innerHTML;
-                                    console.log(cardHtml)
-                                    const first6 = card.slice(0, 6);
-                                    const last4 = card.slice(-4);
-
-                                    projectButtonContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
-                                }
-                            });
+                                });
+                            }
+                        },
+                        onerror: function () {
+                            const errorDiv = document.createElement('div');
+                            errorDiv.textContent = `Помилка пошуку карти: ${card}`;
+                            errorDiv.style.color = 'red';
+                            cardContainer.appendChild(errorDiv);
                         }
-                    },
-                    onerror: function() {
-                        console.log(`Ошибка при поиске владельца для карты: ${card}`);
-                    }
+                    });
                 });
-            }
+            });
         }
-
 
         if (!window.location.hostname.includes('admin.wildwinz.com')) {
             popupBox.appendChild(projectButtonContainer);

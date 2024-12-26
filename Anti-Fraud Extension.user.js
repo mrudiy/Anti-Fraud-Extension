@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.1
+// @version      5.1.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -62,7 +62,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.1";
+    const currentVersion = "5.1.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3020,19 +3020,9 @@ ${fraud.manager === managerName ? `
                 return 'Не найдено';
             }
 
-            function searchUser(query, fieldType, projectUrl) {
+            function searchUser(query, fieldType, projectUrl, projectContainer) {
+                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
-                const projectImageUrls = {
-                    slotoking: 'https://admin.slotoking.ua/img/slotoking.png',
-                    '777': 'https://admin.777.ua/img/777.png',
-                    vegas: 'https://admin.vegas.ua/img/vegas.png'
-                };
-
-                const currentProject = projectUrl.includes('slotoking')
-                ? 'slotoking'
-                : (url.includes('777') ? '777' : 'vegas');
-
-                const projectImageUrl = projectImageUrls[currentProject] || '';
                 GM_xmlhttpRequest({
                     method: "POST",
                     url: projectUrl,
@@ -3042,38 +3032,34 @@ ${fraud.manager === managerName ? `
                     data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
                     onload: function (response) {
                         if (response.finalUrl.includes('/update/')) {
-                            getUserInfo(response.finalUrl, fieldType);
+                            getUserInfo(response.finalUrl, fieldType, projectContainer);
                         } else {
-                            if (fieldType === 'inn') {
-                                projectButtonContainer.innerHTML += `
-                    <div style="text-align: center; margin-bottom: 10px;">
-                        <img src="${projectImageUrl}" alt="${currentProject}" style="width: 75px; height: auto;">
-                    </div>
-                `;
-                            }
-                            projectButtonContainer.innerHTML += `<div><b>${fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон')}:</b> не найдено</div>`;
+                            const notFoundMessage = document.createElement('div');
+                            notFoundMessage.innerHTML = `<b>${searchTypeLabel}:</b> не знайдено`;
+                            notFoundMessage.style.textAlign = 'center';
+                            projectContainer.appendChild(notFoundMessage);
                         }
                     },
                     onerror: function () {
-                        projectButtonContainer.innerHTML += `<div>Ошибка при поиске по ${fieldType === 'email' ? 'E-mail' : 'телефону'}.</div>`;
+                        const errorMessage = document.createElement('div');
+                        errorMessage.innerHTML = `<b>${searchTypeLabel}:</b> Помилка при пошуку`;
+                        errorMessage.style.color = 'red';
+                        errorMessage.style.textAlign = 'center';
+                        projectContainer.appendChild(errorMessage);
                     }
                 });
             }
 
-
-
-            function getUserInfo(url, fieldType) {
+            function getUserInfo(url, fieldType, projectContainer) {
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: url,
                     onload: function(response) {
-                        let tempDiv = document.createElement('div');
+                        const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = response.responseText;
 
                         const playerId = getValueByLabel(tempDiv, 'Номер игрока');
-
                         let status = 'success';
-
                         const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
                         attentionHeaders.forEach(header => {
                             const headerText = header.textContent.trim();
@@ -3083,50 +3069,26 @@ ${fraud.manager === managerName ? `
                                 status = 'info';
                             }
                         });
-
-                        const surname = getValueByLabel(tempDiv, 'Фамилия');
-                        const middleName = getValueByLabel(tempDiv, 'Middle Name');
-                        const firstName = getValueByLabel(tempDiv, 'Имя');
-
-                        if (firstName === 'Не заданий' || firstName === 'Не задан') {
-                            status = 'default';
-                        }
-
-                        const projectImageUrls = {
-                            slotoking: 'https://admin.slotoking.ua/img/slotoking.png',
-                            '777': 'https://admin.777.ua/img/777.png',
-                            vegas: 'https://admin.vegas.ua/img/vegas.png'
-                        };
-
-                        const currentProject = url.includes('slotoking')
-                        ? 'slotoking'
-                        : (url.includes('777') ? '777' : 'vegas');
-
-                        const projectImageUrl = projectImageUrls[currentProject] || '';
-
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
-                        if (fieldType === 'inn') {
-                            projectButtonContainer.innerHTML += `
-                    <div style="text-align: center; margin-bottom: 10px;">
-                        <img src="${projectImageUrl}" alt="${currentProject}" style="width: 75px; height: auto;">
-                    </div>
-                `;
-                        }
-
-                        projectButtonContainer.innerHTML += `
-                <div>
-                    <b>${searchTypeLabel}:</b>
-                    <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>
-                </div>
+                        const userInfo = document.createElement('div');
+                        userInfo.innerHTML = `
+                <b>${searchTypeLabel}:</b>
+                <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>
             `;
-
+                        userInfo.style.textAlign = 'center';
+                        projectContainer.appendChild(userInfo);
                     },
                     onerror: function() {
-                        projectButtonContainer.innerHTML += '<div>Ошибка при получении данных пользователя.</div>';
+                        const errorMessage = document.createElement('div');
+                        errorMessage.innerHTML = 'Помилка при отриманні даних користувача.';
+                        errorMessage.style.color = 'red';
+                        errorMessage.style.textAlign = 'center';
+                        projectContainer.appendChild(errorMessage);
                     }
                 });
             }
+
 
 
             function getAjaxUrl() {
@@ -3158,9 +3120,9 @@ ${fraud.manager === managerName ? `
                         const phone = getFirstValueByLabel('Телефон');
 
                         const projectUrls = {
-                            slotoking: 'https://admin.slotoking.ua/players/playersItems/search/',
+                            'slotoking': 'https://admin.slotoking.ua/players/playersItems/search/',
                             '777': 'https://admin.777.ua/players/playersItems/search/',
-                            vegas: 'https://admin.vegas.ua/players/playersItems/search/'
+                            'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
                         };
 
                         const currentProject = window.location.hostname.includes('slotoking')
@@ -3170,10 +3132,29 @@ ${fraud.manager === managerName ? `
                         const otherProjects = Object.keys(projectUrls).filter(project => project !== currentProject);
 
                         otherProjects.forEach(project => {
-                            searchUser(inn, 'inn', projectUrls[project]);
-                            searchUser(email, 'email', projectUrls[project]);
-                            searchUser(phone, 'phone', projectUrls[project]);
+                            const projectContainer = document.createElement('div');
+                            projectContainer.style.marginBottom = '20px';
+
+                            const projectImage = document.createElement('img');
+                            projectImage.src = projectUrls[project].includes('slotoking')
+                                ? 'https://admin.slotoking.ua/img/slotoking.png'
+                            : (projectUrls[project].includes('777')
+                               ? 'https://admin.777.ua/img/777.png'
+                               : 'https://admin.vegas.ua/img/vegas.png');
+                            projectImage.alt = project;
+                            projectImage.style.width = '75px';
+                            projectImage.style.height = 'auto';
+                            projectImage.style.display = 'block';
+                            projectImage.style.margin = '0 auto 10px';
+                            projectContainer.appendChild(projectImage);
+
+                            projectButtonContainer.appendChild(projectContainer);
+
+                            searchUser(inn, 'inn', projectUrls[project], projectContainer);
+                            searchUser(email, 'email', projectUrls[project], projectContainer);
+                            searchUser(phone, 'phone', projectUrls[project], projectContainer);
                         });
+
 
                         setTimeout(function() {
                             processCards();
@@ -5841,9 +5822,14 @@ ${fraud.manager === managerName ? `
                         for (let row of rows) {
                             const cells = row.querySelectorAll('td');
                             const verificationCount = cells[1]?.textContent.trim();
+                            const provider = cells[7]?.textContent.trim();
+
                             if (verificationCount === '1') {
-                                const provider = cells[7]?.textContent.trim();
                                 console.log('Найден провайдер:', provider);
+                                resolve(provider);
+                                return;
+                            } else if (!verificationCount && provider === 'SumSub') {
+                                console.log('Найден провайдер sumsub без верификаций:', provider);
                                 resolve(provider);
                                 return;
                             }

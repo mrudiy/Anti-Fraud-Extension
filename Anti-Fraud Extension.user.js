@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.4
+// @version      5.1.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -55,14 +55,14 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
-    const kingSheet = 'KING Грудень⛄';
+    const kingSheet = 'KING Січень💎';
     const sevensSheet = 'SEVENS🎰';
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.4";
+    const currentVersion = "5.1.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';

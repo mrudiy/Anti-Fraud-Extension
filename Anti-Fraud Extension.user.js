@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.6
+// @version      5.1.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -62,7 +62,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.6";
+    const currentVersion = "5.1.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2440,6 +2440,8 @@ ${fraud.manager === managerName ? `
     function insertTextIntoField(text) {
         const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
         if (field) {
+            const pattern = /Автовиплати відключено антифрод командою .*?\d{2}:\d{2}/;
+            field.innerHTML = field.innerHTML.replace(pattern, '').trim();
             field.focus();
             field.innerHTML = text + '<br>' + field.innerHTML;
 
@@ -2447,6 +2449,7 @@ ${fraud.manager === managerName ? `
             field.dispatchEvent(event);
         }
     }
+
     let isProfitButtonClicked = false;
 
     function formatAmount(balance) {
@@ -6928,6 +6931,26 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
+    function makeHeaderClickableAndOpenLinks() {
+        const header = document.querySelector(`#players-documents_c6`);
+
+        if (header) {
+            header.style.cursor = 'pointer'; // Указатель курсора для кликабельности
+
+            header.addEventListener('click', () => {
+                // Находим все ссылки по указанному селектору
+                const documentLinks = document.querySelectorAll('td a.btn.modalPreview[href]');
+
+                // Открываем каждую ссылку в новой вкладке
+                documentLinks.forEach(link => {
+                    if (link.href) {
+                        window.open(link.href, '_blank');
+                    }
+                });
+            });
+        }
+    }
+
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
         const currentHost = window.location.hostname;
@@ -6957,6 +6980,7 @@ ${fraud.manager === managerName ? `
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
+                makeHeaderClickableAndOpenLinks();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();

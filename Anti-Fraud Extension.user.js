@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.5
+// @version      5.1.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -62,7 +62,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.5";
+    const currentVersion = "5.1.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -6667,71 +6667,91 @@ ${fraud.manager === managerName ? `
         GM_xmlhttpRequest({
             method: 'GET',
             url: requestUrl,
-            onload: function(response) {
+            onload: function (response) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(response.responseText, 'text/html');
+                    const formData = new URLSearchParams();
+                    formData.append('newPageSize', '10000');
 
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(response.responseText, 'text/html');
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: requestUrl,
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        data: formData.toString(),
+                        onload: function (response) {
+                            try {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                const select = doc.querySelector('#newPageSize');
-                if (select) {
-                    select.value = '500';
-                    const event = new Event('change', { bubbles: true });
-                    select.dispatchEvent(event);
-                }
+                                const rows = doc.querySelectorAll('tr.even, tr.odd');
+                                let totalDeposits = 0;
+                                let totalDepositsAmount = 0;
+                                let totalMoneyFromOffer = 0;
+                                let depositsWithOffer = 0;
 
-                setTimeout(() => {
-                    const rows = doc.querySelectorAll('tr.even, tr.odd');
-                    let totalDeposits = 0;
-                    let totalDepositsAmount = 0;
-                    let totalMoneyFromOffer = 0;
-                    let depositsWithOffer = 0;
-                    let moneyFromOfferPercentage = 0;
+                                rows.forEach(row => {
+                                    const status = row.querySelector('td:nth-child(3)')?.textContent.trim();
+                                    const depositAmountText = row.querySelector('td:nth-child(5)')?.textContent.trim();
+                                    const offerDetailsText = row.querySelector('td:nth-child(7)')?.textContent.trim();
 
+                                    if (status === 'closed') {
+                                        totalDeposits++;
+                                        const depositAmountMatch = depositAmountText?.match(/([\d.]+) USD/);
+                                        const depositAmount = depositAmountMatch ? parseFloat(depositAmountMatch[1]) : 0;
 
-                    rows.forEach(row => {
-                        const status = row.children[2].textContent.trim();
-                        const depositAmountText = row.children[4].textContent.trim();
-                        const offerDetailsText = row.children[6].textContent.trim();
+                                        const entriesMatch = offerDetailsText?.match(/(\d+\.?\d*) entries/);
+                                        const entriesCount = entriesMatch ? parseFloat(entriesMatch[1]) : 0;
 
+                                        totalDepositsAmount += depositAmount;
 
-                        if (status === 'closed') {
-                            totalDeposits++;
-                            const depositAmountMatch = depositAmountText.match(/([\d.]+) USD/);
-                            const depositAmount = depositAmountMatch ? parseFloat(depositAmountMatch[1]) : 0;
+                                        if (entriesCount > 0) {
+                                            depositsWithOffer++;
+                                            totalMoneyFromOffer += entriesCount - depositAmount;
+                                        }
+                                    }
+                                });
 
-                            const entriesMatch = offerDetailsText.match(/(\d+\.?\d*) entries/);
-                            const entriesCount = entriesMatch ? parseFloat(entriesMatch[1]) : 0;
-                            totalDepositsAmount += depositAmount;
+                                if (totalDeposits > 0) {
+                                    const offerPercentage = (depositsWithOffer / totalDeposits) * 100;
+                                    const moneyFromOfferPercentage = (totalMoneyFromOffer / totalDepositsAmount) * 100;
 
-
-                            if (entriesCount > 0) {
-                                depositsWithOffer++;
-                                const moneyFromOffer = entriesCount - depositAmount;
-
-                                totalMoneyFromOffer += moneyFromOffer;
-                                if (totalDepositsAmount > 0) {
-                                    moneyFromOfferPercentage = (totalMoneyFromOffer / totalDepositsAmount) * 100;
-
+                                    callback(
+                                        offerPercentage.toFixed(2),
+                                        totalMoneyFromOffer.toFixed(2),
+                                        totalDeposits,
+                                        moneyFromOfferPercentage.toFixed(2),
+                                        totalDepositsAmount.toFixed(2),
+                                        depositsWithOffer
+                                    );
+                                } else {
+                                    console.log('No deposits found.');
+                                    callback(0, 0, 0, 0, 0, 0);
                                 }
-
-                            } else {
-                                console.log('No entries found in offer details.');
+                            } catch (error) {
+                                console.error('Error processing POST response:', error);
+                                callback(0, 0, 0, 0, 0, 0);
                             }
-                        } else {
-                        }
+                        },
+                        onerror: function () {
+                            console.error('POST request failed.');
+                            callback(0, 0, 0, 0, 0, 0);
+                        },
                     });
-
-                    if (totalDeposits > 0) {
-                        const offerPercentage = (depositsWithOffer / totalDeposits) * 100;
-                        callback(offerPercentage.toFixed(2), totalMoneyFromOffer.toFixed(2), totalDeposits, moneyFromOfferPercentage.toFixed(2), totalDepositsAmount.toFixed(2), depositsWithOffer);
-                    } else {
-                        console.log('No deposits found.');
-                        callback(0, 0, 0);
-                    }
-                }, 1);
-            }
+                } catch (error) {
+                    console.error('Error processing GET response:', error);
+                    callback(0, 0, 0, 0, 0, 0);
+                }
+            },
+            onerror: function () {
+                console.error('GET request failed.');
+                callback(0, 0, 0, 0, 0, 0);
+            },
         });
     }
+
 
     function analyzeTransaction(callback) {
         const userId = window.location.pathname.split('/')[4];

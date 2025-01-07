@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.1.7
+// @version      5.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -55,6 +55,7 @@
     const amountDisplayKey = 'amountDisplay';
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
+    const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const kingSheet = 'KING Січень💎';
     const sevensSheet = 'SEVENS🎰';
     const currencySymbols = new Map([
@@ -62,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.1.7";
+    const currentVersion = "5.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -717,6 +718,11 @@
         settingsPopup.appendChild(
             createCheckboxWithLabel('Відображати пам`ятку', GM_getValue(reminderDisplayKey, true), (e) => {
                 GM_setValue(reminderDisplayKey, e.target.checked);
+            })
+        );
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Кнопка автовиплат', GM_getValue(autoPaymentsDisplayKey, true), (e) => {
+                GM_setValue(autoPaymentsDisplayKey, e.target.checked);
             })
         );
 
@@ -2402,14 +2408,26 @@ ${fraud.manager === managerName ? `
 
     function getInnerBalanceValue() {
         const input = document.querySelector('input[data-field="inner_balance"]');
+        let innerBalance = 0;
 
         if (input) {
             const value = input.value;
-            return parseFloat(value) || 0;
-        } else {
-            return 0;
+            innerBalance = parseFloat(value) || 0;
         }
+
+        const holdAmounts = document.querySelectorAll('.hold-amount > span.hold-amount');
+        let totalHoldAmount = 0;
+
+        holdAmounts.forEach(hold => {
+            const match = hold.textContent.trim().match(/^([\d.]+)/);
+            if (match) {
+                totalHoldAmount += parseFloat(match[1]) || 0;
+            }
+        });
+
+        return innerBalance + totalHoldAmount;
     }
+
 
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
@@ -2728,6 +2746,8 @@ ${fraud.manager === managerName ? `
             popupBox.appendChild(adminIcon);
         }
 
+        const showAutopayments = GM_getValue(autoPaymentsDisplayKey, true);
+
         const statusIcon = document.createElement('div');
         statusIcon.style.position = 'absolute';
         statusIcon.style.top = '10px';
@@ -2735,23 +2755,33 @@ ${fraud.manager === managerName ? `
         statusIcon.style.fontSize = '20px';
         statusIcon.style.cursor = 'pointer';
         statusIcon.title = 'Автовиплата';
-        statusIcon.innerHTML = checkbox && checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
+        statusIcon.innerHTML = checkbox && checkbox.checked
+            ? '<i class="fa fa-check-circle" style="color: green;"></i>'
+        : '<i class="fa fa-times-circle" style="color: red;"></i>';
 
-        statusIcon.onclick = () => {
-            checkbox.click();
-
-            setTimeout(() => {
-                const confirmButton = document.querySelector('.swal2-confirm');
-                if (confirmButton) {
-                    confirmButton.click();
-                }
+        if (showAutopayments) {
+            statusIcon.style.pointerEvents = 'none';
+        } else {
+            statusIcon.onclick = () => {
+                checkbox.click();
 
                 setTimeout(() => {
-                    statusIcon.innerHTML = checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
+                    const confirmButton = document.querySelector('.swal2-confirm');
+                    if (confirmButton) {
+                        confirmButton.click();
+                    }
+
+                    setTimeout(() => {
+                        statusIcon.innerHTML = checkbox.checked
+                            ? '<i class="fa fa-check-circle" style="color: green;"></i>'
+                        : '<i class="fa fa-times-circle" style="color: red;"></i>';
+                    }, 200);
                 }, 200);
-            }, 200);
-        };
+            };
+        }
+
         popupBox.appendChild(statusIcon);
+
 
         const fraudIcon = document.createElement('div');
         fraudIcon.style.position = 'absolute';
@@ -3384,7 +3414,7 @@ ${fraud.manager === managerName ? `
                             fourthRowContainer.removeChild(loader);
                             fourthRowContainer.innerHTML += `
     <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}${currencySymbol}</b></div>
-    ${(totalPending > 1 || cleanBalance > 1) ? `
+    ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
         <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}${currencySymbol}</b></div>
         <div><b>Prognose PA:
             <span style="color: ${PrognosePA < 75 ? 'green' : (PrognosePA < 100 ? 'orange' : 'red')}">
@@ -6360,6 +6390,7 @@ ${fraud.manager === managerName ? `
             popupBox.appendChild(fraudIcon);
 
             const showReminder = GM_getValue(reminderDisplayKey, true);
+
             const shouldBlink = GM_getValue(reminderBlinkKey, true);
             const hasNewArticles = await checkForNewArticles();
 
@@ -6935,13 +6966,11 @@ ${fraud.manager === managerName ? `
         const header = document.querySelector(`#players-documents_c6`);
 
         if (header) {
-            header.style.cursor = 'pointer'; // Указатель курсора для кликабельности
+            header.style.cursor = 'pointer';
 
             header.addEventListener('click', () => {
-                // Находим все ссылки по указанному селектору
                 const documentLinks = document.querySelectorAll('td a.btn.modalPreview[href]');
 
-                // Открываем каждую ссылку в новой вкладке
                 documentLinks.forEach(link => {
                     if (link.href) {
                         window.open(link.href, '_blank');

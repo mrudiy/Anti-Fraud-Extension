@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.2
+// @version      5.2.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.2";
+    const currentVersion = "5.2.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3629,6 +3629,7 @@ ${fraud.manager === managerName ? `
 
                         let totalDeposits = 0;
                         let bonusWithDeposits = 0;
+                        let totalWithdrawAmount = 0;
 
                         let messageCount = 0;
                         const maxMessages = 2;
@@ -3638,7 +3639,6 @@ ${fraud.manager === managerName ? `
 
                         rows.forEach(row => {
                             if (messageCount >= maxMessages) return;
-
                             const cells = row.querySelectorAll('td');
                             if (cells.length > 0) {
                                 const actionType = cells[1] ? cells[1].innerText.trim() : '';
@@ -3648,14 +3648,17 @@ ${fraud.manager === managerName ? `
                                 const dateStr = dateMatch ? dateMatch[1] : '';
 
                                 if (actionType.includes('Вывод средств')) {
-                                    withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0');
+                                    withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0') || 0;
+                                    totalWithdrawAmount += withdrawAmount;
                                     withdrawId = cells[0] ? cells[0].textContent.trim() : '';
                                     withdrawText = cells[6] ? cells[6].textContent.trim() : '';
                                     waitingForBonus = true;
+
                                 } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase')) {
                                     withdrawAmount = 0;
                                     balanceAfterBonus = 0;
                                     waitingForBonus = false;
+                                    totalWithdrawAmount = 0
                                     totalDeposits++;
                                 } else if (actionType.includes('Ручное начисление баланса')) {
                                     const amount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
@@ -3670,12 +3673,11 @@ ${fraud.manager === managerName ? `
                                     const fullDate = cells[5] ? cells[5].textContent.trim() : '';
                                     const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                                     bonusDate = dateMatch ? dateMatch[1] : '';
-
-                                    if (withdrawAmount > balanceAfterBonus) {
-                                        const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${withdrawAmount}₴`;
+                                    if (totalWithdrawAmount >= balanceAfterBonus) {
+                                        const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${totalWithdrawAmount}₴`;
                                         console.log('Проверка на нарушение BTR:', message);
 
-                                        updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
+                                        updatePopupBox(balanceAfterBonus, totalWithdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
 
                                         messageCount++;
                                     }

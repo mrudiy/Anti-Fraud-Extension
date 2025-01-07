@@ -2759,7 +2759,7 @@ ${fraud.manager === managerName ? `
             ? '<i class="fa fa-check-circle" style="color: green;"></i>'
         : '<i class="fa fa-times-circle" style="color: red;"></i>';
 
-        if (showAutopayments) {
+        if (!showAutopayments) {
             statusIcon.style.pointerEvents = 'none';
         } else {
             statusIcon.onclick = () => {

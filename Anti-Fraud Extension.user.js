@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.2.1
+// @version      5.2.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.2.1";
+    const currentVersion = "5.2.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3336,6 +3336,10 @@ ${fraud.manager === managerName ? `
 .blinking {
     animation: blink-red 1s infinite;
 }
+
+        #players-documents_c6 {
+            cursor: pointer;
+        }
 `;
         document.head.appendChild(styleSheet);
         document.body.appendChild(popupBox);
@@ -5125,26 +5129,47 @@ ${fraud.manager === managerName ? `
 
                 if (fieldDate === today) {
                     const lines = gatewayElement.innerHTML.trim().split('<br>');
+
                     if (lines.length > 1) {
-                        const secondLine = lines[1];
-                        const lastPipeIndex = secondLine.lastIndexOf('|');
-                        if (lastPipeIndex !== -1) {
-                            const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                        let secondLine = lines[1];
+                        let lastPipeIndex = secondLine.lastIndexOf('|');
+                        let foundValidIndex = false;
+
+                        while (lastPipeIndex !== -1) {
+                            const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
                             const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                            const updatedSecondLine = `${beforePipe} ${insertText} | ${afterPipe}`.trim();
-                            lines[1] = updatedSecondLine;
-                            gatewayElement.innerHTML = lines.join('<br>');
-                            gatewayElement.dispatchEvent(new Event('input'));
-                            if (doneButton) {
-                                doneButton.click();
+
+                            const beforeMatch = beforePipe.match(/\d{4}$/);
+                            const afterMatch = afterPipe.match(/^\d{2}/);
+
+                            if (!(beforeMatch && afterMatch)) {
+                                const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                                const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                                const updatedSecondLine = `${validBeforePipe} ${insertText} | ${validAfterPipe}`.trim();
+                                lines[1] = updatedSecondLine;
+
+                                gatewayElement.innerHTML = lines.join('<br>');
+                                gatewayElement.dispatchEvent(new Event('input'));
+
+                                if (doneButton) {
+                                    doneButton.click();
+                                }
+
+                                foundValidIndex = true;
+                                break;
                             }
-                        } else {
-                            console.warn('Symbol "|" not found in the second line.');
+
+                            lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+                        }
+
+                        if (!foundValidIndex) {
+                            console.warn('Valid "|" not found in the second line.');
                         }
                     } else {
                         console.warn('Not enough lines to process the second line.');
                     }
-                } else {
+                }
+                else {
                     const checkButton = document.getElementById('check-button');
                     if (checkButton) {
                         checkButton.click();
@@ -6964,23 +6989,20 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
-    function makeHeaderClickableAndOpenLinks() {
-        const header = document.querySelector(`#players-documents_c6`);
+    document.addEventListener('click', (event) => {
+        const header = event.target.closest(`#players-documents_c6`);
 
         if (header) {
             header.style.cursor = 'pointer';
 
-            header.addEventListener('click', () => {
-                const documentLinks = document.querySelectorAll('td a.btn.modalPreview[href]');
-
-                documentLinks.forEach(link => {
-                    if (link.href) {
-                        window.open(link.href, '_blank');
-                    }
-                });
+            const documentLinks = document.querySelectorAll('td a.btn.modalPreview[href]');
+            documentLinks.forEach(link => {
+                if (link.href) {
+                    window.open(link.href, '_blank');
+                }
             });
         }
-    }
+    });
 
     window.addEventListener('load', async function() {
         const tokenIsValid = await checkToken();
@@ -7011,7 +7033,6 @@ ${fraud.manager === managerName ? `
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
-                makeHeaderClickableAndOpenLinks();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();

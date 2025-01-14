@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.3
+// @version      5.3.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.3";
+    const currentVersion = "5.3.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -6085,6 +6085,16 @@ ${fraud.manager === managerName ? `
 
         const rows = document.querySelectorAll("tr");
 
+        const style = document.createElement('style');
+        style.innerHTML = `
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+    `;
+        document.head.appendChild(style);
+
         rows.forEach(row => {
             const th = row.querySelector("th");
             if (th && th.textContent.trim() === "День рождения") {
@@ -6099,7 +6109,18 @@ ${fraud.manager === managerName ? `
                     const birthDate = new Date(year, month - 1, day);
                     const age = calculateAge(birthDate);
 
-                    td.innerHTML = `${birthDateStr} | Вік: ${age}`;
+                    const ageSpan = document.createElement("span");
+                    ageSpan.textContent = ` | Вік: ${age}`;
+
+                    if (age <= 23 || age >= 60) {
+                        ageSpan.style.color = "red";  // Красный цвет текста
+                        ageSpan.style.fontWeight = "bold";  // Жирный текст
+                        ageSpan.style.animation = "blink 1s infinite";  // Применяем мигание
+
+                    }
+
+                    // Вставляем возраст в строку
+                    td.appendChild(ageSpan);
                 }
             }
         });

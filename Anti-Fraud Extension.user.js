@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.4
+// @version      5.4.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.4";
+    const currentVersion = "5.4.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7134,7 +7134,6 @@ ${fraud.manager === managerName ? `
                 checkAutoPayment();
                 goToGoogleSheet();
                 addAgeToBirthdate();
-                changeCardStatus();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();

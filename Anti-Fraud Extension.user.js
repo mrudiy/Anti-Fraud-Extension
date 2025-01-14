@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.3.1
+// @version      5.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.3.1";
+    const currentVersion = "5.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4937,6 +4937,109 @@ ${fraud.manager === managerName ? `
             .catch(error => console.error('Error:', error));
     }
 
+    function changeCardStatus() {
+        const container = document.querySelector('#payments-cards-masks-parent');
+        const rows = container.querySelectorAll('tr.odd, tr.even');
+
+        rows.forEach((row) => {
+            const statusCell = row.querySelector('td input.payment-cards-masks-change-status');
+            const markerCell = row.querySelector('.payment-cards-masks-marker');
+            const checkbox = row.querySelector('td input[type="checkbox"][name="paymentTokenEnabled"]');
+
+            if (statusCell && markerCell && statusCell.value == 'Не проверена') {
+                if (!row.querySelector('.custom-status-button')) {
+                    const newButton = document.createElement('button');
+                    newButton.textContent = 'Чужая';
+                    newButton.type = 'button';
+                    newButton.className = 'custom-status-button';
+                    newButton.style.cssText = 'margin-left: 5px; background-color: red; color: white; border: none; cursor: pointer; padding: 5px; border-radius: 3px;';
+
+                    newButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+
+                        const url = statusCell.getAttribute('data-url');
+                        if (!url) return alert('Ошибка: Не удалось найти URL для смены статуса.');
+
+                        fetch(url, {
+                            headers: {
+                                "accept": "*/*",
+                                "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+                                "cache-control": "no-cache",
+                                "content-type": "application/json",
+                                "pragma": "no-cache",
+                                "priority": "u=1, i",
+                                "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+                                "sec-ch-ua-mobile": "?0",
+                                "sec-ch-ua-platform": "\"Windows\"",
+                                "sec-fetch-dest": "empty",
+                                "sec-fetch-mode": "cors",
+                                "sec-fetch-site": "same-origin",
+                                "x-requested-with": "XMLHttpRequest"
+                            },
+                            referrer: document.referrer,
+                            referrerPolicy: "strict-origin-when-cross-origin",
+                            body: JSON.stringify({ status: "other_person_card" }),
+                            method: "POST",
+                            mode: "cors",
+                            credentials: "include"
+                        })
+                            .then(response => {
+                            if (response.ok) {
+                                statusCell.value = "Чужая";
+                                markerCell.style.backgroundColor = "#D9534F";
+
+                                if (checkbox && checkbox.checked) {
+                                    fetch(checkbox.getAttribute('data-url'), {
+                                        headers: {
+                                            "accept": "*/*",
+                                            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+                                            "cache-control": "no-cache",
+                                            "content-type": "application/json",
+                                            "pragma": "no-cache",
+                                            "priority": "u=1, i",
+                                            "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+                                            "sec-ch-ua-mobile": "?0",
+                                            "sec-ch-ua-platform": "\"Windows\"",
+                                            "sec-fetch-dest": "empty",
+                                            "sec-fetch-mode": "cors",
+                                            "sec-fetch-site": "same-origin",
+                                            "x-requested-with": "XMLHttpRequest"
+                                        },
+                                        referrer: document.referrer,
+                                        referrerPolicy: "strict-origin-when-cross-origin",
+                                        method: "POST",
+                                        mode: "cors",
+                                        credentials: "include"
+                                    })
+                                        .then(response => {
+                                        if (response.ok) {
+                                            // Снимаем галочку с чекбокса
+                                            checkbox.checked = false;
+                                        } else {
+                                            return response.json().then(data => {
+                                                alert('Ошибка: ' + data.message);
+                                            });
+                                        }
+                                    })
+                                        .catch(err => alert('Ошибка отправки запроса для токена: ' + err.message));
+                                }
+
+                                newButton.remove();
+                            } else {
+                                return response.json().then(data => {
+                                    alert('Ошибка: ' + data.message);
+                                });
+                            }
+                        })
+                            .catch(err => alert('Ошибка отправки запроса для статуса: ' + err.message));
+                    });
+
+                    statusCell.parentNode.appendChild(newButton);
+                }
+            }
+        });
+    }
+
     function createCheckIPButton() {
         const checkIPButton = document.createElement('button');
         checkIPButton.textContent = 'Check IP';
@@ -7031,6 +7134,7 @@ ${fraud.manager === managerName ? `
                 checkAutoPayment();
                 goToGoogleSheet();
                 addAgeToBirthdate();
+                changeCardStatus();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.2.2
+// @version      5.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,11 +63,27 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.2.2";
+    const currentVersion = "5.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
     document.head.appendChild(stylerangePicker);
+
+
+    const months = {
+        "січня": "01", "января": "01",
+        "лютого": "02", "февраля": "02",
+        "березня": "03", "марта": "03",
+        "квітня": "04", "апреля": "04",
+        "травня": "05", "мая": "05",
+        "червня": "06", "июня": "06",
+        "липня": "07", "июля": "07",
+        "серпня": "08", "августа": "08",
+        "вересня": "09", "сентября": "09",
+        "жовтня": "10", "октября": "10",
+        "листопада": "11", "ноября": "11",
+        "грудня": "12", "декабря": "12"
+    };
 
     const defaultRules = [
         { text: 'Ввод средств', color: '#7cfc00' },
@@ -1237,7 +1253,7 @@
                 modules: {
                     toolbar: [
                         [{ 'header': [1, 2, false] }],
-                        ['bold', 'italic', 'underline', 'strike'],       
+                        ['bold', 'italic', 'underline', 'strike'],
                         [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                         [{ 'color': [] }, { 'background': [] }],
                         ['clean']
@@ -1251,21 +1267,21 @@
 
             document.getElementById('save-article-btn').addEventListener('click', () => {
                 const newTitle = document.getElementById('article-title').value;
-                const newContent = quill.root.innerHTML;  // Получение форматированного HTML текста из редактора
+                const newContent = quill.root.innerHTML;
 
                 if (articleId) {
                     updateArticle(articleId, newTitle, newContent).then(() => {
-                        closePopup('editor'); // Закрытие редактора
-                        Swal.fire('Збережено!', '', 'success'); // Уведомление об обновлении
+                        closePopup('editor');
+                        Swal.fire('Збережено!', '', 'success');
                         closePopup('reminder');
-                        createReminderPopup(); // Обновление списка статей
+                        createReminderPopup();
                     });
                 } else {
                     saveArticle(newTitle, newContent).then(() => {
-                        closePopup('editor'); // Закрытие редактора
-                        Swal.fire('Додано!', '', 'success'); // Уведомление о добавлении
+                        closePopup('editor');
+                        Swal.fire('Додано!', '', 'success');
                         closePopup('reminder');
-                        createReminderPopup(); // Обновление списка статей
+                        createReminderPopup();
                     });
                 }
             });
@@ -2558,67 +2574,6 @@ ${fraud.manager === managerName ? `
         popupBox.style.animation = 'glow 1s infinite alternate';
         popupBox.style.resize = 'both';
         popupBox.style.overflow = 'auto';
-
-        const snowContainer = document.createElement('div');
-        snowContainer.style.position = 'absolute';
-        snowContainer.style.top = '-20px';  // За пределами верхней границы окна
-        snowContainer.style.left = '0';
-        snowContainer.style.zIndex = '9999';
-        snowContainer.style.width = '100%';
-        snowContainer.style.height = '100%';  // Увеличиваем высоту для удобства
-        snowContainer.style.pointerEvents = 'none';  // Чтобы снег не мешал взаимодействовать с попапом
-        snowContainer.classList.add('snow-container'); // Класс для стилизации
-
-        popupBox.appendChild(snowContainer);
-
-        // Добавляем всплывающее окно
-        document.body.appendChild(popupBox);
-
-        // Настроим добавление снежинок:
-        generateSnowflakes();
-
-        // Функция для генерации снега
-        function generateSnowflakes() {
-            for (let i = 0; i < 10; i++) {  // Создаем 20 снежинок
-                const snowflake = document.createElement('span');
-                snowflake.classList.add('snowflake');
-                snowflake.textContent = '❄';  // Используем emoji-снежинку
-                snowContainer.appendChild(snowflake);
-
-                // Добавляем случайное положение и скорость
-                snowflake.style.left = `${Math.random() * 100}%`;  // Позиция по горизонтали
-                snowflake.style.animationDuration = `${Math.random() * 3 + 4}s`;  // случайная скорость (3-6 секунд)
-                snowflake.style.animationDelay = `${Math.random() * 2}s`;  // случайная задержка анимации
-            }
-        }
-
-        // Стиль для снега
-        const style = document.createElement('style');
-        style.innerHTML = `
-        .snow-container {
-            position: relative;
-            overflow: hidden;
-        }
-        .snowflake {
-            position: absolute;
-            top: -10px;
-            font-size: 18px;  /* Размер снежинки */
-            color: #9af0f5;  /* Цвет снежинки */
-            opacity: 0.4;
-            animation: fall 4s linear infinite;
-        }
-        @keyframes fall {
-            0% {
-                top: -10px;
-                opacity: 0.9;
-            }
-            100% {
-                top: 100%;
-                opacity: 0.7;
-            }
-        }
-    `;
-        document.head.appendChild(style);
 
         const showNDFL = GM_getValue(ndfDisplayKey, true);
         const showAmount = GM_getValue(amountDisplayKey, true);
@@ -4995,21 +4950,6 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    const months = {
-        "січня": "01", "января": "01",
-        "лютого": "02", "февраля": "02",
-        "березня": "03", "марта": "03",
-        "квітня": "04", "апреля": "04",
-        "травня": "05", "мая": "05",
-        "червня": "06", "июня": "06",
-        "липня": "07", "июля": "07",
-        "серпня": "08", "августа": "08",
-        "вересня": "09", "сентября": "09",
-        "жовтня": "10", "октября": "10",
-        "листопада": "11", "ноября": "11",
-        "грудня": "12", "декабря": "12"
-    };
-
     const parseDate = dateString => {
         const [day, month, year, ...timeParts] = dateString.split(' ');
         const monthNumber = months[month] || null;
@@ -6130,6 +6070,42 @@ ${fraud.manager === managerName ? `
         });
     }
 
+    function addAgeToBirthdate() {
+        function calculateAge(birthDate) {
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+
+            return age;
+        }
+
+        const rows = document.querySelectorAll("tr");
+
+        rows.forEach(row => {
+            const th = row.querySelector("th");
+            if (th && th.textContent.trim() === "День рождения") {
+                const td = row.querySelector("td");
+                if (td) {
+                    const birthDateStr = td.textContent.trim();
+                    const birthDateParts = birthDateStr.split(" ");
+                    const day = parseInt(birthDateParts[0], 10);
+                    const month = months[birthDateParts[1].toLowerCase()];
+                    const year = parseInt(birthDateParts[2], 10);
+
+                    const birthDate = new Date(year, month - 1, day);
+                    const age = calculateAge(birthDate);
+
+                    td.innerHTML = `${birthDateStr} | Вік: ${age}`;
+                }
+            }
+        });
+    }
+
+
     function fetchBonusInfo(bonusNumber) {
         const project = getProject();
         const url = `https://admin.${project}.ua/bonuses/bonusesItems/preview/${bonusNumber}/`;
@@ -7033,6 +7009,7 @@ ${fraud.manager === managerName ? `
                 createCheckIPButton();
                 checkAutoPayment();
                 goToGoogleSheet();
+                addAgeToBirthdate();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();

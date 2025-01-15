@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.4.1
+// @version      5.4.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.4.1";
+    const currentVersion = "5.4.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5142,6 +5142,42 @@ ${fraud.manager === managerName ? `
         const checkInterval = setInterval(() => {
             const newValue = checkbox.checked;
             if (!newValue) {
+                const underControlCheckbox = document.getElementById('underControl');
+                if (!underControlCheckbox) {
+                    console.warn('Checkbox with ID "underControl" not found.');
+                } else if (!underControlCheckbox.checked) {
+                    fetch(`https://admin.slotoking.ua/players/playersItems/changeUnderControl/?playerId=${userId}`, {
+                        "headers": {
+                            "accept": "*/*",
+                            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+                            "priority": "u=1, i",
+                            "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+                            "sec-ch-ua-mobile": "?0",
+                            "sec-ch-ua-platform": "\"Windows\"",
+                            "sec-fetch-dest": "empty",
+                            "sec-fetch-mode": "cors",
+                            "sec-fetch-site": "same-origin",
+                            "x-requested-with": "XMLHttpRequest"
+                        },
+                        "referrer": `https://admin.slotoking.ua/players/playersItems/update/${userId}/`,
+                        "referrerPolicy": "strict-origin-when-cross-origin",
+                        "body": null,
+                        "method": "GET",
+                        "mode": "cors",
+                        "credentials": "include"
+                    })
+                        .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to execute fetch request.');
+                        }
+                        return response.json();
+                    })
+                        .then(() => {
+                        underControlCheckbox.checked = true;
+                    })
+                        .catch(error => console.error('Error updating underControl checkbox:', error));
+                }
+
                 const token = localStorage.getItem('authToken');
                 console.log(token);
                 const initials = GM_getValue(initialsKey, '');
@@ -5152,8 +5188,6 @@ ${fraud.manager === managerName ? `
                 const time = getCurrentTime();
                 const currentLanguage = GM_getValue(languageKey, 'російська');
                 const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
-
-
 
                 const fieldDate = getDateFromField();
                 const today = getCurrentDate();
@@ -5211,12 +5245,10 @@ ${fraud.manager === managerName ? `
                     } else {
                         console.warn('Not enough lines to process the second line.');
                     }
-                }
-                else {
+                } else {
                     const checkButton = document.getElementById('check-button');
                     if (checkButton) {
                         checkButton.click();
-
 
                         const lines = gatewayElement.innerHTML.trim().split('<br>');
                         if (lines.length > 1) {
@@ -5248,6 +5280,7 @@ ${fraud.manager === managerName ? `
 
         window.addEventListener('beforeunload', () => clearInterval(checkInterval));
     }
+
 
     function updateBanButton() {
         const updateButton = document.getElementById('yw2');

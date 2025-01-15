@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.4.2
+// @version      5.4.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -63,7 +63,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.4.2";
+    const currentVersion = "5.4.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5146,7 +5146,7 @@ ${fraud.manager === managerName ? `
                 if (!underControlCheckbox) {
                     console.warn('Checkbox with ID "underControl" not found.');
                 } else if (!underControlCheckbox.checked) {
-                    fetch(`https://admin.slotoking.ua/players/playersItems/changeUnderControl/?playerId=${userId}`, {
+                    fetch(`${ProjectUrl}players/playersItems/changeUnderControl/?playerId=${userId}`, {
                         "headers": {
                             "accept": "*/*",
                             "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
@@ -5159,7 +5159,7 @@ ${fraud.manager === managerName ? `
                             "sec-fetch-site": "same-origin",
                             "x-requested-with": "XMLHttpRequest"
                         },
-                        "referrer": `https://admin.slotoking.ua/players/playersItems/update/${userId}/`,
+                        "referrer": `${ProjectUrl}players/playersItems/update/${userId}/`,
                         "referrerPolicy": "strict-origin-when-cross-origin",
                         "body": null,
                         "method": "GET",

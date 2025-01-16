@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5
+// @version      5.5.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5";
+    const currentVersion = "5.5.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1858,10 +1858,10 @@ ${fraud.manager === managerName ? `
                     text: 'Користувача було видалено зі списку.',
                     icon: 'success',
                     willClose: () => {
-                        window.location.reload(); // Перезагрузка страницы
+                        window.location.reload();
                     }
                 });
-                loadFrauds(); // Вызываем функцию загрузки фродов
+                loadFrauds();
             } else {
                 alert('Ошибка: ' + data.message);
             }
@@ -5049,13 +5049,13 @@ ${fraud.manager === managerName ? `
             if (statusCell && markerCell && statusCell.value === 'Не проверена') {
                 addIconCells(row, statusCell, markerCell, checkbox);
             } else {
-            const emptyCell1 = document.createElement('td');
-            const emptyCell2 = document.createElement('td');
-            emptyCell1.innerHTML = '&nbsp;';
-            emptyCell2.innerHTML = '&nbsp;';
-            row.appendChild(emptyCell1);
-            row.appendChild(emptyCell2);
-        }
+                const emptyCell1 = document.createElement('td');
+                const emptyCell2 = document.createElement('td');
+                emptyCell1.innerHTML = '&nbsp;';
+                emptyCell2.innerHTML = '&nbsp;';
+                row.appendChild(emptyCell1);
+                row.appendChild(emptyCell2);
+            }
 
             row.dataset.processed = "true";
         });
@@ -5283,42 +5283,6 @@ ${fraud.manager === managerName ? `
         const checkInterval = setInterval(() => {
             const newValue = checkbox.checked;
             if (!newValue) {
-                const underControlCheckbox = document.getElementById('underControl');
-                if (!underControlCheckbox) {
-                    console.warn('Checkbox with ID "underControl" not found.');
-                } else if (!underControlCheckbox.checked) {
-                    fetch(`${ProjectUrl}players/playersItems/changeUnderControl/?playerId=${userId}`, {
-                        "headers": {
-                            "accept": "*/*",
-                            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
-                            "priority": "u=1, i",
-                            "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
-                            "sec-ch-ua-mobile": "?0",
-                            "sec-ch-ua-platform": "\"Windows\"",
-                            "sec-fetch-dest": "empty",
-                            "sec-fetch-mode": "cors",
-                            "sec-fetch-site": "same-origin",
-                            "x-requested-with": "XMLHttpRequest"
-                        },
-                        "referrer": `${ProjectUrl}players/playersItems/update/${userId}/`,
-                        "referrerPolicy": "strict-origin-when-cross-origin",
-                        "body": null,
-                        "method": "GET",
-                        "mode": "cors",
-                        "credentials": "include"
-                    })
-                        .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Failed to execute fetch request.');
-                        }
-                        return response.json();
-                    })
-                        .then(() => {
-                        underControlCheckbox.checked = true;
-                    })
-                        .catch(error => console.error('Error updating underControl checkbox:', error));
-                }
-
                 const token = localStorage.getItem('authToken');
                 console.log(token);
                 const initials = GM_getValue(initialsKey, '');

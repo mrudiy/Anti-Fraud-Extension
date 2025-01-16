@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.4.3
+// @version      5.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -56,14 +56,16 @@
     const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
     const reminderDisplayKey = 'reminderDisplay';
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
+    const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
     const kingSheet = 'KING Січень💎';
     const sevensSheet = 'SEVENS🎰';
+    const vegasSheet = 'VEGAS🎬';
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.4.3";
+    const currentVersion = "5.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -739,6 +741,11 @@
         settingsPopup.appendChild(
             createCheckboxWithLabel('Кнопка автовиплат', GM_getValue(autoPaymentsDisplayKey, true), (e) => {
                 GM_setValue(autoPaymentsDisplayKey, e.target.checked);
+            })
+        );
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Швидкий покрас карток', GM_getValue(fastPaintCardsDisplayKey, true), (e) => {
+                GM_setValue(fastPaintCardsDisplayKey, e.target.checked);
             })
         );
 
@@ -3124,14 +3131,20 @@ ${fraud.manager === managerName ? `
                             projectContainer.style.marginBottom = '20px';
 
                             const projectImage = document.createElement('img');
-                            projectImage.src = projectUrls[project].includes('slotoking')
-                                ? 'https://admin.slotoking.ua/img/slotoking.png'
-                            : (projectUrls[project].includes('777')
-                               ? 'https://admin.777.ua/img/777.png'
-                               : 'https://admin.vegas.ua/img/vegas.png');
+                            if (project === 'slotoking') {
+                                projectImage.src = 'https://admin.slotoking.ua/img/betking.png';
+                                projectImage.style.width = '47px';
+                                projectImage.style.height = '47px';
+                            } else if (project === '777') {
+                                projectImage.src = 'https://admin.777.ua/img/777.png';
+                                projectImage.style.width = '75px';
+                                projectImage.style.height = 'auto';
+                            } else {
+                                projectImage.src = 'https://admin.vegas.ua/img/vegas.png';
+                                projectImage.style.width = '75px';
+                                projectImage.style.height = 'auto';
+                            }
                             projectImage.alt = project;
-                            projectImage.style.width = '75px';
-                            projectImage.style.height = 'auto';
                             projectImage.style.display = 'block';
                             projectImage.style.margin = '0 auto 10px';
                             projectContainer.appendChild(projectImage);
@@ -3145,6 +3158,7 @@ ${fraud.manager === managerName ? `
                             processProjectCards(project, projectUrls[project], projectContainer);
 
                         });
+                        processСurrentProjectCards(currentProject, projectUrls[currentProject]);
                     },
                     onerror: function() {
                         projectButtonContainer.innerHTML += '<div>Ошибка при получении данных ИНН.</div>';
@@ -3220,6 +3234,102 @@ ${fraud.manager === managerName ? `
                 });
             });
         }
+
+        function processСurrentProjectCards(project, projectUrl) {
+            fetchAllCards().then(data => {
+                const cards = data.cards;
+
+                const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+                const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+
+                let projectContainer;
+                let foundPlayers = false;
+
+                cards.forEach(card => {
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: searchUrl,
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        },
+                        data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                        onload: function (response) {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = response.responseText;
+                            const table = tempDiv.querySelector('table.items tbody');
+
+                            if (table) {
+                                const rows = table.querySelectorAll('tr');
+
+                                rows.forEach(row => {
+                                    const playerCard = row.querySelector('td span.player_card');
+                                    if (playerCard) {
+                                        if (!projectContainer) {
+                                            projectContainer = document.createElement('div');
+                                            projectContainer.style.marginBottom = '20px';
+
+                                            const projectImage = document.createElement('img');
+                                            if (projectUrl.includes('slotoking')) {
+                                                projectImage.src = 'https://admin.slotoking.ua/img/betking.png';
+                                                projectImage.style.width = '47px';
+                                                projectImage.style.height = '47px';
+                                            } else if (projectUrl.includes('777')) {
+                                                projectImage.src = 'https://admin.777.ua/img/777.png';
+                                                projectImage.style.width = '75px';
+                                                projectImage.style.height = 'auto';
+                                            } else {
+                                                projectImage.src = 'https://admin.vegas.ua/img/vegas.png';
+                                                projectImage.style.width = '75px';
+                                                projectImage.style.height = 'auto';
+                                            }
+                                            projectImage.alt = project;
+                                            projectImage.style.display = 'block';
+                                            projectImage.style.margin = '0 auto 10px';
+                                            projectContainer.appendChild(projectImage);
+                                        }
+
+                                        let cardHtml = playerCard.outerHTML;
+                                        const cardTempDiv = document.createElement('div');
+                                        cardTempDiv.innerHTML = cardHtml;
+
+                                        cardTempDiv.querySelectorAll('a').forEach(link => {
+                                            let href = link.getAttribute('href');
+                                            if (href) {
+                                                link.setAttribute('href', `${openUrl}${href}`);
+                                            }
+                                        });
+
+                                        cardHtml = cardTempDiv.innerHTML;
+
+                                        const spanElement = cardTempDiv.querySelector('.player_card');
+                                        if (spanElement) {
+                                            spanElement.removeAttribute('rel');
+                                            spanElement.removeAttribute('data-content');
+                                        }
+                                        cardHtml = cardTempDiv.innerHTML;
+                                        const first6 = card.slice(0, 6);
+                                        const last4 = card.slice(-4);
+                                        if (!cardHtml.includes(userId)) {
+                                            projectContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
+                                            foundPlayers = true;
+                                        }
+                                    }
+                                });
+                            }
+                        },
+                        onerror: function () {
+                            console.error(`Ошибка при поиске карты: ${card}`);
+                        },
+                        onloadend: function () {
+                            if (foundPlayers && projectContainer && !projectContainer.parentElement) {
+                                projectButtonContainer.appendChild(projectContainer);
+                            }
+                        }
+                    });
+                });
+            });
+        }
+
 
         if (!window.location.hostname.includes('admin.wildwinz.com')) {
             popupBox.appendChild(projectButtonContainer);
@@ -4379,26 +4489,11 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    function observeDOMChanges() {
+    function observeDOMChanges(nameFunction) {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
                 if (mutation.type === 'childList') {
-                    depositCardChecker();
-                }
-            });
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }
-
-    function observeDOMChangesTransactions() {
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach(mutation => {
-                if (mutation.type === 'childList') {
-                    processTableRows();
+                    nameFunction();
                 }
             });
         });
@@ -4940,104 +5035,150 @@ ${fraud.manager === managerName ? `
     function changeCardStatus() {
         const container = document.querySelector('#payments-cards-masks-parent');
         const rows = container.querySelectorAll('tr.odd, tr.even');
+        const table = document.querySelector('.items');
+
+        ensureHeaders(table);
 
         rows.forEach((row) => {
+            if (row.dataset.processed === "true") return;
+
             const statusCell = row.querySelector('td input.payment-cards-masks-change-status');
             const markerCell = row.querySelector('.payment-cards-masks-marker');
             const checkbox = row.querySelector('td input[type="checkbox"][name="paymentTokenEnabled"]');
 
-            if (statusCell && markerCell && statusCell.value == 'Не проверена') {
-                if (!row.querySelector('.custom-status-button')) {
-                    const newButton = document.createElement('button');
-                    newButton.textContent = 'Чужая';
-                    newButton.type = 'button';
-                    newButton.className = 'custom-status-button';
-                    newButton.style.cssText = 'margin-left: 5px; background-color: red; color: white; border: none; cursor: pointer; padding: 5px; border-radius: 3px;';
+            if (statusCell && markerCell && statusCell.value === 'Не проверена') {
+                addIconCells(row, statusCell, markerCell, checkbox);
+            } else {
+            const emptyCell1 = document.createElement('td');
+            const emptyCell2 = document.createElement('td');
+            emptyCell1.innerHTML = '&nbsp;';
+            emptyCell2.innerHTML = '&nbsp;';
+            row.appendChild(emptyCell1);
+            row.appendChild(emptyCell2);
+        }
 
-                    newButton.addEventListener('click', (e) => {
-                        e.preventDefault();
-
-                        const url = statusCell.getAttribute('data-url');
-                        if (!url) return alert('Ошибка: Не удалось найти URL для смены статуса.');
-
-                        fetch(url, {
-                            headers: {
-                                "accept": "*/*",
-                                "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
-                                "cache-control": "no-cache",
-                                "content-type": "application/json",
-                                "pragma": "no-cache",
-                                "priority": "u=1, i",
-                                "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
-                                "sec-ch-ua-mobile": "?0",
-                                "sec-ch-ua-platform": "\"Windows\"",
-                                "sec-fetch-dest": "empty",
-                                "sec-fetch-mode": "cors",
-                                "sec-fetch-site": "same-origin",
-                                "x-requested-with": "XMLHttpRequest"
-                            },
-                            referrer: document.referrer,
-                            referrerPolicy: "strict-origin-when-cross-origin",
-                            body: JSON.stringify({ status: "other_person_card" }),
-                            method: "POST",
-                            mode: "cors",
-                            credentials: "include"
-                        })
-                            .then(response => {
-                            if (response.ok) {
-                                statusCell.value = "Чужая";
-                                markerCell.style.backgroundColor = "#D9534F";
-
-                                if (checkbox && checkbox.checked) {
-                                    fetch(checkbox.getAttribute('data-url'), {
-                                        headers: {
-                                            "accept": "*/*",
-                                            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
-                                            "cache-control": "no-cache",
-                                            "content-type": "application/json",
-                                            "pragma": "no-cache",
-                                            "priority": "u=1, i",
-                                            "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
-                                            "sec-ch-ua-mobile": "?0",
-                                            "sec-ch-ua-platform": "\"Windows\"",
-                                            "sec-fetch-dest": "empty",
-                                            "sec-fetch-mode": "cors",
-                                            "sec-fetch-site": "same-origin",
-                                            "x-requested-with": "XMLHttpRequest"
-                                        },
-                                        referrer: document.referrer,
-                                        referrerPolicy: "strict-origin-when-cross-origin",
-                                        method: "POST",
-                                        mode: "cors",
-                                        credentials: "include"
-                                    })
-                                        .then(response => {
-                                        if (response.ok) {
-                                            // Снимаем галочку с чекбокса
-                                            checkbox.checked = false;
-                                        } else {
-                                            return response.json().then(data => {
-                                                alert('Ошибка: ' + data.message);
-                                            });
-                                        }
-                                    })
-                                        .catch(err => alert('Ошибка отправки запроса для токена: ' + err.message));
-                                }
-
-                                newButton.remove();
-                            } else {
-                                return response.json().then(data => {
-                                    alert('Ошибка: ' + data.message);
-                                });
-                            }
-                        })
-                            .catch(err => alert('Ошибка отправки запроса для статуса: ' + err.message));
-                    });
-
-                    statusCell.parentNode.appendChild(newButton);
-                }
-            }
+            row.dataset.processed = "true";
         });
+    }
+
+    function ensureHeaders(table) {
+        const headerRow = table.querySelector('thead tr');
+        const hasHeader = Array.from(headerRow.querySelectorAll('th')).some(
+            (cell) => cell.textContent.trim() === 'Чужая'
+        );
+
+        if (!hasHeader) {
+            ['Чужая', 'Своя'].forEach((text) => {
+                const headerCell = document.createElement('th');
+                headerCell.textContent = text;
+                headerRow.appendChild(headerCell);
+            });
+        }
+    }
+
+    function createCellWithIcon(type, statusCell, markerCell, checkbox = null) {
+        const cell = document.createElement('td');
+        if (type === 'other' || type === 'own') {
+            const icon = document.createElement('i');
+            icon.className = type === 'other' ? 'fa fa-ban' : 'fa fa-check';
+            icon.style = `
+            cursor: pointer;
+            margin: 0 auto;
+            font-size: 12px;
+            padding: 4.5px 5px;
+            border: 2px solid ${type === 'other' ? 'red' : 'green'};
+            border-radius: 3px;
+            background-color: ${type === 'other' ? 'red' : 'green'};
+            color: ${type === 'other' ? 'yellow' : 'white'};
+            text-align: center;
+        `;
+
+            icon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const status = type === 'other' ? 'other_person_card' : 'verified';
+                const newValue = type === 'other' ? 'Чужая' : 'Верифицирована';
+                const color = type === 'other' ? '#D9534F' : '#5CB85C';
+
+                handleIconClick(statusCell, markerCell, checkbox, icon, status, newValue, color);
+            });
+
+            cell.appendChild(icon);
+        }
+        else {
+            cell.innerHTML = '&nbsp;';
+        }
+
+        return cell;
+    }
+
+
+    function handleIconClick(statusCell, markerCell, checkbox, icon, status, newValue, color) {
+        const url = statusCell.getAttribute('data-url');
+        if (!url) return alert('Ошибка: Не удалось найти URL для смены статуса.');
+
+        fetch(url, {
+            headers: {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "x-requested-with": "XMLHttpRequest"
+            },
+            method: "POST",
+            body: JSON.stringify({ status }),
+        })
+            .then(response => response.ok ? response.text() : Promise.reject(response))
+            .then(() => {
+            statusCell.value = newValue;
+            markerCell.style.backgroundColor = color;
+            icon.remove();
+
+            if (checkbox && status === 'other_person_card' && checkbox.checked) {
+                handleCheckboxRequest(checkbox);
+            }
+        })
+            .catch(err => console.error(err));
+    }
+
+    function handleCheckboxRequest(checkbox) {
+        const url = checkbox.getAttribute('data-url');
+        if (!url) return alert('Ошибка: Не удалось найти URL для чекбокса.');
+
+        fetch(url, {
+            headers: {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "x-requested-with": "XMLHttpRequest"
+            },
+            method: "POST"
+        })
+            .then(response => {
+            if (!response.ok) {
+                throw new Error(`Ошибка: ${response.status} ${response.statusText}`);
+            }
+            return response.text();
+        })
+            .then((text) => {
+            if (text) {
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Ответ для чекбокса:', data);
+                } catch {
+                    console.warn('Ответ для чекбокса не является JSON:', text);
+                }
+            } else {
+                console.warn('Пустой ответ для чекбокса');
+            }
+
+            checkbox.checked = false;
+        })
+            .catch(err => alert('Ошибка запроса для чекбокса: ' + err.message));
+    }
+
+    function addIconCells(row, statusCell, markerCell, checkbox) {
+        const otherCell = createCellWithIcon('other', statusCell, markerCell, checkbox);
+        const ownCell = createCellWithIcon('own', statusCell, markerCell);
+
+        row.appendChild(otherCell);
+        row.appendChild(ownCell);
     }
 
     function createCheckIPButton() {
@@ -5357,9 +5498,14 @@ ${fraud.manager === managerName ? `
                                     .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
                                     ?.querySelector('td > div')
                                     ?.childNodes[0]?.textContent.trim();
-
-                                    const sheetName = project === 'slotoking' ? kingSheet: sevensSheet;
-
+                                    console.log(project, vegasSheet)
+                                    const sheetName = project === 'slotoking'
+                                    ? kingSheet
+                                    : (project === '777'
+                                       ? sevensSheet
+                                       : (project === 'vegas'
+                                          ? vegasSheet
+                                          : ''));
                                     getAccessToken().then(accessToken => {
                                         const dataToInsert = {
                                             url: window.location.href,
@@ -6148,7 +6294,13 @@ ${fraud.manager === managerName ? `
                             console.log('email', email);
 
 
-                            const sheetName = project === 'slotoking' ? kingSheet: sevensSheet;
+                            const sheetName = project === 'slotoking'
+                            ? kingSheet
+                            : (project === '777'
+                               ? sevensSheet
+                               : (project === 'vegas'
+                                  ? vegasSheet
+                                  : ''));
 
                             getAccessToken().then(accessToken => {
                                 const dataToInsert = {
@@ -7167,6 +7319,13 @@ ${fraud.manager === managerName ? `
                 checkAutoPayment();
                 goToGoogleSheet();
                 addAgeToBirthdate();
+                const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
+                if (isFastPaintCardsEnabled) {
+                    changeCardStatus();
+                    new MutationObserver(() => {
+                        changeCardStatus();
+                    }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
+                }
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
                 buttonToSave();
@@ -7198,11 +7357,11 @@ ${fraud.manager === managerName ? `
                 createFloatingButton(buttonImageUrl);
             } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
                 depositCardChecker();
-                observeDOMChanges();
+                observeDOMChanges(depositCardChecker);
             } else if (currentUrl.includes('playersItems/transactionLog/')) {
                 initTransactionsPage();
                 processTableRows();
-                observeDOMChangesTransactions();
+                observeDOMChanges(processTableRows);
                 makeBonusClickable();
             }
         } else {

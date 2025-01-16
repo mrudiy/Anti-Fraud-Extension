@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5.1
+// @version      5.5.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5.1";
+    const currentVersion = "5.5.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3659,6 +3659,7 @@ ${fraud.manager === managerName ? `
 
 
     function fetchAndProcessData() {
+        const project = getProject();
         const fullProjectUrl = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
 
         console.log('Запрос данных по URL:', fullProjectUrl);
@@ -3706,13 +3707,16 @@ ${fraud.manager === managerName ? `
                         const bonusAssignments = {};
                         const displayedMessages = {};
 
+                        const indexTransactionInfo = project === 'slotoking' ? 7 : 6;
+                        const indexDate = project === 'slotoking' ? 6 : 5;
+
                         rows.forEach(row => {
                             if (messageCount >= maxMessages) return;
                             const cells = row.querySelectorAll('td');
                             if (cells.length > 0) {
                                 const actionType = cells[1] ? cells[1].innerText.trim() : '';
-                                const bonusInfo = cells[6] ? cells[6].textContent.trim() : '';
-                                const dateTimeStr = cells[5] ? cells[5].textContent.trim() : '';
+                                const bonusInfo = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
+                                const dateTimeStr = cells[indexDate] ? cells[indexDate].textContent.trim() : '';
                                 const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
                                 const dateStr = dateMatch ? dateMatch[1] : '';
 
@@ -3720,7 +3724,7 @@ ${fraud.manager === managerName ? `
                                     withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0') || 0;
                                     totalWithdrawAmount += withdrawAmount;
                                     withdrawId = cells[0] ? cells[0].textContent.trim() : '';
-                                    withdrawText = cells[6] ? cells[6].textContent.trim() : '';
+                                    withdrawText = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
                                     waitingForBonus = true;
 
                                 } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase')) {
@@ -3738,8 +3742,8 @@ ${fraud.manager === managerName ? `
                                     bonusAmount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
                                     balanceAfterBonus = parseFloat(cells[3] ? cells[3].textContent.replace(',', '.') : '0');
                                     bonusId = cells[0] ? cells[0].textContent.trim() : '';
-                                    bonusText = cells[6] ? cells[6].textContent.trim() : '';
-                                    const fullDate = cells[5] ? cells[5].textContent.trim() : '';
+                                    bonusText = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
+                                    const fullDate = cells[indexDate] ? cells[indexDate].textContent.trim() : '';
                                     const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                                     bonusDate = dateMatch ? dateMatch[1] : '';
                                     if (totalWithdrawAmount >= balanceAfterBonus) {

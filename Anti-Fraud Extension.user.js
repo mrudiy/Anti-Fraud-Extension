@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5.2
+// @version      5.5.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5.2";
+    const currentVersion = "5.5.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3707,8 +3707,8 @@ ${fraud.manager === managerName ? `
                         const bonusAssignments = {};
                         const displayedMessages = {};
 
-                        const indexTransactionInfo = project === 'slotoking' ? 7 : 6;
-                        const indexDate = project === 'slotoking' ? 6 : 5;
+                        const indexTransactionInfo = 7;
+                        const indexDate = 6;
 
                         rows.forEach(row => {
                             if (messageCount >= maxMessages) return;

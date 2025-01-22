@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5.3
+// @version      5.5.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5.3";
+    const currentVersion = "5.5.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4951,6 +4951,13 @@ ${fraud.manager === managerName ? `
                 powerBIapplyStylesToCell(cell, managerMap[cellValue]);
             }
         });
+
+        document.querySelectorAll('div[role="rowheader"]').forEach(header => {
+            const headerValue = header.textContent.trim();
+            if (highlightedValues.includes(headerValue)) {
+                powerBIapplyStylesToCell(header, managerMap[headerValue]);
+            }
+        });
     }
 
     function powerBImakeCellsClickable() {
@@ -4973,7 +4980,28 @@ ${fraud.manager === managerName ? `
                 });
             }
         });
+
+        document.querySelectorAll('div[role="rowheader"]').forEach(header => {
+            if (!header.classList.contains('clickable-header')) {
+                header.classList.add('clickable-header');
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', function() {
+                    const headerValue = header.textContent.trim();
+                    if (highlightedValues.includes(headerValue)) {
+                        highlightedValues = highlightedValues.filter(value => value !== headerValue);
+                        header.style.removeProperty('background-color');
+                        header.style.removeProperty('color');
+                        powerBIdeleteHighlightedValue(headerValue);
+                    } else {
+                        highlightedValues.push(headerValue);
+                        powerBIapplyStylesToCell(header, managerMap[headerValue]);
+                        powerBIsaveHighlightedValue(headerValue);
+                    }
+                });
+            }
+        });
     }
+
 
     function powerBIgetSheetName() {
         const sheetNameElement = document.querySelector('span[role="heading"][aria-level="1"]');
@@ -7264,7 +7292,6 @@ ${fraud.manager === managerName ? `
             sendActivePageInfo();
             if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountWildWinz();
-
             }
             else if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();
@@ -7312,7 +7339,7 @@ ${fraud.manager === managerName ? `
                 activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
-            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a')) {
+            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
                 powerBImakeCellsClickable();

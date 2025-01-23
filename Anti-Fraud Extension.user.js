@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5.4
+// @version      5.5.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5.4";
+    const currentVersion = "5.5.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -366,20 +366,23 @@
     }
 
     function addForeignButton() {
+        const currentLanguage = GM_getValue(languageKey, 'російська');
         const formatableTextDiv = document.getElementById('formatable-text-common');
         if (formatableTextDiv) {
+            const isRussian = currentLanguage === 'російська';
+            const text = isRussian ? 'Чужая' : 'Чужа';
+            const innerText = `${getCurrentDateFormatted()} <b><font color="#ff0000">${text.toUpperCase()}</font></b>`;
+
             const foreignButton = document.createElement('button');
             foreignButton.type = 'button';
-            foreignButton.innerText = 'Чужая';
-            foreignButton.onclick = () => {
-                const date = getCurrentDateFormatted();
-                const textToInsert = `${date} <b><font color="#ff0000">ЧУЖАЯ</font></b>`;
-                insertTextAtCursor(textToInsert);
-            };
+            foreignButton.innerText = text;
+            foreignButton.onclick = () => insertTextAtCursor(innerText);
 
             formatableTextDiv.insertBefore(foreignButton, formatableTextDiv.firstChild);
         }
     }
+
+
 
     function addCheckButton(TotalPA, Balance, totalPending) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
@@ -515,6 +518,14 @@
 
             const data = await response.json();
 
+            const formattedDate = new Intl.DateTimeFormat('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(new Date(data.date)).replace(',', '')
+
             if (data.fraudExists) {
                 addFraudPageButton(true, data.fraud_id);
                 const alertDiv = document.createElement('div');
@@ -522,11 +533,12 @@
                 alertDiv.style.backgroundColor = '#6a0dad';
                 alertDiv.style.color = '#fff';
                 alertDiv.style.borderColor = '#5a00a2';
-
+                console.log(data)
                 alertDiv.innerHTML = `
                 <strong>Увага!</strong> Користувач під наглядом.
                 <br><strong>Менеджер:</strong> ${data.manager_name}
                 <br><strong>Коментар:</strong> ${data.comment || 'Немає коментарів'}
+                <br><strong>Дата:</strong> ${formattedDate}
             `;
 
                 const table = document.querySelector('#yw1');
@@ -5535,7 +5547,7 @@ ${fraud.manager === managerName ? `
 
                                         setTimeout(() => {
                                             updateButton.form.submit();
-                                        }, 300);
+                                        }, 1500);
                                     } else {
                                         updateButton.form.submit();
                                     }

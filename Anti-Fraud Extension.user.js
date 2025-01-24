@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.5.6
+// @version      5.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.slotoking.ua/*
+// @match        https://admin.betking.com.ua/*
 // @match        https://admin.vegas.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.funrize.com/*
@@ -22,6 +23,7 @@
 // @connect      admin.777.ua
 // @connect      admin.slotoking.ua
 // @connect      admin.vegas.ua
+// @connect      admin.betking.com.ua
 // @connect      admin.wildwinz.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
@@ -44,6 +46,7 @@
         'slotoking.ua': 'https://admin.slotoking.ua/',
         'vegas.ua': 'https://admin.vegas.ua/',
         'wildwinz.com': 'https://admin.wildwinz.com/',
+        'com.ua': 'https://admin.betking.com.ua/',
     }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
 
     const initialUrl = window.location.href;
@@ -65,7 +68,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.5.6";
+    const currentVersion = "5.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';

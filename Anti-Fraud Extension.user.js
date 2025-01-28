@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.6
+// @version      5.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
-// @match        https://admin.slotoking.ua/*
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.vegas.ua/*
 // @match        https://admin.777.ua/*
@@ -21,7 +20,6 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      admin.777.ua
-// @connect      admin.slotoking.ua
 // @connect      admin.vegas.ua
 // @connect      admin.betking.com.ua
 // @connect      admin.wildwinz.com
@@ -43,7 +41,6 @@
     const userId = urlPath.split('/')[4];
     const ProjectUrl = {
         '777.ua': 'https://admin.777.ua/',
-        'slotoking.ua': 'https://admin.slotoking.ua/',
         'vegas.ua': 'https://admin.vegas.ua/',
         'wildwinz.com': 'https://admin.wildwinz.com/',
         'com.ua': 'https://admin.betking.com.ua/',
@@ -68,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.6";
+    const currentVersion = "5.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3131,13 +3128,13 @@ ${fraud.manager === managerName ? `
                         const phone = getFirstValueByLabel('Телефон');
 
                         const projectUrls = {
-                            'slotoking': 'https://admin.slotoking.ua/players/playersItems/search/',
+                            'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
                             '777': 'https://admin.777.ua/players/playersItems/search/',
                             'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
                         };
 
-                        const currentProject = window.location.hostname.includes('slotoking')
-                        ? 'slotoking'
+                        const currentProject = window.location.hostname.includes('betking')
+                        ? 'betking'
                         : (window.location.hostname.includes('777') ? '777' : 'vegas');
 
                         const otherProjects = Object.keys(projectUrls).filter(project => project !== currentProject);
@@ -3147,8 +3144,8 @@ ${fraud.manager === managerName ? `
                             projectContainer.style.marginBottom = '20px';
 
                             const projectImage = document.createElement('img');
-                            if (project === 'slotoking') {
-                                projectImage.src = 'https://admin.slotoking.ua/img/betking.png';
+                            if (project === 'betking') {
+                                projectImage.src = 'https://admin.betking.com.ua/img/betking.png';
                                 projectImage.style.width = '47px';
                                 projectImage.style.height = '47px';
                             } else if (project === '777') {
@@ -3285,8 +3282,8 @@ ${fraud.manager === managerName ? `
                                             projectContainer.style.marginBottom = '20px';
 
                                             const projectImage = document.createElement('img');
-                                            if (projectUrl.includes('slotoking')) {
-                                                projectImage.src = 'https://admin.slotoking.ua/img/betking.png';
+                                            if (projectUrl.includes('betking')) {
+                                                projectImage.src = 'https://admin.betking.com.ua/img/betking.png';
                                                 projectImage.style.width = '47px';
                                                 projectImage.style.height = '47px';
                                             } else if (projectUrl.includes('777')) {
@@ -5511,7 +5508,7 @@ ${fraud.manager === managerName ? `
                                     ?.querySelector('td > div')
                                     ?.childNodes[0]?.textContent.trim();
                                     console.log(project, vegasSheet)
-                                    const sheetName = project === 'slotoking'
+                                    const sheetName = project === 'betking'
                                     ? kingSheet
                                     : (project === '777'
                                        ? sevensSheet
@@ -6306,7 +6303,7 @@ ${fraud.manager === managerName ? `
                             console.log('email', email);
 
 
-                            const sheetName = project === 'slotoking'
+                            const sheetName = project === 'betking'
                             ? kingSheet
                             : (project === '777'
                                ? sevensSheet

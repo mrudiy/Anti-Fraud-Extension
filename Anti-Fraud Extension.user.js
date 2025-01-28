@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.7.1
+// @version      5.7.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.7.1";
+    const currentVersion = "5.7.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3760,7 +3760,7 @@ ${fraud.manager === managerName ? `
                                     const fullDate = cells[indexDate] ? cells[indexDate].textContent.trim() : '';
                                     const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
                                     bonusDate = dateMatch ? dateMatch[1] : '';
-                                    if (totalWithdrawAmount >= balanceAfterBonus) {
+                                    if (totalWithdrawAmount > balanceAfterBonus) {
                                         const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${totalWithdrawAmount}₴`;
                                         console.log('Проверка на нарушение BTR:', message);
 
@@ -6411,13 +6411,12 @@ ${fraud.manager === managerName ? `
                     ageSpan.textContent = ` | Вік: ${age}`;
 
                     if (age <= 23 || age >= 60) {
-                        ageSpan.style.color = "red";  // Красный цвет текста
-                        ageSpan.style.fontWeight = "bold";  // Жирный текст
-                        ageSpan.style.animation = "blink 1s infinite";  // Применяем мигание
+                        ageSpan.style.color = "red";
+                        ageSpan.style.fontWeight = "bold";
+                        ageSpan.style.animation = "blink 1s infinite";
 
                     }
 
-                    // Вставляем возраст в строку
                     td.appendChild(ageSpan);
                 }
             }
@@ -6427,7 +6426,8 @@ ${fraud.manager === managerName ? `
 
     function fetchBonusInfo(bonusNumber) {
         const project = getProject();
-        const url = `https://admin.${project}.ua/bonuses/bonusesItems/preview/${bonusNumber}/`;
+        console.log(project)
+        const url = `${ProjectUrl}bonuses/bonusesItems/preview/${bonusNumber}/`;
 
         fetch(url, {
             method: 'POST',

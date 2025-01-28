@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.7
+// @version      5.7.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.7";
+    const currentVersion = "5.7.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2163,8 +2163,9 @@ ${fraud.manager === managerName ? `
                 <button id="updateButton">Оновити</button>
 
                 <p>Кількість всіх гравців: ${data.total_players}</p>
-                <p>Кількість Slotoking: ${data.slotoking_count}</p>
+                <p>Кількість Betking: ${data.betking_count}</p>
                 <p>Кількість 777: ${data.seven_count}</p>
+                <p>Кількість Vegas: ${data.vegas_count}</p>
 
                 <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">  <!-- Контейнер с прокруткой -->
                     <table>
@@ -5828,7 +5829,7 @@ ${fraud.manager === managerName ? `
         const content = `
         <select id="project-select" required>
             <option value="" disabled selected>Оберіть проєкт</option>
-            <option value="Slotoking">Slotoking</option>
+            <option value="Betking">Betking</option>
             <option value="777">777</option>
             <option value="Vegas">Vegas</option>
         </select>

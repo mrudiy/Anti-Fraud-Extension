@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.7.2
+// @version      5.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.7.2";
+    const currentVersion = "5.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3078,6 +3078,22 @@ ${fraud.manager === managerName ? `
                                 status = 'info';
                             }
                         });
+
+                        if (status === 'success') {
+                            const isNotSpecified = [
+                                'Имя',
+                                'Middle Name',
+                                'Фамилия'
+                            ].every(field => {
+                                const row = [...tempDiv.querySelectorAll('tr')]
+                                .find(row => row.querySelector('th')?.textContent.includes(field));
+                                return row && (row.querySelector('td').textContent.trim() === 'Не задан' || row.querySelector('td').textContent.trim() === 'Не заданий');
+                            });
+
+                            if (isNotSpecified) {
+                                status = 'default';
+                            }
+                        }
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
                         const userInfo = document.createElement('div');
@@ -7353,7 +7369,7 @@ ${fraud.manager === managerName ? `
                 activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
-            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
+            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
                 powerBImakeCellsClickable();

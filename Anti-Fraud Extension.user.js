@@ -2430,9 +2430,10 @@ ${fraud.manager === managerName ? `
             return balanceInput.value.trim();
         }
 
+        const keywords = ['Баланс', 'Balance'];
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
-            if (row.textContent.includes('Баланс')) {
+            if (keywords.some(keyword => row.textContent.includes(keyword))) {
                 const cells = row.querySelectorAll('td');
                 if (cells.length > 0) {
                     return cells[0].textContent.trim();
@@ -2442,6 +2443,7 @@ ${fraud.manager === managerName ? `
 
         return '0.00';
     }
+
 
     function getInnerBalanceValue() {
         const input = document.querySelector('input[data-field="inner_balance"]');

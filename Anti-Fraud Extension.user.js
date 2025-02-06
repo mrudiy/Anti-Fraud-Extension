@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.1
+// @version      5.8.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.1";
+    const currentVersion = "5.8.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -476,6 +476,7 @@
                     event.preventDefault();
                     if (fraudId) {
                         await deleteFraud(fraudId);
+                        location.reload();
                     }
                 };
             } else {
@@ -495,6 +496,7 @@
                         const playerId = getPlayerID();
                         const url = window.location.href;
                         await addFraud(playerId, url, comment);
+                        location.reload();
                     }
                 };
             }
@@ -1766,7 +1768,6 @@ ${fraud.manager === managerName ? `
         </div>
     `;
 
-        // Додати стилі безпосередньо в документ
         const style = document.createElement('style');
         style.textContent = `
         #add-fraud-form {
@@ -1841,11 +1842,8 @@ ${fraud.manager === managerName ? `
                     title: 'Готово!',
                     text: 'Користувача було додано до списку.',
                     icon: 'success',
-                    willClose: () => {
-                        window.location.reload(); // Перезагрузка страницы
-                    }
                 });
-                loadFrauds(); // Вызываем функцию загрузки фродов
+                loadFrauds();
             } else {
                 alert('Виникла помилка!.');
             }
@@ -1870,9 +1868,6 @@ ${fraud.manager === managerName ? `
                     title: 'Готово!',
                     text: 'Користувача було видалено зі списку.',
                     icon: 'success',
-                    willClose: () => {
-                        window.location.reload();
-                    }
                 });
                 loadFrauds();
             } else {

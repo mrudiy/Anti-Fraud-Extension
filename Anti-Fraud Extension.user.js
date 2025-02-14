@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.3
+// @version      5.8.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.3";
+    const currentVersion = "5.8.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -6486,6 +6486,50 @@ ${fraud.manager === managerName ? `
         });
     }
 
+    function addPibRow() {
+        const rows = document.querySelectorAll("tr");
+
+        let surname = "";
+        let middleName = "";
+        let firstName = "";
+
+        rows.forEach(row => {
+            const th = row.querySelector("th");
+            if (th) {
+                if (th.textContent.trim() === "Фамилия") {
+                    surname = row.querySelector("td").textContent.trim();
+                } else if (th.textContent.trim() === "Middle Name") {
+                    middleName = row.querySelector("td").textContent.trim();
+                } else if (th.textContent.trim() === "Имя") {
+                    firstName = row.querySelector("td").textContent.trim();
+                }
+            }
+        });
+
+        const pib = `${surname} ${firstName} ${middleName}`;
+
+        const newRow = document.createElement("tr");
+        newRow.classList.add("even");
+
+        const th = document.createElement("th");
+        th.textContent = "ПІБ";
+
+        const td = document.createElement("td");
+        td.textContent = pib;
+
+        newRow.appendChild(th);
+        newRow.appendChild(td);
+
+        const commentRow = Array.from(rows).find(row => {
+            const th = row.querySelector("th");
+            return th && th.textContent.trim() === "Комментарий";
+        });
+
+        if (commentRow) {
+            commentRow.parentNode.insertBefore(newRow, commentRow);
+        }
+    }
+
 
     function fetchBonusInfo(bonusNumber) {
         const project = getProject();
@@ -7391,6 +7435,7 @@ ${fraud.manager === managerName ? `
                 checkAutoPayment();
                 goToGoogleSheet();
                 addAgeToBirthdate();
+                addPibRow();
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
                     changeCardStatus();

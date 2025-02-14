@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.2
+// @version      5.8.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.2";
+    const currentVersion = "5.8.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5639,7 +5639,10 @@ ${fraud.manager === managerName ? `
 
     /* Стили для выпадающих списков */
     #project-select,
-    #alert-type-select {
+    #alert-type-select,
+    #deposits-manager-select,
+    #payout-manager-select,
+    #pendings-manager-select{
         width: 100%;
         padding: 10px;
         margin: 10px 0;
@@ -5862,6 +5865,10 @@ ${fraud.manager === managerName ? `
                 <select id="pendings-priority-select" multiple required></select>
                 <label for="pendings-total-amount">Сума:</label>
                 <input type="text" id="pendings-total-amount">
+                <label for="pendings-manager-select" align="center">Відповідальний менеджер:</label>
+                <select id="pendings-manager-select" required align="center">
+                <option value="" disabled selected>Оберіть менеджера</option>
+                </select>
             </div>
             <button id="pendings-update-btn">Оновити</button>
         </div>
@@ -5874,6 +5881,10 @@ ${fraud.manager === managerName ? `
                 <input type="text" id="payout-total-amount">
                 <label for="payout-auto-disable">Автоматичне відключення авто:</label>
                 <input type="checkbox" id="payout-auto-disable">
+                <label for="payout-manager-select" align="center">Відповідальний менеджер:</label>
+                <select id="payout-manager-select" required align="center">
+                <option value="" disabled selected>Оберіть менеджера</option>
+                </select>
             </div>
             <button id="payout-update-btn">Оновити</button>
         </div>
@@ -5895,6 +5906,10 @@ ${fraud.manager === managerName ? `
             </div>
             <label for="inefficient-transaction-percent">Відсоток недоцільних транзакцій:</label>
             <input type="text" id="inefficient-transaction-percent" placeholder="Введіть відсоток (приклад): 10%" />
+             <label for="deposits-manager-select" align="center">Відповідальний менеджер:</label>
+             <select id="deposits-manager-select" required align="center">
+             <option value="" disabled selected>Оберіть менеджера</option>
+             </select>
             <button id="update-deposits-btn">Оновити</button>
         </div>
 
@@ -5919,17 +5934,21 @@ ${fraud.manager === managerName ? `
                 document.getElementById('pendings-settings').style.display = 'block';
                 document.getElementById('payout-settings').style.display = 'none';
                 document.getElementById('deposits-settings').style.display = 'none';
+                loadManagers('Pendings');
                 loadSettings('Pendings', project);
             } else if (selectedType === 'PayOut') {
                 document.getElementById('payout-settings').style.display = 'block';
                 document.getElementById('deposits-settings').style.display = 'none';
                 document.getElementById('pendings-settings').style.display = 'none';
+                loadManagers('PayOut');
                 loadSettings('PayOut', project);
             } else if (selectedType === 'Deposits') {
                 document.getElementById('deposits-settings').style.display = 'block';
                 document.getElementById('pendings-settings').style.display = 'none';
                 document.getElementById('payout-settings').style.display = 'none';
+                loadManagers('Deposits');
                 loadSettings('Deposits', project);
+
             }
         });
 
@@ -5937,6 +5956,34 @@ ${fraud.manager === managerName ? `
         document.getElementById('payout-update-btn').addEventListener('click', () => updateSettings('PayOut'));
         document.getElementById('update-deposits-btn').addEventListener('click', () => updateSettings('Deposits'));
     }
+
+    function loadManagers(alertType) {
+        const token = localStorage.getItem('authToken');
+
+        fetch('https://vps65001.hyperhost.name/api/users', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+            .then(response => response.json())
+            .then(data => {
+            const managers = data.filter(user => user.status === 'Manager');
+            const select = document.getElementById(`${alertType.toLowerCase()}-manager-select`);
+
+            select.innerHTML = '<option value="" disabled selected>Оберіть менеджера</option>';
+
+            managers.forEach(manager => {
+                const option = document.createElement('option');
+                option.value = manager.manager_name;
+                option.textContent = manager.manager_name;
+                select.appendChild(option);
+            });
+        })
+            .catch(error => {
+            console.error('Помилка отримання менеджерів:', error);
+            document.getElementById('alert-error-msg').textContent = 'Не вдалося завантажити список менеджерів';
+        });
+    }
+
 
     function loadSettings(alertType, project) {
         const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
@@ -5967,6 +6014,12 @@ ${fraud.manager === managerName ? `
                 if (data.inefficient_transaction_percent !== undefined) {
                     inefficientTransactionInput.value = `${data.inefficient_transaction_percent * 100}%`;
                 }
+
+                if (data.manager_name) {
+                    document.getElementById(`${prefix}-manager-select`).value = data.manager_name;
+                }
+
+
             } else {
                 const prioritySelect = document.getElementById(`${prefix}-priority-select`);
                 prioritySelect.innerHTML = '';
@@ -5992,16 +6045,22 @@ ${fraud.manager === managerName ? `
                 if (autoDisableCheckbox) {
                     autoDisableCheckbox.checked = data.auto_disable === "True";
                 }
+
+                if (data.manager) {
+                    document.getElementById(`${prefix}-manager-select`).value = data.manager;
+                }
             }
         })
             .catch(error => console.error('Ошибка при загрузке настроек:', error));
     }
 
 
+
     function updateSettings(alertType) {
         const project = document.getElementById('project-select').value;
 
         if (alertType === 'Deposits') {
+
             const depositSettings = Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => {
                 return {
                     priority: item.querySelector('.priority-label').textContent.trim(),
@@ -6026,35 +6085,15 @@ ${fraud.manager === managerName ? `
             const data = {
                 alert_type: alertType,
                 project: project,
+                manager_id: managerId,
                 settings: depositSettings,
                 inefficient_transaction_percent: inefficientTransactionPercent
             };
 
-            console.log(data)
-
-            fetch('https://vps65001.hyperhost.name/update_settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-                .then(response => response.json())
-                .then(result => {
-                if (result.success) {
-                    document.getElementById('alert-success-msg').textContent = "Успішно оновлено.";
-                    document.getElementById('alert-error-msg').textContent = '';
-                } else {
-                    document.getElementById('alert-error-msg').textContent = result.message || "Виникла помилка.";
-                }
-            })
-                .catch(error => {
-                document.getElementById('alert-error-msg').textContent = "Виникла помилка при відправці даних.";
-                console.error('Ошибка:', error);
-            });
-
+            sendSettings(data);
             return;
         }
+
         const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
 
         const selectedPriorities = Array.from(document.getElementById(`${prefix}-priority-select`).options)
@@ -6063,6 +6102,7 @@ ${fraud.manager === managerName ? `
 
         const totalAmount = document.getElementById(`${prefix}-total-amount`).value.trim();
         const autoDisable = alertType === 'PayOut' && document.getElementById('payout-auto-disable').checked;
+        const manager = document.getElementById(`${prefix}-manager-select`).value;
 
         if (selectedPriorities.length === 0) {
             document.getElementById('alert-error-msg').textContent = "Виберіть хоча б один приорітет.";
@@ -6074,19 +6114,27 @@ ${fraud.manager === managerName ? `
             return;
         }
 
+        if (!manager) {
+            document.getElementById('alert-error-msg').textContent = "Будь ласка, оберіть менеджера.";
+            return;
+        }
+
         const data = {
             alert_type: alertType,
             project: project,
             amount: parseInt(totalAmount),
             priorities: selectedPriorities,
-            auto_disable: autoDisable
+            auto_disable: autoDisable,
+            manager: manager
         };
 
+        sendSettings(data);
+    }
+
+    function sendSettings(data) {
         fetch('https://vps65001.hyperhost.name/update_settings', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         })
             .then(response => response.json())
@@ -6103,6 +6151,8 @@ ${fraud.manager === managerName ? `
             console.error('Ошибка:', error);
         });
     }
+
+
     function verificationProvider() {
         return new Promise((resolve, reject) => {
             const playerId = getPlayerID();

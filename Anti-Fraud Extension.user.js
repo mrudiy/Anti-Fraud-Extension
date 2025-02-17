@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.4
+// @version      5.8.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.4";
+    const currentVersion = "5.8.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5985,124 +5985,142 @@ ${fraud.manager === managerName ? `
     }
 
 
+    function getPrefix(alertType) {
+        if (alertType === 'Deposits') return 'deposits';
+        return alertType === 'PayOut' ? 'payout' : 'pendings';
+    }
+
     function loadSettings(alertType, project) {
-        const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
+        const prefix = getPrefix(alertType);
 
         fetch(`https://vps65001.hyperhost.name/get_settings?alert_type=${alertType}&project=${project}`)
             .then(response => response.json())
             .then(data => {
             if (alertType === 'Deposits') {
-                const depositItems = document.querySelectorAll('.deposit-priority-item');
-                depositItems.forEach((item, index) => {
-                    const priorityData = data.settings ? data.settings[index] : null;
-
-                    if (priorityData) {
-                        const amountInput = item.querySelector('.amount-input');
-                        const bonusInput = item.querySelector('.bonus-input');
-                        const cardSelect = item.querySelector('.card-select');
-
-                        amountInput.value = priorityData.amount || '';
-                        bonusInput.value = priorityData.bonusAmount || '';
-
-                        Array.from(cardSelect.options).forEach(option => {
-                            option.selected = priorityData.cards.includes(option.value);
-                        });
-                    }
-                });
-
-                const inefficientTransactionInput = document.getElementById('inefficient-transaction-percent');
-                if (data.inefficient_transaction_percent !== undefined) {
-                    inefficientTransactionInput.value = `${data.inefficient_transaction_percent * 100}%`;
-                }
-
-                if (data.manager_name) {
-                    document.getElementById(`${prefix}-manager-select`).value = data.manager_name;
-                }
-
-
+                parseDepositSettings(data);
             } else {
-                const prioritySelect = document.getElementById(`${prefix}-priority-select`);
-                prioritySelect.innerHTML = '';
-
-                const defaultPriorities = [
-                    "Приоритет 1 (75к)", "Приоритет 2 (65к)", "Приоритет 3 (60к)",
-                    "Приоритет 4 (50к)", "Приоритет 5 (45к)", "Приоритет 6 (30к)",
-                    "Приоритет 7 (20к)", "Приоритет 8 (20к)", "n/a"
-                ];
-                defaultPriorities.forEach(priority => {
-                    const option = document.createElement('option');
-                    option.value = priority;
-                    option.textContent = priority;
-                    if (data.priorities && data.priorities.includes(priority)) {
-                        option.classList.add('selected');
-                    }
-                    option.addEventListener('click', () => option.classList.toggle('selected'));
-                    prioritySelect.appendChild(option);
-                });
-
-                document.getElementById(`${prefix}-total-amount`).value = data.total_amount || '';
-                const autoDisableCheckbox = document.getElementById(`${prefix}-auto-disable`);
-                if (autoDisableCheckbox) {
-                    autoDisableCheckbox.checked = data.auto_disable === "True";
-                }
-
-                if (data.manager) {
-                    document.getElementById(`${prefix}-manager-select`).value = data.manager;
-                }
+                parseRegularSettings(data, prefix);
             }
         })
             .catch(error => console.error('Ошибка при загрузке настроек:', error));
     }
 
+    function parseDepositSettings(data) {
+        document.querySelectorAll('.deposit-priority-item').forEach((item, index) => {
+            const priorityData = data.settings ? data.settings[index] : null;
+            if (priorityData) {
+                item.querySelector('.amount-input').value = priorityData.amount || '';
+                item.querySelector('.bonus-input').value = priorityData.bonusAmount || '';
+                Array.from(item.querySelector('.card-select').options).forEach(option => {
+                    option.selected = priorityData.cards.includes(option.value);
+                });
+            }
+        });
 
+        const inefficientTransactionInput = document.getElementById('inefficient-transaction-percent');
+        if (data.inefficient_transaction_percent !== undefined) {
+            inefficientTransactionInput.value = `${data.inefficient_transaction_percent * 100}%`;
+        }
+
+        if (data.manager) {
+            setTimeout(() => {
+                document.getElementById('deposits-manager-select').value = data.manager;
+            }, 100);
+        }
+    }
+
+    function parseRegularSettings(data, prefix) {
+        const prioritySelect = document.getElementById(`${prefix}-priority-select`);
+        prioritySelect.innerHTML = '';
+
+        const defaultPriorities = [
+            "Приоритет 1 (75к)", "Приоритет 2 (65к)", "Приоритет 3 (60к)",
+            "Приоритет 4 (50к)", "Приоритет 5 (45к)", "Приоритет 6 (30к)",
+            "Приоритет 7 (20к)", "Приоритет 8 (20к)", "n/a"
+        ];
+
+        defaultPriorities.forEach(priority => {
+            const option = document.createElement('option');
+            option.value = priority;
+            option.textContent = priority;
+            if (data.priorities?.includes(priority)) {
+                option.classList.add('selected');
+            }
+            option.addEventListener('click', () => option.classList.toggle('selected'));
+            prioritySelect.appendChild(option);
+        });
+
+        document.getElementById(`${prefix}-total-amount`).value = data.total_amount || '';
+
+        const autoDisableCheckbox = document.getElementById(`${prefix}-auto-disable`);
+        if (autoDisableCheckbox) {
+            autoDisableCheckbox.checked = data.auto_disable === "True";
+        }
+        if (data.manager) {
+            setTimeout(() => {
+                document.getElementById(`${prefix}-manager-select`).value = data.manager;
+            }, 100);
+        }
+
+    }
 
     function updateSettings(alertType) {
         const project = document.getElementById('project-select').value;
+        const prefix = getPrefix(alertType);
 
         if (alertType === 'Deposits') {
+            updateDepositSettings(alertType, project);
+        } else {
+            updateRegularSettings(alertType, project, prefix);
+        }
+    }
 
-            const depositSettings = Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => {
-                return {
-                    priority: item.querySelector('.priority-label').textContent.trim(),
-                    amount: item.querySelector('.amount-input').value.trim(),
-                    bonusAmount: item.querySelector('.bonus-input').value.trim(),
-                    cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
-                };
-            });
+    function updateDepositSettings(alertType, project) {
+        const manager = document.getElementById('deposits-manager-select').value;
+        const depositSettings = Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => ({
+            priority: item.querySelector('.priority-label').textContent.trim(),
+            amount: item.querySelector('.amount-input').value.trim(),
+            bonusAmount: item.querySelector('.bonus-input').value.trim(),
+            cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
+        }));
 
-            const inefficientTransactionPercent = document.getElementById('inefficient-transaction-percent').value.trim();
+        const inefficientTransactionPercent = document.getElementById('inefficient-transaction-percent').value.trim();
 
-            if (depositSettings.some(setting => !/^\d+$/.test(setting.amount) || !/^\d+$/.test(setting.bonusAmount))) {
-                document.getElementById('alert-error-msg').textContent = "Усі поля суми мають бути заповнені коректними числовими значеннями.";
-                return;
-            }
-
-            if (!/^\d+%$/.test(inefficientTransactionPercent)) {
-                document.getElementById('alert-error-msg').textContent = "Введіть коректний відсоток (наприклад, 10%).";
-                return;
-            }
-
-            const data = {
-                alert_type: alertType,
-                project: project,
-                manager_id: managerId,
-                settings: depositSettings,
-                inefficient_transaction_percent: inefficientTransactionPercent
-            };
-
-            sendSettings(data);
+        if (!validateDepositSettings(depositSettings, inefficientTransactionPercent)) {
             return;
         }
 
-        const prefix = alertType === 'PayOut' ? 'payout' : 'pendings';
+        sendSettings({
+            alert_type: alertType,
+            project: project,
+            manager: manager,
+            settings: depositSettings,
+            inefficient_transaction_percent: inefficientTransactionPercent
+        });
+    }
 
+    function validateDepositSettings(depositSettings, inefficientTransactionPercent) {
+        if (depositSettings.some(setting => !/^\d+$/.test(setting.amount) || !/^\d+$/.test(setting.bonusAmount))) {
+            document.getElementById('alert-error-msg').textContent = "Усі поля суми мають бути заповнені коректними числовими значеннями.";
+            return false;
+        }
+
+        if (!/^\d+%$/.test(inefficientTransactionPercent)) {
+            document.getElementById('alert-error-msg').textContent = "Введіть коректний відсоток (наприклад, 10%).";
+            return false;
+        }
+
+        return true;
+    }
+
+    function updateRegularSettings(alertType, project, prefix) {
+        const manager = document.getElementById(`${prefix}-manager-select`).value;
         const selectedPriorities = Array.from(document.getElementById(`${prefix}-priority-select`).options)
         .filter(option => option.classList.contains('selected'))
         .map(option => option.value);
 
         const totalAmount = document.getElementById(`${prefix}-total-amount`).value.trim();
         const autoDisable = alertType === 'PayOut' && document.getElementById('payout-auto-disable').checked;
-        const manager = document.getElementById(`${prefix}-manager-select`).value;
 
         if (selectedPriorities.length === 0) {
             document.getElementById('alert-error-msg').textContent = "Виберіть хоча б один приорітет.";
@@ -6119,16 +6137,14 @@ ${fraud.manager === managerName ? `
             return;
         }
 
-        const data = {
+        sendSettings({
             alert_type: alertType,
             project: project,
             amount: parseInt(totalAmount),
             priorities: selectedPriorities,
             auto_disable: autoDisable,
             manager: manager
-        };
-
-        sendSettings(data);
+        });
     }
 
     function sendSettings(data) {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.5
+// @version      5.8.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.5";
+    const currentVersion = "5.8.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5053,7 +5053,6 @@ ${fraud.manager === managerName ? `
     }
 
     function activeUrlsManagers() {
-        const currentURL = window.location.href;
         const playerId = getPlayerID();
 
         fetch('https://vps65001.hyperhost.name/api/get_active_users', {
@@ -5070,25 +5069,112 @@ ${fraud.manager === managerName ? `
 
             if (activeUsers.length > 0) {
                 const managerNames = activeUsers.map(user => user.manager_name).join(', ');
-                console.log(managerNames);
 
-                const targetElement = document.querySelector('tr.even td span.fa');
+                const table = document.querySelector('#yw1');
+                if (!table) return;
+
+                const targetElement = table.querySelector('tr.even td span.fa');
+                if (!targetElement) return;
+
                 const rowElement = targetElement.closest('tr');
                 rowElement.style.backgroundColor = '#f8f8d9';
 
                 if (targetElement) {
-                    const newSpan = document.createElement('span');
-                    newSpan.textContent = `Переглядають: ${managerNames}`;
-                    newSpan.style.fontWeight = 'bold';
-                    newSpan.style.color = '#007BFF';
-                    newSpan.style.marginLeft = '10px';
-                    newSpan.style.userSelect = 'none';
-
-                    targetElement.parentNode.appendChild(newSpan);
+                    let existingSpan = targetElement.parentNode.querySelector('.manager-names');
+                    if (!existingSpan) {
+                        existingSpan = document.createElement('span');
+                        existingSpan.className = 'manager-names';
+                        existingSpan.style.fontWeight = 'bold';
+                        existingSpan.style.color = '#007BFF';
+                        existingSpan.style.marginLeft = '10px';
+                        existingSpan.style.userSelect = 'none';
+                        targetElement.parentNode.appendChild(existingSpan);
+                    }
+                    existingSpan.textContent = `Переглядають: ${managerNames}`;
                 }
+
+                createStickyRow(rowElement, table);
             }
         })
-            .catch(error => console.error('Error:', error));
+            .catch(error => console.error('Ошибка запроса:', error));
+    }
+
+    function createStickyRow(originalRow, table) {
+        if (!originalRow) return;
+
+        if (window.stickyRow) window.stickyRow.remove();
+
+        const stickyRow = document.createElement('tr');
+        stickyRow.id = "stickyRow";
+        stickyRow.className = originalRow.className;
+        stickyRow.style.position = 'fixed';
+        stickyRow.style.top = '0px';
+        stickyRow.style.left = `${table.getBoundingClientRect().left}px`;
+        stickyRow.style.width = `${table.offsetWidth}px`;
+        stickyRow.style.backgroundColor = window.getComputedStyle(originalRow).backgroundColor;
+        stickyRow.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+        stickyRow.style.zIndex = '1000';
+        stickyRow.style.display = 'none';
+        stickyRow.style.whiteSpace = 'nowrap'; // Предотвращаем перенос текста
+
+
+        [...originalRow.children].forEach(cell => {
+            const newCell = document.createElement(cell.tagName.toLowerCase());
+            newCell.innerHTML = cell.innerHTML;
+            newCell.style.whiteSpace = 'nowrap';
+            newCell.style.padding = '8px';
+            stickyRow.appendChild(newCell);
+        });
+
+        document.body.appendChild(stickyRow);
+        window.stickyRow = stickyRow;
+
+        document.addEventListener('scroll', () => toggleStickyRow(originalRow, stickyRow, table));
+        window.addEventListener('resize', () => updateStickyRowPosition(stickyRow, table));
+
+        syncCopyButton(originalRow, stickyRow);
+    }
+
+    function toggleStickyRow(originalRow, stickyRow, table) {
+        const rect = originalRow.getBoundingClientRect();
+        const tableRect = table.getBoundingClientRect();
+
+        if (rect.top < 0 && tableRect.bottom > 0) {
+            stickyRow.style.display = 'table-row';
+            stickyRow.style.top = `${Math.max(0, tableRect.top)}px`;
+            stickyRow.style.left = `${tableRect.left}px`;
+            stickyRow.style.width = `${table.offsetWidth}px`;
+        } else {
+            stickyRow.style.display = 'none';
+        }
+    }
+
+    function syncCopyButton(originalRow, stickyRow) {
+        const originalCopyBtn = originalRow.querySelector('.fa-files-o');
+        const stickyCopyBtn = stickyRow.querySelector('.fa-files-o');
+
+        if (!originalCopyBtn || !stickyCopyBtn) return;
+
+        function handleCopyClick(event) {
+            event.preventDefault();
+            const dataForCopy = originalCopyBtn.getAttribute('data-for-copy');
+
+            if (!dataForCopy) return;
+
+            navigator.clipboard.writeText(dataForCopy).then(() => {
+                originalCopyBtn.outerHTML = `<span class="" data-for-copy="${dataForCopy}">Copied!</span>`;
+                stickyCopyBtn.outerHTML = `<span class="" data-for-copy="${dataForCopy}">Copied!</span>`;
+            }).catch(err => console.error('Ошибка копирования:', err));
+        }
+
+        originalCopyBtn.addEventListener('click', handleCopyClick);
+        stickyCopyBtn.addEventListener('click', handleCopyClick);
+    }
+
+    function updateStickyRowPosition(stickyRow, table) {
+        const tableRect = table.getBoundingClientRect();
+        stickyRow.style.left = `${tableRect.left}px`;
+        stickyRow.style.width = `${table.offsetWidth}px`;
     }
 
     function changeCardStatus() {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.6
+// @version      5.8.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.6";
+    const currentVersion = "5.8.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3084,13 +3084,19 @@ ${fraud.manager === managerName ? `
                             ].every(field => {
                                 const row = [...tempDiv.querySelectorAll('tr')]
                                 .find(row => row.querySelector('th')?.textContent.includes(field));
-                                return row && (row.querySelector('td').textContent.trim() === 'Не задан' || row.querySelector('td').textContent.trim() === 'Не заданий');
+
+                                return row && (
+                                    row.querySelector('td').textContent.trim() === 'Не задан' ||
+                                    row.querySelector('td').textContent.trim() === 'Не заданий' ||
+                                    row.querySelector('td').textContent.trim() === ''
+                                );
                             });
 
                             if (isNotSpecified) {
                                 status = 'default';
                             }
                         }
+
                         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
                         const userInfo = document.createElement('div');
@@ -6120,9 +6126,9 @@ ${fraud.manager === managerName ? `
         prioritySelect.innerHTML = '';
 
         const defaultPriorities = [
-            "Приоритет 1 (75к)", "Приоритет 2 (65к)", "Приоритет 3 (60к)",
-            "Приоритет 4 (50к)", "Приоритет 5 (45к)", "Приоритет 6 (30к)",
-            "Приоритет 7 (20к)", "Приоритет 8 (20к)", "n/a"
+            "Приоритет 1", "Приоритет 2", "Приоритет 3",
+            "Приоритет 4", "Приоритет 5", "Приоритет 6",
+            "Приоритет 7", "Приоритет 8", "n/a"
         ];
 
         defaultPriorities.forEach(priority => {

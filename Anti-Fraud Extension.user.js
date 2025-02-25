@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.7
+// @version      5.8.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.7";
+    const currentVersion = "5.8.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -124,7 +124,9 @@
     document.head.append(style);
 
     function applyBackgroundColor(row, color) {
-        row.style.backgroundColor = color;
+        if (row.style.backgroundColor !== color) {
+            row.style.backgroundColor = color;
+        }
     }
 
     function updateColors() {
@@ -228,21 +230,37 @@
     function processTableRows() {
         const rules = getRules();
         const rows = document.querySelectorAll('tr');
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            let colorApplied = false;
-            cells.forEach(cell => {
-                rules.forEach(rule => {
-                    if (cell.textContent.includes(rule.text)) {
-                        applyBackgroundColor(row, rule.color);
-                        colorApplied = true;
-                    }
+        const batchSize = 50;
+        let index = 0;
+
+        function processBatch() {
+            const end = Math.min(index + batchSize, rows.length);
+
+            for (; index < end; index++) {
+                const row = rows[index];
+                const cells = row.querySelectorAll('td');
+                let colorApplied = false;
+
+                cells.forEach(cell => {
+                    rules.forEach(rule => {
+                        if (cell.textContent.includes(rule.text)) {
+                            applyBackgroundColor(row, rule.color);
+                            colorApplied = true;
+                        }
+                    });
                 });
-            });
-            if (!colorApplied) {
-                row.style.backgroundColor = '';
+
+                if (!colorApplied) {
+                    row.style.backgroundColor = '';
+                }
             }
-        });
+
+            if (index < rows.length) {
+                requestAnimationFrame(processBatch);
+            }
+        }
+
+        requestAnimationFrame(processBatch);
     }
 
     function createTransactionsPopup() {
@@ -2492,7 +2510,7 @@ ${fraud.manager === managerName ? `
     function insertTextIntoField(text) {
         const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
         if (field) {
-            const pattern = /Автовиплати відключено антифрод командою .*?\d{2}:\d{2}/;
+            const pattern = /.*Автовиплати відключено антифрод командою .*?\d{2}:\d{2}.*?(?=<br>|<\/[^>]+>|$)/gi;
             field.innerHTML = field.innerHTML.replace(pattern, '').trim();
             field.focus();
             field.innerHTML = text + '<br>' + field.innerHTML;
@@ -3760,7 +3778,7 @@ ${fraud.manager === managerName ? `
                                     withdrawText = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
                                     waitingForBonus = true;
 
-                                } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase')) {
+                                } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase') || actionType.includes('Возврат средств') || actionType.includes('Отмена вывода средств')) {
                                     withdrawAmount = 0;
                                     balanceAfterBonus = 0;
                                     waitingForBonus = false;

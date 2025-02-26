@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.8
+// @version      5.8.9
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.8";
+    const currentVersion = "5.8.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2510,7 +2510,7 @@ ${fraud.manager === managerName ? `
     function insertTextIntoField(text) {
         const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
         if (field) {
-            const pattern = /.*Автовиплати відключено антифрод командою .*?\d{2}:\d{2}.*?(?=<br>|<\/[^>]+>|$)/gi;
+            const pattern = /.*?(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2})?.*?Автовиплати відключено антифрод командою.*?(\d{2}:\d{2})?.*?(?=<br>|<\/[^>]+>|$)/gi;
             field.innerHTML = field.innerHTML.replace(pattern, '').trim();
             field.focus();
             field.innerHTML = text + '<br>' + field.innerHTML;

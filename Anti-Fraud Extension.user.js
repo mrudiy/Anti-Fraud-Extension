@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.8.9
+// @version      5.9
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.8.9";
+    const currentVersion = "5.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7517,6 +7517,88 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
+    function enableFraudButton() {
+
+        const rows = document.querySelectorAll('table.detail-view tbody tr');
+
+        rows.forEach(row => {
+            const header = row.querySelector('th');
+            if (header && header.textContent.trim() === 'Потенциальный фрод') {
+                const td = row.querySelector('td');
+                if (td && !td.querySelector('input[type="checkbox"]')) {
+                    const fraudButton = document.createElement('button');
+                    fraudButton.textContent = 'Fraud';
+
+                    Object.assign(fraudButton.style, {
+                        marginLeft: '10px',
+                        padding: '6px 12px',
+                        backgroundColor: '#ff4d4f',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                        transition: 'all 0.3s ease',
+                        outline: 'none'
+                    });
+
+                    fraudButton.addEventListener('mouseover', () => {
+                        fraudButton.style.backgroundColor = '#ff7875';
+                        fraudButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+                        fraudButton.style.transform = 'translateY(-1px)';
+                    });
+
+                    fraudButton.addEventListener('mouseout', () => {
+                        fraudButton.style.backgroundColor = '#ff4d4f';
+                        fraudButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                        fraudButton.style.transform = 'translateY(0)';
+                    });
+
+                    fraudButton.addEventListener('click', function() {
+                        fetch(`${ProjectUrl}players/playerFeature/suspectedFraud/${userId}/`, {
+                            headers: {
+                                "accept": "*/*",
+                                "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+                                "cache-control": "no-cache",
+                                "pragma": "no-cache",
+                                "priority": "u=1, i",
+                                "sec-ch-ua": "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"",
+                                "sec-ch-ua-mobile": "?0",
+                                "sec-ch-ua-platform": "\"Windows\"",
+                                "sec-fetch-dest": "empty",
+                                "sec-fetch-mode": "cors",
+                                "sec-fetch-site": "same-origin",
+                                "x-requested-with": "XMLHttpRequest"
+                            },
+                            referrer: window.location.href,
+                            referrerPolicy: "strict-origin-when-cross-origin",
+                            body: null,
+                            method: "GET",
+                            mode: "cors",
+                            credentials: "include"
+                        })
+                            .then(response => response.json())
+                            .then(data => {
+                            window.location.reload();
+                        })
+                            .catch(error => {
+                            console.error('Помилка:', error);
+                        });
+                    });
+
+                    const span = td.querySelector('span');
+                    if (span) {
+                        span.insertAdjacentElement('afterend', fraudButton);
+                    } else {
+                        td.appendChild(fraudButton);
+                    }
+                }
+            }
+        });
+    }
+
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
 
@@ -7549,6 +7631,7 @@ ${fraud.manager === managerName ? `
                 checkForUpdates();
             } else if (currentHost.endsWith('.ua') && currentUrl.includes('players/playersItems/update')) {
                 addForeignButton();
+                enableFraudButton();
                 buttonToSave();
                 checkUserInFraudList();
                 activeUrlsManagers();

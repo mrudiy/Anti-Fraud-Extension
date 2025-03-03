@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.1
+// @version      5.9.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -34,6 +34,8 @@
 (function() {
     'use strict';
 
+    const API_BASE_URL = 'https://vps65001.hyperhost.name';
+
     let popupBox;
     const currentUrl = window.location.href;
     const initialsKey = 'userInitials';
@@ -45,7 +47,6 @@
         'wildwinz.com': 'https://admin.wildwinz.com/',
         'com.ua': 'https://admin.betking.com.ua/',
     }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
-
     const initialUrl = window.location.href;
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
@@ -57,15 +58,13 @@
     const reminderDisplayKey = 'reminderDisplay';
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
-    const kingSheet = 'KING Березень🌷';
-    const sevensSheet = 'SEVENS🎰';
-    const vegasSheet = 'VEGAS🎬';
+
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.1";
+    const currentVersion = "5.9.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1899,7 +1898,7 @@ ${fraud.manager === managerName ? `
 
     async function registerUser(username, password, managerName, status) {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/register', {
+            const response = await fetch(`${API_BASE_URL}/api/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, managerName, status })
@@ -4726,39 +4725,47 @@ ${fraud.manager === managerName ? `
         }
 
         const url = getInOutUrl();
+
         if (url) {
-            $.ajax({
-                type: 'GET',
-                url: url,
-            }).done(function(data) {
-                const TotalPA = data.totalInOut;
-                const MonthPA = data.monthInOut;
+            Promise.all([
+                fetch(url, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                }).then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                }),
+                fetch(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'accept': '*/*',
+                        'x-requested-with': 'XMLHttpRequest'
+                    },
+                    credentials: 'include'
+                }).then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response.json();
+                })
+            ])
+                .then(([inOutData, balanceData]) => {
+                const TotalPA = inOutData.totalInOut;
+                const MonthPA = inOutData.monthInOut;
                 const Balance = getBalance();
+                const NDFL = balanceData.balance_after ? balanceData.balance_after : "0";
 
-                const showBalanceButton = document.querySelector('#show-player-balance-after');
-                if (showBalanceButton) {
-                    showBalanceButton.click();
-
-                    setTimeout(() => {
-                        const balanceAfterSpan = document.querySelector('#balance-after');
-                        if (balanceAfterSpan) {
-                            const NDFL = balanceAfterSpan.textContent.trim();
-                            fetchAndProcessPending().then(({ totalPending, cards }) => {
-                                console.log(cards);
-                                fetchAndProcessData();
-                                createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
-                                addCheckButton(TotalPA, Balance, totalPending);
-                            }).catch(error => {
-                                console.error('Error processing pending payments:', error);
-                            });
-                        }
-                    }, 350);
-                }
-            }).fail(function(xhr) {
-                console.error('Ошибка при выполнении запроса:', xhr.responseText);
+                return fetchAndProcessPending()
+                    .then(({ totalPending, cards }) => {
+                    console.log(cards);
+                    fetchAndProcessData();
+                    createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
+                    addCheckButton(TotalPA, Balance, totalPending);
+                });
+            })
+                .catch(error => {
+                console.error('Ошибка при выполнении запросов:', error.message);
             });
         } else {
-            console.log('Не удалось найти URL для запроса.');
+            console.log('Не удалось найти URL для запроса inOut.');
         }
     }
 
@@ -5555,143 +5562,163 @@ ${fraud.manager === managerName ? `
         window.addEventListener('beforeunload', () => clearInterval(checkInterval));
     }
 
-
-    function updateBanButton() {
+    async function updateBanButton() {
         const updateButton = document.getElementById('yw2');
+        if (!updateButton) return;
 
-        if (updateButton) {
-            updateButton.addEventListener('click', function (event) {
-                event.preventDefault();
+        let verificationSheets;
+        try {
+            const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
+        } catch (error) {
+            console.error('Ошибка загрузки настроек верификации:', error);
+            verificationSheets = { Betking: '', '777': '', Vegas: '' }; // Fallback
+        }
 
-                const statusInput = document.querySelector('input[name="Players[status]"]');
-                const currentStatus = statusInput.value;
+        updateButton.addEventListener('click', (event) => handleBanButtonClick(event, updateButton, verificationSheets));
+    }
 
-                const reasonInput = document.querySelector('input[name="Players[inactive_reason]"]');
-                const inactiveReason = reasonInput.value;
-                const playerID = getPlayerID();
+    async function handleBanButtonClick(event, updateButton, verificationSheets) {
+        event.preventDefault();
 
-                if (currentStatus === 'UNCONFIRMED' && (inactiveReason === 'VIOLATION_RULES' || inactiveReason === 'VIOLATION_RULES_FRAUD')) {
-                    Swal.fire({
-                        title: 'Ви бажаєте відправити гравця на верифікацію по схемі юриста?',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'Так',
-                        cancelButtonText: 'Ні'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            const reasons = [
-                                'Після рефанду використовує чужу картку',
-                                'Підозра на малолітнього',
-                                'Підозра на Лудомана',
-                                'Схемщик/потенц. фрод',
-                                'Більше двох чужих карток в місяць',
-                                'Картка родича, неприбутковий',
-                                'Недоцільні транзакції',
-                                'Картковий фрод',
-                                'Фін претензія',
-                                'Cascad'
-                            ];
+        const { status, inactiveReason, playerID } = getBanStatus();
+        if (!shouldSendToVerification(status, inactiveReason)) {
+            updateButton.form.submit();
+            return;
+        }
 
-                            const selectElement = document.createElement('select');
-                            selectElement.id = 'reasonSelect';
-                            selectElement.innerHTML = '<option value="">Виберіть причину</option>';
-                            reasons.forEach((reason) => {
-                                const option = document.createElement('option');
-                                option.value = reason;
-                                option.textContent = reason;
-                                selectElement.appendChild(option);
-                            });
+        const shouldProceed = await confirmLawyerVerification();
+        if (!shouldProceed) return;
 
-                            const confirmButton = Swal.fire({
-                                title: 'Виберіть причину:',
-                                html: selectElement.outerHTML,
-                                showCancelButton: true,
-                                confirmButtonText: 'Підтвердити',
-                                cancelButtonText: 'Відміна',
-                                preConfirm: () => {
-                                    const selectedReason = document.getElementById('reasonSelect').value;
-                                    if (!selectedReason) {
-                                        Swal.showValidationMessage('Будь ласка, виберіть причину!');
-                                    }
-                                    return selectedReason;
-                                }
-                            });
+        const reason = await selectVerificationReason();
+        if (!reason) return;
 
-                            confirmButton.then((result) => {
-                                if (result.isConfirmed) {
-                                    const selectedReason = result.value;
-                                    const currentDate = getCurrentDate();
-                                    const initials = GM_getValue(initialsKey, '');
-                                    const project = getProject();
-                                    const name = Array.from(document.querySelectorAll('tr'))
-                                    .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
-                                    .map(row => row.querySelector('td').textContent.trim())
-                                    .join(' ');
-                                    const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
-                                    .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
-                                    ?.querySelector('td > div')
-                                    ?.childNodes[0]?.textContent.trim();
-                                    console.log(project, vegasSheet)
-                                    const sheetName = project === 'betking'
-                                    ? kingSheet
-                                    : (project === '777'
-                                       ? sevensSheet
-                                       : (project === 'vegas'
-                                          ? vegasSheet
-                                          : ''));
-                                    getAccessToken().then(accessToken => {
-                                        const dataToInsert = {
-                                            url: window.location.href,
-                                            playerID: playerID,
-                                            date: '',
-                                            name: name,
-                                            email: email,
-                                            department: 'Anti Fraud',
-                                            reason: selectedReason
-                                        };
+        await processBanVerification(playerID, reason, updateButton, verificationSheets);
+    }
 
-                                        sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
-                                    }).catch(err => {
-                                        console.error("Error getting Access Token:", err);
-                                    });
+    function getBanStatus() {
+        const statusInput = document.querySelector('input[name="Players[status]"]');
+        const reasonInput = document.querySelector('input[name="Players[inactive_reason]"]');
+        return {
+            status: statusInput?.value || '',
+            inactiveReason: reasonInput?.value || '',
+            playerID: getPlayerID()
+        };
+    }
 
-                                    const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+    function shouldSendToVerification(status, inactiveReason) {
+        return status === 'UNCONFIRMED' &&
+            (inactiveReason === 'VIOLATION_RULES' || inactiveReason === 'VIOLATION_RULES_FRAUD');
+    }
 
-                                    const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
-                                    commentField.innerHTML = message + commentField.innerHTML;
+    function confirmLawyerVerification() {
+        return Swal.fire({
+            title: 'Ви бажаєте відправити гравця на верифікацію по схемі юриста?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Так',
+            cancelButtonText: 'Ні'
+        }).then(result => result.isConfirmed);
+    }
 
-                                    const inputEvent = new Event('input', {
-                                        bubbles: true,
-                                        cancelable: true,
-                                    });
-                                    commentField.dispatchEvent(inputEvent);
+    function selectVerificationReason() {
+        const reasons = [
+            'Після рефанду використовує чужу картку',
+            'Підозра на малолітнього',
+            'Підозра на Лудомана',
+            'Схемщик/потенц. фрод',
+            'Більше двох чужих карток в місяць',
+            'Картка родича, неприбутковий',
+            'Недоцільні транзакції',
+            'Картковий фрод',
+            'Фін претензія',
+            'Cascad'
+        ];
 
-                                    const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
-                                    if (updateCommentButton) {
-                                        updateCommentButton.click();
-
-                                        setTimeout(() => {
-                                            updateButton.form.submit();
-                                        }, 1500);
-                                    } else {
-                                        updateButton.form.submit();
-                                    }
-                                }
-                            });
-                        }
-                    });
-                } else {
-                    updateButton.form.submit();
+        return Swal.fire({
+            title: 'Виберіть причину:',
+            html: `
+            <style>
+                .swal2-select {
+                    width: 100%;
+                    padding: 5px;
+                    font-size: 14px;
                 }
+            </style>
+            <select id="reasonSelect" class="swal2-select">
+                <option value="">Виберіть причину</option>
+                ${reasons.map(r => `<option value="${r}">${r}</option>`).join('')}
+            </select>
+        `,
+            showCancelButton: true,
+            confirmButtonText: 'Підтвердити',
+            cancelButtonText: 'Відміна',
+            preConfirm: () => {
+                const selectedReason = document.getElementById('reasonSelect').value;
+                if (!selectedReason) {
+                    Swal.showValidationMessage('Будь ласка, виберіть причину!');
+                    return false;
+                }
+                return selectedReason;
+            }
+        }).then(result => result.isConfirmed ? result.value : null);
+    }
+
+    async function processBanVerification(playerID, reason, updateButton, verificationSheets) {
+        const project = getProject();
+        const sheetName = getSheetNameForProject(project, verificationSheets);
+        const { name, email } = gatherPlayerData();
+        const currentDate = getCurrentDate();
+        const initials = GM_getValue(initialsKey);
+        try {
+            const accessToken = await getAccessToken();
+            const dataToInsert = {
+                url: window.location.href,
+                playerID,
+                date: null,
+                name,
+                email,
+                department: 'Anti Fraud',
+                reason
+            };
+
+            await sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+            await updateCommentField(currentDate, initials, updateButton);
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: 'Гравця відправлено на верифікацію.'
+            });
+        } catch (error) {
+            console.error('Ошибка при верификации:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Помилка',
+                text: 'Не вдалося відправити дані.'
             });
         }
     }
 
+    async function updateCommentField(currentDate, initials, updateButton) {
+        const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+        const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        if (!commentField) throw new Error('Поле комментария не найдено');
 
+        commentField.innerHTML = message + commentField.innerHTML;
+        commentField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+        const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
+        if (updateCommentButton) {
+            updateCommentButton.click();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+        updateButton.form.submit();
+    }
 
     async function checkForUpdates() {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/version');
+            const response = await fetch(`${API_BASE_URL}/api/version`);
             const data = await response.json();
 
             if (data.version && currentVersion !== data.version) {
@@ -5731,6 +5758,250 @@ ${fraud.manager === managerName ? `
             }
         } catch (error) {
             console.error("Ошибка при проверке версии:", error);
+        }
+    }
+
+    const SETTINGS_SECTIONS = {
+        Pendings: 'pendings-settings',
+        PayOut: 'payout-settings',
+        Deposits: 'deposits-settings',
+        Verification: 'verification-settings'
+    };
+
+    const ALERT_CONFIG = {
+        Pendings: {
+            fields: {
+                priorities: { type: 'multi-select', selector: 'pendings-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'pendings-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                manager: { type: 'select', selector: 'pendings-manager-select', required: true }
+            },
+            apiFields: ['priorities', 'amount', 'manager'],
+            requiresProject: true
+        },
+        PayOut: {
+            fields: {
+                priorities: { type: 'multi-select', selector: 'payout-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'payout-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                auto_disable: { type: 'checkbox', selector: 'payout-auto-disable' },
+                manager: { type: 'select', selector: 'payout-manager-select', required: true }
+            },
+            apiFields: ['priorities', 'amount', 'auto_disable', 'manager'],
+            requiresProject: true
+        },
+        Deposits: {
+            fields: {
+                settings: {
+                    type: 'custom',
+                    selector: '.deposit-priority-item',
+                    parse: () => Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => ({
+                        priority: item.querySelector('.priority-label').textContent.trim(),
+                        amount: item.querySelector('.amount-input').value.trim(),
+                        bonusAmount: item.querySelector('.bonus-input').value.trim(),
+                        cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
+                    })),
+                    validate: settings => settings.every(s => /^\d+$/.test(s.amount) && /^\d+$/.test(s.bonusAmount))
+                },
+                inefficient_transaction_percent: { type: 'text', selector: 'inefficient-transaction-percent', required: true, validate: v => /^\d+%$/.test(v) },
+                manager: { type: 'select', selector: 'deposits-manager-select', required: true }
+            },
+            apiFields: ['settings', 'inefficient_transaction_percent', 'manager'],
+            requiresProject: true
+        },
+        Verification: {
+            fields: {
+                sheets: {
+                    type: 'custom',
+                    selector: '.verification-sheet-input',
+                    parse: () => ({
+                        Betking: document.getElementById('verification-betking-sheet').value.trim(),
+                        '777': document.getElementById('verification-777-sheet').value.trim(),
+                        Vegas: document.getElementById('verification-vegas-sheet').value.trim()
+                    }),
+                    validate: sheets => Object.values(sheets).every(v => v.length > 0)
+                }
+            },
+            apiFields: ['sheets'],
+            requiresProject: false
+        }
+    };
+
+    const byId = (selector) => document.getElementById(selector);
+    const hideAllSections = () => Object.values(SETTINGS_SECTIONS).forEach(id => byId(id).style.display = 'none');
+    const showSection = (section) => byId(section).style.display = 'block';
+    const setMessage = (type, text) => {
+        const errorMsg = byId('alert-error-msg');
+        const successMsg = byId('alert-success-msg');
+        if (type === 'error') {
+            errorMsg.textContent = text;
+            successMsg.textContent = '';
+        } else {
+            successMsg.textContent = text;
+            errorMsg.textContent = '';
+        }
+    };
+
+    class ApiService {
+        static async fetchData(endpoint, options = {}) {
+            const token = localStorage.getItem('authToken');
+            const defaultHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    ...options,
+                    headers: { ...defaultHeaders, ...options.headers }
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status} - ${await response.text()}`);
+                return await response.json();
+            } catch (error) {
+                throw new Error(`Fetch error: ${error.message}`);
+            }
+        }
+    }
+
+    class SettingsManager {
+        static priorities = ["Приоритет 1", "Приоритет 2", "Приоритет 3", "Приоритет 4", "Приоритет 5", "Приоритет 6", "Приоритет 7", "Приоритет 8", "n/a"];
+
+        constructor(alertType) {
+            this.alertType = alertType;
+            this.config = ALERT_CONFIG[alertType];
+            this.section = SETTINGS_SECTIONS[alertType];
+        }
+
+        async loadManagers() {
+            if (this.alertType === 'Verification') return;
+            try {
+                const data = await ApiService.fetchData('/api/users');
+                const managers = data.filter(user => user.status === 'Manager');
+                const select = byId(this.config.fields.manager.selector);
+                select.innerHTML = '<option value="" disabled selected>Оберіть менеджера</option>';
+                managers.forEach(manager => {
+                    const option = document.createElement('option');
+                    option.value = option.textContent = manager.manager_name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Ошибка загрузки менеджеров:', error);
+                setMessage('error', 'Не вдалося завантажити список менеджерів');
+            }
+        }
+
+        async loadSettings(project) {
+            try {
+                const endpoint = this.config.requiresProject
+                ? `/get_settings?alert_type=${this.alertType}&project=${project}`
+                : `/get_settings?alert_type=${this.alertType}`;
+                const data = await ApiService.fetchData(endpoint);
+                this.parseSettings(data);
+            } catch (error) {
+                console.error('Ошибка загрузки настроек:', error);
+                setMessage('error', 'Не вдалося завантажити налаштування');
+            }
+        }
+
+        parseSettings(data) {
+            Object.entries(this.config.fields).forEach(([key, field]) => {
+                if (field.type === 'multi-select') {
+                    const element = byId(field.selector);
+                    element.innerHTML = '';
+                    SettingsManager.priorities.forEach(priority => {
+                        const option = document.createElement('option');
+                        option.value = option.textContent = priority;
+                        if (data.priorities?.includes(priority)) option.classList.add('selected');
+                        option.addEventListener('click', () => option.classList.toggle('selected'));
+                        element.appendChild(option);
+                    });
+                } else if (field.type === 'text') {
+                    const element = byId(field.selector);
+                    // Исправление: маппим 'amount' из ответа сервера в 'total_amount' для UI
+                    if (key === 'total_amount') {
+                        element.value = data.amount !== undefined ? data.amount : '';
+                    } else if (key === 'inefficient_transaction_percent') {
+                        element.value = data[key] ? `${data[key] * 100}%` : '';
+                    } else {
+                        element.value = data[key] || '';
+                    }
+                } else if (field.type === 'checkbox') {
+                    byId(field.selector).checked = data[key] === true;
+                } else if (field.type === 'select') {
+                    if (data[key]) byId(field.selector).value = data[key];
+                } else if (field.type === 'custom') {
+                    if (this.alertType === 'Verification') {
+                        byId('verification-betking-sheet').value = data.sheets?.Betking || '';
+                        byId('verification-777-sheet').value = data.sheets?.['777'] || '';
+                        byId('verification-vegas-sheet').value = data.sheets?.Vegas || '';
+                    } else {
+                        field.parse().forEach((setting, index) => {
+                            const item = document.querySelectorAll(field.selector)[index];
+                            const priorityData = data.settings?.[index] || {};
+                            item.querySelector('.amount-input').value = priorityData.amount || '';
+                            item.querySelector('.bonus-input').value = priorityData.bonusAmount || '';
+                            Array.from(item.querySelector('.card-select').options).forEach(opt => {
+                                opt.selected = priorityData.cards?.includes(opt.value) || false;
+                            });
+                        });
+                    }
+                }
+            });
+        }
+
+        async updateSettings(project) {
+            const settings = this.collectSettings();
+            if (!this.validateSettings(settings)) return;
+            await this.sendSettings(project, settings);
+        }
+
+        collectSettings() {
+            const settings = {};
+            Object.entries(this.config.fields).forEach(([key, field]) => {
+                if (field.type === 'multi-select') {
+                    settings[key] = Array.from(byId(field.selector).options)
+                        .filter(opt => opt.classList.contains('selected'))
+                        .map(opt => opt.value);
+                } else if (field.type === 'text') {
+                    settings[key] = byId(field.selector).value.trim();
+                } else if (field.type === 'checkbox') {
+                    settings[key] = byId(field.selector).checked;
+                } else if (field.type === 'select') {
+                    settings[key] = byId(field.selector).value;
+                } else if (field.type === 'custom') {
+                    settings[key] = field.parse();
+                }
+            });
+            return settings;
+        }
+
+        validateSettings(settings) {
+            for (const [key, field] of Object.entries(this.config.fields)) {
+                const value = settings[key];
+                if (field.required && (!value || (Array.isArray(value) && value.length === 0))) {
+                    setMessage('error', `Поле "${key}" є обов'язковим`);
+                    return false;
+                }
+                if (field.validate && value && !field.validate(value)) {
+                    setMessage('error', `Некоректне значення для "${key}"`);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        async sendSettings(project, settings) {
+            const payload = { alert_type: this.alertType };
+            if (this.config.requiresProject) payload.project = project;
+            this.config.apiFields.forEach(field => {
+                if (field === 'amount') payload[field] = parseInt(settings['total_amount']);
+                else payload[field] = settings[field];
+            });
+
+            try {
+                const result = await ApiService.fetchData('/update_settings', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                setMessage(result.success ? 'success' : 'error', result.success ? 'Успішно оновлено' : result.message || 'Виникла помилка');
+            } catch (error) {
+                console.error('Ошибка отправки настроек:', error);
+                setMessage('error', 'Виникла помилка при відправці даних');
+            }
         }
     }
 
@@ -5947,25 +6218,55 @@ ${fraud.manager === managerName ? `
         background-color: #ffffff;
         color: #495057;
     }
+    #verification-settings {
+            display: none;
+            padding: 20px;
+        }
+        .verification-sheet-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .verification-sheet-input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+        }
+        #verification-update-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #verification-update-btn:hover {
+            background-color: #218838;
+        }
 `;
-
-
         document.head.appendChild(style);
 
         const content = `
-        <select id="project-select" required>
+<select id="project-select" required>
             <option value="" disabled selected>Оберіть проєкт</option>
             <option value="Betking">Betking</option>
             <option value="777">777</option>
             <option value="Vegas">Vegas</option>
         </select>
-
         <div id="alert-type-section" style="display: none;">
             <select id="alert-type-select" required>
                 <option value="" disabled selected>Оберіть алерт</option>
                 <option value="Pendings">Pendings</option>
                 <option value="PayOut">PayOut</option>
                 <option value="Deposits">Deposits</option>
+                <option value="Verification">Доп. верифікація</option>
             </select>
         </div>
 
@@ -6023,261 +6324,65 @@ ${fraud.manager === managerName ? `
             <button id="update-deposits-btn">Оновити</button>
         </div>
 
+<div id="verification-settings">
+            <div class="verification-sheet-container">
+                <label for="verification-betking-sheet">Назва листа для Betking:</label>
+                <input type="text" id="verification-betking-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+                <label for="verification-777-sheet">Назва листа для 777:</label>
+                <input type="text" id="verification-777-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+                <label for="verification-vegas-sheet">Назва листа для Vegas:</label>
+                <input type="text" id="verification-vegas-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+            </div>
+            <button id="verification-update-btn">Оновити</button>
+        </div>
+        <div class="error" id="alert-error-msg"></div>
+        <div class="success" id="alert-success-msg"></div>
+
         <div class="error" id="alert-error-msg"></div>
         <div class="success" id="alert-success-msg"></div>
     `;
-
         createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {});
 
-        document.getElementById('project-select').addEventListener('change', (e) => {
-            document.getElementById('alert-type-select').selectedIndex = 0;
-            document.getElementById('alert-type-section').style.display = e.target.value ? 'block' : 'none';
-            document.getElementById('pendings-settings').style.display = 'none';
-            document.getElementById('payout-settings').style.display = 'none';
-            document.getElementById('deposits-settings').style.display = 'none';
+        byId('project-select').addEventListener('change', (e) => {
+            byId('alert-type-select').selectedIndex = 0;
+            byId('alert-type-section').style.display = e.target.value ? 'block' : 'none';
+            hideAllSections();
         });
 
-        document.getElementById('alert-type-select').addEventListener('change', (e) => {
-            const project = document.getElementById('project-select').value;
-            const selectedType = e.target.value;
-            if (selectedType === 'Pendings') {
-                document.getElementById('pendings-settings').style.display = 'block';
-                document.getElementById('payout-settings').style.display = 'none';
-                document.getElementById('deposits-settings').style.display = 'none';
-                loadManagers('Pendings');
-                loadSettings('Pendings', project);
-            } else if (selectedType === 'PayOut') {
-                document.getElementById('payout-settings').style.display = 'block';
-                document.getElementById('deposits-settings').style.display = 'none';
-                document.getElementById('pendings-settings').style.display = 'none';
-                loadManagers('PayOut');
-                loadSettings('PayOut', project);
-            } else if (selectedType === 'Deposits') {
-                document.getElementById('deposits-settings').style.display = 'block';
-                document.getElementById('pendings-settings').style.display = 'none';
-                document.getElementById('payout-settings').style.display = 'none';
-                loadManagers('Deposits');
-                loadSettings('Deposits', project);
+        byId('alert-type-select').addEventListener('change', async (e) => {
+            hideAllSections();
+            const alertType = e.target.value;
+            if (!alertType) return;
 
-            }
-        });
+            const manager = new SettingsManager(alertType);
+            showSection(SETTINGS_SECTIONS[alertType]);
 
-        document.getElementById('pendings-update-btn').addEventListener('click', () => updateSettings('Pendings'));
-        document.getElementById('payout-update-btn').addEventListener('click', () => updateSettings('PayOut'));
-        document.getElementById('update-deposits-btn').addEventListener('click', () => updateSettings('Deposits'));
-    }
-
-    function loadManagers(alertType) {
-        const token = localStorage.getItem('authToken');
-
-        fetch('https://vps65001.hyperhost.name/api/users', {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(response => response.json())
-            .then(data => {
-            const managers = data.filter(user => user.status === 'Manager');
-            const select = document.getElementById(`${alertType.toLowerCase()}-manager-select`);
-
-            select.innerHTML = '<option value="" disabled selected>Оберіть менеджера</option>';
-
-            managers.forEach(manager => {
-                const option = document.createElement('option');
-                option.value = manager.manager_name;
-                option.textContent = manager.manager_name;
-                select.appendChild(option);
-            });
-        })
-            .catch(error => {
-            console.error('Помилка отримання менеджерів:', error);
-            document.getElementById('alert-error-msg').textContent = 'Не вдалося завантажити список менеджерів';
-        });
-    }
-
-
-    function getPrefix(alertType) {
-        if (alertType === 'Deposits') return 'deposits';
-        return alertType === 'PayOut' ? 'payout' : 'pendings';
-    }
-
-    function loadSettings(alertType, project) {
-        const prefix = getPrefix(alertType);
-
-        fetch(`https://vps65001.hyperhost.name/get_settings?alert_type=${alertType}&project=${project}`)
-            .then(response => response.json())
-            .then(data => {
-            if (alertType === 'Deposits') {
-                parseDepositSettings(data);
+            if (alertType === 'Verification') {
+                byId('project-select').style.display = 'none'; // Скрываем выбор проекта
+                await manager.loadSettings(null); // Без проекта
             } else {
-                parseRegularSettings(data, prefix);
+                byId('project-select').style.display = 'block';
+                const project = byId('project-select').value;
+                if (project) {
+                    await manager.loadManagers();
+                    await manager.loadSettings(project);
+                }
             }
+        });
+
+        ['pendings-update-btn', 'payout-update-btn', 'update-deposits-btn', 'verification-update-btn'].forEach(btn =>
+                                                                                                               byId(btn).addEventListener('click', () => {
+            const alertType = {
+                'pendings-update-btn': 'Pendings',
+                'payout-update-btn': 'PayOut',
+                'update-deposits-btn': 'Deposits',
+                'verification-update-btn': 'Verification'
+            }[btn];
+            const project = alertType === 'Verification' ? null : byId('project-select').value;
+            new SettingsManager(alertType).updateSettings(project);
         })
-            .catch(error => console.error('Ошибка при загрузке настроек:', error));
+                                                                                                              );
     }
-
-    function parseDepositSettings(data) {
-        document.querySelectorAll('.deposit-priority-item').forEach((item, index) => {
-            const priorityData = data.settings ? data.settings[index] : null;
-            if (priorityData) {
-                item.querySelector('.amount-input').value = priorityData.amount || '';
-                item.querySelector('.bonus-input').value = priorityData.bonusAmount || '';
-                Array.from(item.querySelector('.card-select').options).forEach(option => {
-                    option.selected = priorityData.cards.includes(option.value);
-                });
-            }
-        });
-
-        const inefficientTransactionInput = document.getElementById('inefficient-transaction-percent');
-        if (data.inefficient_transaction_percent !== undefined) {
-            inefficientTransactionInput.value = `${data.inefficient_transaction_percent * 100}%`;
-        }
-
-        if (data.manager) {
-            setTimeout(() => {
-                document.getElementById('deposits-manager-select').value = data.manager;
-            }, 100);
-        }
-    }
-
-    function parseRegularSettings(data, prefix) {
-        const prioritySelect = document.getElementById(`${prefix}-priority-select`);
-        prioritySelect.innerHTML = '';
-
-        const defaultPriorities = [
-            "Приоритет 1", "Приоритет 2", "Приоритет 3",
-            "Приоритет 4", "Приоритет 5", "Приоритет 6",
-            "Приоритет 7", "Приоритет 8", "n/a"
-        ];
-
-        defaultPriorities.forEach(priority => {
-            const option = document.createElement('option');
-            option.value = priority;
-            option.textContent = priority;
-            if (data.priorities?.includes(priority)) {
-                option.classList.add('selected');
-            }
-            option.addEventListener('click', () => option.classList.toggle('selected'));
-            prioritySelect.appendChild(option);
-        });
-
-        document.getElementById(`${prefix}-total-amount`).value = data.total_amount || '';
-
-        const autoDisableCheckbox = document.getElementById(`${prefix}-auto-disable`);
-        if (autoDisableCheckbox) {
-            autoDisableCheckbox.checked = data.auto_disable === "True";
-        }
-        if (data.manager) {
-            setTimeout(() => {
-                document.getElementById(`${prefix}-manager-select`).value = data.manager;
-            }, 100);
-        }
-
-    }
-
-    function updateSettings(alertType) {
-        const project = document.getElementById('project-select').value;
-        const prefix = getPrefix(alertType);
-
-        if (alertType === 'Deposits') {
-            updateDepositSettings(alertType, project);
-        } else {
-            updateRegularSettings(alertType, project, prefix);
-        }
-    }
-
-    function updateDepositSettings(alertType, project) {
-        const manager = document.getElementById('deposits-manager-select').value;
-        const depositSettings = Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => ({
-            priority: item.querySelector('.priority-label').textContent.trim(),
-            amount: item.querySelector('.amount-input').value.trim(),
-            bonusAmount: item.querySelector('.bonus-input').value.trim(),
-            cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
-        }));
-
-        const inefficientTransactionPercent = document.getElementById('inefficient-transaction-percent').value.trim();
-
-        if (!validateDepositSettings(depositSettings, inefficientTransactionPercent)) {
-            return;
-        }
-
-        sendSettings({
-            alert_type: alertType,
-            project: project,
-            manager: manager,
-            settings: depositSettings,
-            inefficient_transaction_percent: inefficientTransactionPercent
-        });
-    }
-
-    function validateDepositSettings(depositSettings, inefficientTransactionPercent) {
-        if (depositSettings.some(setting => !/^\d+$/.test(setting.amount) || !/^\d+$/.test(setting.bonusAmount))) {
-            document.getElementById('alert-error-msg').textContent = "Усі поля суми мають бути заповнені коректними числовими значеннями.";
-            return false;
-        }
-
-        if (!/^\d+%$/.test(inefficientTransactionPercent)) {
-            document.getElementById('alert-error-msg').textContent = "Введіть коректний відсоток (наприклад, 10%).";
-            return false;
-        }
-
-        return true;
-    }
-
-    function updateRegularSettings(alertType, project, prefix) {
-        const manager = document.getElementById(`${prefix}-manager-select`).value;
-        const selectedPriorities = Array.from(document.getElementById(`${prefix}-priority-select`).options)
-        .filter(option => option.classList.contains('selected'))
-        .map(option => option.value);
-
-        const totalAmount = document.getElementById(`${prefix}-total-amount`).value.trim();
-        const autoDisable = alertType === 'PayOut' && document.getElementById('payout-auto-disable').checked;
-
-        if (selectedPriorities.length === 0) {
-            document.getElementById('alert-error-msg').textContent = "Виберіть хоча б один приорітет.";
-            return;
-        }
-
-        if (!/^\d+$/.test(totalAmount)) {
-            document.getElementById('alert-error-msg').textContent = "Введіть корректну суму (лише цифри).";
-            return;
-        }
-
-        if (!manager) {
-            document.getElementById('alert-error-msg').textContent = "Будь ласка, оберіть менеджера.";
-            return;
-        }
-
-        sendSettings({
-            alert_type: alertType,
-            project: project,
-            amount: parseInt(totalAmount),
-            priorities: selectedPriorities,
-            auto_disable: autoDisable,
-            manager: manager
-        });
-    }
-
-    function sendSettings(data) {
-        fetch('https://vps65001.hyperhost.name/update_settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-            .then(response => response.json())
-            .then(result => {
-            if (result.success) {
-                document.getElementById('alert-success-msg').textContent = "Успішно оновлено.";
-                document.getElementById('alert-error-msg').textContent = '';
-            } else {
-                document.getElementById('alert-error-msg').textContent = result.message || "Виникла помилка.";
-            }
-        })
-            .catch(error => {
-            document.getElementById('alert-error-msg').textContent = "Виникла помилка при відправці даних.";
-            console.error('Ошибка:', error);
-        });
-    }
-
 
     function verificationProvider() {
         return new Promise((resolve, reject) => {
@@ -6400,133 +6505,161 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    function goToGoogleSheet() {
-        if (document.querySelector('.attention-header')?.textContent.includes('Не подтвержден!')) {
-            const targetDiv = document.querySelector('.form-actions');
-            if (targetDiv) {
-                const button = document.createElement('button');
-                button.id = 'custom-verification-button';
-                button.className = 'btn btn-info';
-                button.innerHTML = '<i class="fa fa-plus"></i> На верифікацію';
-                button.style.marginLeft = '10px';
-                targetDiv.appendChild(button);
+    async function goToGoogleSheet() {
+        const attentionHeader = document.querySelector('.attention-header');
+        if (!attentionHeader?.textContent.includes('Не подтвержден!')) return;
 
-                button.addEventListener('click', (event) => {
-                    event.preventDefault();
+        const targetDiv = document.querySelector('.form-actions');
+        if (!targetDiv) return;
 
-                    Swal.fire({
-                        title: "Відправити на верифікацію",
-                        html: `
-                        <style>
-                            .swal2-popup .swal2-html-container {
-                                overflow: visible !important; /* Убираем ограничения области отображения */
-                            }
-                            .swal2-select {
-                                height: auto !important; /* Убираем фиксированную высоту */
-                                max-height: 150px; /* Ограничиваем максимальную высоту */
-                                width: 85%; /* Растягиваем на всю ширину */
-                                margin-bottom: 10px; /* Добавляем отступ */
-                                overflow-y: auto; /* Прокрутка при большом количестве элементов */
-                                box-sizing: border-box; /* Учитываем паддинги */
-                            }
-                            select {
-                                max-width: 100%; /* Ограничиваем ширину */
-                                font-size: 14px; /* Делаем текст аккуратным */
-                                padding: 5px; /* Добавляем внутренний отступ */
-                            }
-                            option {
-                                font-size: 14px; /* Текст для опций меньше */
-                                padding: 4px; /* Внутренний отступ для опций */
-                            }
-                        </style>
-                        <label for="department-select">Оберіь відділ</label>
-                        <select id="department-select" class="swal2-select">
-                            <option value="">Оберіть...</option>
-                            <option value="PayOut">PayOut</option>
-                            <option value="Managers">Managers</option>
-                            <option value="Cascad">Cascad</option>
-                            <option value="Anti Fraud">Anti Fraud</option>
-                        </select>
-                        <label for="reason-select">Вкажіть причину</label>
-                        <select id="reason-select" class="swal2-select">
-                            <option value="">Оберіть...</option>
-                            ${[
-                                'Після рефанду використовує чужу картку',
-                                'Підозра на малолітнього',
-                                'Підозра на Лудомана',
-                                'Схемщик/потенц. фрод',
-                                'Більше двох чужих карток в місяць',
-                                'Картка родича, неприбутковий',
-                                'Недоцільні транзакції',
-                                'Картковий фрод',
-                                'Фін претензія',
-                                'Cascad'
-                            ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
-                        </select>
-                    `,
-                        showCancelButton: true,
-                        confirmButtonText: "Відправити",
-                        cancelButtonText: "Скасувати",
-                        preConfirm: () => {
-                            const department = document.getElementById('department-select').value;
-                            const reason = document.getElementById('reason-select').value;
+        const button = createVerificationButton();
+        targetDiv.appendChild(button);
 
-                            if (!department || !reason) {
-                                Swal.showValidationMessage("Будь ласка, оберіть всі параметри");
-                                return false;
-                            }
-                            return { department, reason };
-                        }
-                    }).then(result => {
-                        if (result.isConfirmed) {
-                            const { department, reason } = result.value;
-                            const playerID = getPlayerID();
-                            const project = getProject();
-                            const name = Array.from(document.querySelectorAll('tr'))
-                            .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
-                            .map(row => row.querySelector('td').textContent.trim())
-                            .join(' ');
-                            const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
-                            .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
-                            ?.querySelector('td > div')
-                            ?.childNodes[0]?.textContent.trim();
-                            console.log('email', email);
-
-
-                            const sheetName = project === 'betking'
-                            ? kingSheet
-                            : (project === '777'
-                               ? sevensSheet
-                               : (project === 'vegas'
-                                  ? vegasSheet
-                                  : ''));
-
-                            getAccessToken().then(accessToken => {
-                                const dataToInsert = {
-                                    url: window.location.href,
-                                    playerID: playerID,
-                                    date: '',
-                                    name: name,
-                                    email: email,
-                                    department: department,
-                                    reason: reason
-                                };
-                                console.log(dataToInsert)
-                                sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
-                            }).catch(err => {
-                                console.error("Error getting Access Token:", err);
-                            });
-
-                            Swal.fire({
-                                icon: "success",
-                                title: "Успішно!",
-                                text: `Додали у таблицю.\nВідділ: ${department}\nПричина: ${reason}`,
-                            });
-                        }
-                    });
-                });
-            }
+        let verificationSheets;
+        try {
+            const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
+        } catch (error) {
+            console.error('Ошибка загрузки настроек верификации:', error);
+            verificationSheets = { Betking: '', '777': '', Vegas: '' }; // Fallback
         }
+
+        button.addEventListener('click', (event) => handleVerificationClick(event, verificationSheets));
+    }
+
+    function createVerificationButton() {
+        const button = document.createElement('button');
+        button.id = 'custom-verification-button';
+        button.className = 'btn btn-info';
+        button.innerHTML = '<i class="fa fa-plus"></i> На верифікацію';
+        button.style.marginLeft = '10px';
+        return button;
+    }
+
+    async function handleVerificationClick(event, verificationSheets) {
+        event.preventDefault();
+
+        const { department, reason } = await showVerificationPopup();
+        if (!department || !reason) return;
+
+        const playerData = gatherPlayerData();
+        const sheetName = getSheetNameForProject(playerData.project, verificationSheets);
+
+        try {
+            const accessToken = await getAccessToken();
+            const dataToInsert = {
+                url: window.location.href,
+                playerID: playerData.playerID,
+                date: null,
+                name: playerData.name,
+                email: playerData.email,
+                department,
+                reason
+            };
+            console.log('Данные для отправки:', dataToInsert);
+
+            await sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: `Додали у таблицю.\nВідділ: ${department}\nПричина: ${reason}`,
+            });
+        } catch (error) {
+            console.error('Ошибка при отправке в Google Sheet:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Помилка',
+                text: 'Не вдалося додати дані до таблиці.',
+            });
+        }
+    }
+
+    function showVerificationPopup() {
+        return Swal.fire({
+            title: 'Відправити на верифікацію',
+            html: `
+            <style>
+                .swal2-popup .swal2-html-container { overflow: visible !important; }
+                .swal2-select {
+                    height: auto !important;
+                    max-height: 150px;
+                    width: 85%;
+                    margin-bottom: 10px;
+                    overflow-y: auto;
+                    box-sizing: border-box;
+                    padding: 5px;
+                    font-size: 14px;
+                }
+                option { font-size: 14px; padding: 4px; }
+            </style>
+            <label for="department-select">Оберіть відділ</label>
+            <select id="department-select" class="swal2-select">
+                <option value="">Оберіть...</option>
+                <option value="PayOut">PayOut</option>
+                <option value="Managers">Managers</option>
+                <option value="Cascad">Cascad</option>
+                <option value="Anti Fraud">Anti Fraud</option>
+            </select>
+            <label for="reason-select">Вкажіть причину</label>
+            <select id="reason-select" class="swal2-select">
+                <option value="">Оберіть...</option>
+                ${[
+                    'Після рефанду використовує чужу картку',
+                    'Підозра на малолітнього',
+                    'Підозра на Лудомана',
+                    'Схемщик/потенц. фрод',
+                    'Більше двох чужих карток в місяць',
+                    'Картка родича, неприбутковий',
+                    'Недоцільні транзакції',
+                    'Картковий фрод',
+                    'Фін претензія',
+                    'Cascad'
+                ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
+            </select>
+        `,
+            showCancelButton: true,
+            confirmButtonText: 'Відправити',
+            cancelButtonText: 'Скасувати',
+            preConfirm: () => {
+                const department = document.getElementById('department-select').value;
+                const reason = document.getElementById('reason-select').value;
+                if (!department || !reason) {
+                    Swal.showValidationMessage('Будь ласка, оберіть усі параметри');
+                    return false;
+                }
+                return { department, reason };
+            }
+        }).then(result => result.isConfirmed ? result.value : {});
+    }
+
+    function gatherPlayerData() {
+        const playerID = getPlayerID();
+        const project = getProject();
+        const name = Array.from(document.querySelectorAll('tr'))
+        .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
+        .map(row => row.querySelector('td').textContent.trim())
+        .join(' ');
+        const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
+        .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
+        ?.querySelector('td > div')
+        ?.childNodes[0]?.textContent.trim();
+
+        return { playerID, project, name, email };
+    }
+
+    function getSheetNameForProject(project, sheets) {
+        const projectMap = {
+            'betking': 'Betking',
+            '777': '777',
+            'vegas': 'Vegas'
+        };
+        const normalizedProject = projectMap[project.toLowerCase()] || '';
+        const sheetName = sheets[normalizedProject] || '';
+
+        if (!sheetName) {
+            console.warn(`Название листа для проекта ${project} не найдено в настройках`);
+        }
+        return sheetName;
     }
 
     function makeBonusClickable() {

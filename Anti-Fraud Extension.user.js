@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9
+// @version      5.9.1
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -57,7 +57,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
-    const kingSheet = 'KING Лютий🐧';
+    const kingSheet = 'KING Березень🌷';
     const sevensSheet = 'SEVENS🎰';
     const vegasSheet = 'VEGAS🎬';
     const currencySymbols = new Map([
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9";
+    const currentVersion = "5.9.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';

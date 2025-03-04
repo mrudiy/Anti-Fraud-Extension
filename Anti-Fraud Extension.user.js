@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.2
+// @version      5.9.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.2";
+    const currentVersion = "5.9.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -590,34 +590,31 @@
         return new Date(year, month - 1, day);
     }
 
+    const parseDateCheck = dateString => {
+        if (!dateString || typeof dateString !== 'string') return null;
+
+        if (dateString.includes('-')) {
+            const [year, month, day] = dateString.split('-');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        } else if (dateString.includes('.')) {
+            const [day, month, year] = dateString.split('.');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        }
+        return null;
+    };
+
+    const formatDateToDDMMYYYY = date => {
+        if (!date || isNaN(date.getTime())) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0'); // +1, так как месяцы 0-11
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
+    };
+
     async function checkUserInChecklist() {
         const token = localStorage.getItem('authToken');
         const playerId = getPlayerID();
         const url = window.location.href;
-
-        function parseDateFromISO(dateString) {
-            const [year, month, day] = dateString.split('-');
-            return new Date(year, month - 1, day);
-        }
-
-        function parseDateFromCustom(dateString) {
-            const [day, month, year] = dateString.split('.');
-            return new Date(year, month - 1, day);
-        }
-
-        function parseDate(dateString) {
-            if (!dateString || typeof dateString !== 'string') {
-                return null;
-            }
-
-            if (dateString.includes('-')) {
-                return parseDateFromISO(dateString);
-            } else if (dateString.includes('.')) {
-                return parseDateFromCustom(dateString);
-            } else {
-                return null;
-            }
-        }
 
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_checklsit', {
@@ -626,70 +623,50 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ player_id: playerId, url: url })
+                body: JSON.stringify({ player_id: playerId, url })
             });
 
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
-            console.log(data);
-            console.log(data.date);
 
-            const dataDate = parseDate(data.date);
-            const dateFromField = parseDate(getDateFromField());
-            const currentDate = parseDate(getCurrentDate());
+            const dataDate = parseDateCheck(data.date);
+            const dateFromField = parseDateCheck(getDateFromField());
+            const currentDate = parseDateCheck(getCurrentDate());
 
-            const isDataDateValid = dataDate !== null;
-            const isDateFromFieldValid = dateFromField !== null;
-            const isCurrentDateValid = currentDate !== null;
+            const isCheckedToday = (dataDate && currentDate && dataDate.getTime() === currentDate.getTime()) ||
+                  (dateFromField && currentDate && dateFromField.getTime() === currentDate.getTime());
 
-            const isCheckedToday = (isDataDateValid && currentDate && dataDate.getTime() === currentDate.getTime()) ||
-                  (isDateFromFieldValid && currentDate && dateFromField.getTime() === currentDate.getTime());
-
-            const observer = new MutationObserver((mutations, obs) => {
-                const cleanButton = document.querySelector('.clean-button');
-                if (cleanButton) {
-                    updateCleanButtonState(cleanButton, isCheckedToday);
-                    obs.disconnect();
-                }
-            });
-
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-
-            console.log(dataDate, dateFromField, currentDate);
-
-            if (
-                (data.checklistExists && isDateFromFieldValid && isDataDateValid && dateFromField <= dataDate) ||
-                (data.checklistExists && isCheckedToday && isDataDateValid && currentDate <= dataDate)
-            ) {
+            if (data.checklistExists && dataDate && (dateFromField <= dataDate || currentDate <= dataDate)) {
                 const alertDiv = document.createElement('div');
+                applyStyles(alertDiv, {
+                    backgroundColor: '#7fff00',
+                    color: '#000000',
+                    border: '1px solid #5a00a2',
+                    padding: '10px',
+                    margin: '10px 0'
+                });
                 alertDiv.className = 'alert alert-warning';
-                alertDiv.style.backgroundColor = '#7fff00';
-                alertDiv.style.color = '#000000';
-                alertDiv.style.borderColor = '#5a00a2';
-
-                alertDiv.innerHTML =
-                    `<strong>Користувач переглянутий.</strong>
-            <br><strong>Менеджер:</strong> ${data.manager_name}
-            <br><strong>Дата перегляду:</strong> ${data.date} в ${data.time}`;
+                alertDiv.innerHTML = `
+                <strong>Користувач переглянутий.</strong>
+                <br><strong>Менеджер:</strong> ${data.manager_name}
+                <br><strong>Дата перегляду:</strong> ${formatDateToDDMMYYYY(dataDate)} в ${data.time}`;
 
                 const table = document.querySelector('#yw1');
-
                 if (table) {
                     table.parentNode.insertBefore(alertDiv, table);
+                    console.log('Alert added to DOM');
                 } else {
                     console.error('Таблиця не знайдена.');
+                    document.body.insertBefore(alertDiv, document.body.firstChild); // Добавляем в body, если таблицы нет
                 }
             }
 
+            return { isCheckedToday };
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Ошибка в checkUserInChecklist:', error);
+            return { isCheckedToday: false };
         }
     }
-
-
-
 
     function createSettingsPopup() {
         const settingsPopup = document.createElement('div');
@@ -1378,6 +1355,354 @@
         const popup = document.getElementById(popupId);
         if (popup) {
             popup.remove();
+        }
+    }
+
+    function createFindPopUp() {
+        const popupId = 'findPopup';
+
+        const content = `
+        <div class="search-container">
+            <div class="input-group">
+                <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
+                <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
+                <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
+                <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
+                <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
+                <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
+            </div>
+            <div class="button-group">
+                <button id="searchBetkingBtn">Betking</button>
+                <button id="searchVegasBtn">Vegas</button>
+                <button id="search777Btn">777</button>
+            </div>
+            <div id="searchResults" class="search-results"></div>
+        </div>
+    `;
+
+        const style = document.createElement('style');
+        style.textContent = `
+        .search-container {
+            padding: 15px;
+        }
+        .input-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .search-input {
+            flex: 1 1 30%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        .search-container button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .search-container button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .search-container button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+        #searchBetkingBtn {
+            background-color: #e63946;
+            color: #ffd60a;
+        }
+        #searchVegasBtn {
+            background-color: #48cae4;
+            color: #d00000;
+        }
+        #search777Btn {
+            background-color: #1d1d1d;
+            color: #d00000;
+        }
+        .search-results {
+            margin-top: 10px;
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 550px;
+        }
+        .custom-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            min-width: 300px;
+            min-height: 200px;
+        }
+        .items.table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .items.table th, .items.table td {
+            padding: 8px;
+            border: 1px solid #ddd;
+        }
+        .popup-header {
+            padding: 5px 10px;
+            background: #f0f0f0;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .close-btn {
+            cursor: pointer;
+            font-size: 20px;
+        }
+        .popup-content {
+            padding: 10px;
+        }
+        .popup-resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 10px;
+            height: 10px;
+            background: #ccc;
+            cursor: se-resize;
+        }
+    `;
+        document.head.appendChild(style);
+
+        createPopup(popupId, 'Швидкий пошук', content);
+
+        const searchSurnameInput = document.getElementById('searchSurnameInput');
+        const searchIdInput = document.getElementById('searchIdInput');
+        const searchPhoneInput = document.getElementById('searchPhoneInput');
+        const searchInnInput = document.getElementById('searchInnInput');
+        const searchEmailInput = document.getElementById('searchEmailInput');
+        const searchNicknameInput = document.getElementById('searchNicknameInput');
+        const searchBetkingBtn = document.getElementById('searchBetkingBtn');
+        const searchVegasBtn = document.getElementById('searchVegasBtn');
+        const search777Btn = document.getElementById('search777Btn');
+        const searchResults = document.getElementById('searchResults');
+        const popup = document.getElementById(popupId);
+
+        const ProjectUrl = {
+            '777.ua': 'https://admin.777.ua/',
+            'vegas.ua': 'https://admin.vegas.ua/',
+            'wildwinz.com': 'https://admin.wildwinz.com/',
+            'com.ua': 'https://admin.betking.com.ua/',
+        }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
+
+        searchBetkingBtn.addEventListener('click', () => performSearch('betking'));
+        searchVegasBtn.addEventListener('click', () => performSearch('vegas'));
+        search777Btn.addEventListener('click', () => performSearch('777'));
+
+        searchSurnameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const project = window.location.hostname.includes('777.ua') ? '777' :
+                window.location.hostname.includes('vegas.ua') ? 'vegas' :
+                'betking';
+                performSearch(project);
+            }
+        });
+
+        function decodeEmail(encoded) {
+            if (!encoded) return '';
+            const key = parseInt(encoded.substr(0, 2), 16);
+            let email = '';
+            for (let i = 2; i < encoded.length; i += 2) {
+                const byte = parseInt(encoded.substr(i, 2), 16);
+                email += String.fromCharCode(byte ^ key);
+            }
+            return email;
+        }
+
+        function decodeEmails(table) {
+            const emailCells = table.querySelectorAll('td:nth-child(2)');
+            emailCells.forEach(cell => {
+                const emailLink = cell.querySelector('a.__cf_email__[data-cfemail]');
+                if (emailLink) {
+                    const encoded = emailLink.getAttribute('data-cfemail');
+                    const decoded = decodeEmail(encoded);
+                    cell.textContent = decoded;
+                }
+            });
+        }
+
+        function setLinksTargetBlank(table) {
+            const links = table.querySelectorAll('td:nth-child(1) a');
+            links.forEach(link => {
+                link.setAttribute('target', '_blank');
+            });
+        }
+
+        function performSearch(project) {
+            const surnameTerm = searchSurnameInput.value.trim();
+            const idTerm = searchIdInput.value.trim();
+            const phoneTerm = searchPhoneInput.value.trim();
+            const innTerm = searchInnInput.value.trim();
+            const emailTerm = searchEmailInput.value.trim();
+            const nicknameTerm = searchNicknameInput.value.trim();
+
+            if (!surnameTerm && !idTerm && !phoneTerm && !innTerm && !emailTerm && !nicknameTerm) {
+                searchResults.innerHTML = '<p>Введіть дані для пошуку в хоча б одне поле</p>';
+                return;
+            }
+
+            const terms = surnameTerm.split(' ').filter(Boolean);
+            let bodyData = '';
+
+            const projectUrls = {
+                'betking': 'https://admin.betking.com.ua/',
+                'vegas': 'https://admin.vegas.ua/',
+                '777': 'https://admin.777.ua/'
+            };
+            const projectUrl = projectUrls[project] || ProjectUrl;
+            const searchUrl = `${projectUrl}players/playersItems/search/`;
+
+            if (surnameTerm) {
+                bodyData += `PlayersSearchForm[surname]=${encodeURIComponent(terms[0])}`;
+            }
+            if (idTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[number]=${encodeURIComponent(idTerm)}`;
+            }
+            if (phoneTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[phone]=${encodeURIComponent(phoneTerm)}`;
+            }
+            if (innTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[inn]=${encodeURIComponent(innTerm)}`;
+            }
+            if (emailTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[email]=${encodeURIComponent(emailTerm)}`;
+            }
+            if (nicknameTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[nickname]=${encodeURIComponent(nicknameTerm)}`;
+            }
+            bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=&yt0=`;
+
+            console.log('Sending search request with body:', bodyData);
+
+            searchResults.innerHTML = '<p>Завантаження...</p>';
+
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: searchUrl,
+                headers: {
+                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'content-type': 'application/x-www-form-urlencoded',
+                    'cache-control': 'no-cache',
+                    'pragma': 'no-cache'
+                },
+                data: bodyData,
+                onload: function(response) {
+                    const finalUrl = response.finalUrl || searchUrl;
+                    const html = response.responseText;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    if (finalUrl.includes('/players/playersItems/update/')) {
+                        const playerId = finalUrl.split('/').filter(Boolean).pop();
+                        const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
+                        window.open(profileUrl, '_blank');
+                        return;
+                    }
+
+                    const table = doc.querySelector('.items.table');
+                    if (table) {
+                        let rows = table.querySelectorAll('tbody tr');
+
+                        let filteredRows;
+                        if (terms.length === 3 && surnameTerm) {
+                            const surname = terms[0].toLowerCase();
+                            const name = terms[1].toLowerCase();
+                            const patronymic = terms[2].toLowerCase();
+
+                            filteredRows = Array.from(rows).filter(row => {
+                                const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
+                                const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
+                                const patronymicCell = row.cells[5]?.textContent.trim().toLowerCase() || '';
+
+                                const matchesSurname = surnameCell === surname;
+                                const matchesName = nameCell === name;
+                                const matchesPatronymic = patronymicCell === patronymic;
+
+                                return matchesSurname && matchesName && matchesPatronymic;
+                            });
+
+
+                            if (filteredRows.length === 0) {
+                                searchResults.innerHTML = '<p>Нічого не знайдено за повним ПІБ</p>';
+                                setFixedPopupSize(popup);
+                                return;
+                            }
+                        } else {
+                            filteredRows = Array.from(rows);
+                        }
+
+                        const newTable = document.createElement('table');
+                        newTable.className = 'items table table-striped table-hover';
+                        newTable.appendChild(table.querySelector('thead').cloneNode(true));
+                        const newTbody = document.createElement('tbody');
+                        filteredRows.forEach(row => newTbody.appendChild(row.cloneNode(true)));
+                        newTable.appendChild(newTbody);
+
+                        decodeEmails(newTable);
+                        setLinksTargetBlank(newTable);
+
+                        searchResults.innerHTML = '';
+                        if (filteredRows.length > 0) {
+                            searchResults.appendChild(newTable);
+                            setFixedPopupSize(popup);
+                        } else {
+                            searchResults.innerHTML = '<p>Нічого не знайдено</p>';
+                            setFixedPopupSize(popup);
+                        }
+                    } else {
+                        searchResults.innerHTML = '<p>Нічого не знайдено</p>';
+                        setFixedPopupSize(popup);
+                    }
+                },
+                onerror: function(error) {
+                    searchResults.innerHTML = `<p>Помилка: ${error.responseText || error}</p>`;
+                    console.error('Search error:', error);
+                    setFixedPopupSize(popup);
+                }
+            });
+        }
+        function setFixedPopupSize(popup) {
+            popup.style.width = '1477px';
+            popup.style.height = '700px';
+
+            const maxWidth = window.innerWidth;
+            const maxHeight = window.innerHeight;
+            const popupRect = popup.getBoundingClientRect();
+
+            if (popupRect.right > maxWidth) {
+                popup.style.left = `${maxWidth - 1477}px`;
+            }
+            if (popupRect.bottom > maxHeight) {
+                popup.style.top = `${maxHeight - 700}px`;
+            }
+            if (popupRect.left < 0) {
+                popup.style.left = '0px';
+            }
+            if (popupRect.top < 0) {
+                popup.style.top = '0px';
+            }
         }
     }
 
@@ -2575,61 +2900,119 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    // Константы стилей
+    const POPUP_STYLES = {
+        position: 'fixed',
+        top: '20px',
+        width: '270px',
+        padding: '20px',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
+        zIndex: '10000',
+        fontFamily: '"Roboto", sans-serif',
+        fontSize: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        borderRadius: '10px',
+        resize: 'both',
+        overflow: 'auto'
+    };
 
+    const BUTTON_STYLES = {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '15px',
+        fontWeight: 'bold',
+        color: 'white',
+        padding: '10px 12px',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        transition: 'background-color 0.3s'
+    };
 
-    async function createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards) {
-        if (popupBox) {
+    const ICON_STYLES = {
+        position: 'absolute',
+        cursor: 'pointer',
+        fontSize: '20px'
+    };
+
+    // Утилиты
+    function applyStyles(element, styles) {
+        Object.assign(element.style, styles);
+    }
+
+    function getColor(value) {
+        return value < 0.75 ? 'green' : (value < 1 ? 'orange' : 'red');
+    }
+
+    function formatCurrency(amount, showAmount, currencySymbol) {
+        return showAmount ? `${formatAmount(amount)}${currencySymbol}` : `${amount}${currencySymbol}`;
+    }
+
+    function createContainer(styles) {
+        const container = document.createElement('div');
+        applyStyles(container, styles);
+        return container;
+    }
+
+    async function createPopupBox({ MonthPA, TotalPA, Balance, NDFL, totalPending, cards = [], displayCards = [], isCheckedToday }) {
+        if (window.popupBox) {
+            console.log('Popup already exists, skipping creation');
             return;
         }
 
-        const currentUrl = window.location.href;
-        const checkbox = document.getElementById('Players_enabled_autopayouts');
-        const borderColor = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
+        const popupBox = document.createElement('div');
+        window.popupBox = popupBox;
+        const popupWidth = parseInt(POPUP_STYLES.width.replace('px', ''), 10);
+        applyStyles(popupBox, {
+            ...POPUP_STYLES,
+            left: `calc(100% - ${popupWidth + 20}px)`,
+            border: `2px solid ${getColor(TotalPA)}`,
+            animation: 'glow 1s infinite alternate'
+        });
 
-        popupBox = document.createElement('div');
-        popupBox.style.position = 'fixed';
-        popupBox.style.top = '20px';
-        popupBox.style.right = '';
+        try {
+            popupBox.appendChild(createDragHandle(popupBox));
+            popupBox.appendChild(await createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards: displayCards }));
+            popupBox.appendChild(createSettingsIcon());
+            popupBox.appendChild(createSearchIcon());
+            popupBox.appendChild(createStatisticIcon());
+            popupBox.appendChild(createStatusIcon());
+            popupBox.appendChild(createFraudIcon());
+            const reminderIcon = await createReminderIcon();
+            popupBox.appendChild(reminderIcon);
+            await addAdminIcon(popupBox);
+            const buttonRows = createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday });
+            popupBox.appendChild(buttonRows);
+            const textElement = document.createElement('div');
+            textElement.className = 'popup-text';
+            popupBox.appendChild(textElement);
+            const projectContainer = await createProjectButtonContainer();
+            popupBox.appendChild(projectContainer);
+            popupBox.appendChild(createTotalInOutRow({ Balance, totalPending }));
 
-        const popupWidth = 270;
-        popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`;
-        popupBox.style.width = `${popupWidth}px`;
+            document.body.appendChild(popupBox);
+            addGlobalStyles(getColor(TotalPA));
+            console.log('Popup creation completed');
+        } catch (error) {
+            console.error('Error in createPopupBox:', error);
+        }
+    }
 
-        popupBox.style.padding = '20px';
-        popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-        popupBox.style.border = `2px solid ${borderColor}`; 
-        popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
-        popupBox.style.zIndex = '10000';
-        popupBox.style.fontFamily = '"Roboto", sans-serif';
-        popupBox.style.fontSize = '16px';
-        popupBox.style.display = 'flex';
-        popupBox.style.flexDirection = 'column';
-        popupBox.style.alignItems = 'center';
-        popupBox.style.borderRadius = '10px';
-        popupBox.style.animation = 'glow 1s infinite alternate';
-        popupBox.style.resize = 'both';
-        popupBox.style.overflow = 'auto';
-
-        const showNDFL = GM_getValue(ndfDisplayKey, true);
-        const showAmount = GM_getValue(amountDisplayKey, true);
-        const formattedBalance = formatAmount(Balance);
-        const formattedNDFL = formatAmount(NDFL);
-        const formattedTotalPending = formatAmount(totalPending);
-
-
+    function createDragHandle(popupBox) {
         const dragHandle = document.createElement('div');
-        dragHandle.style.position = 'absolute';
-        dragHandle.style.top = '0';
-        dragHandle.style.left = '0';
-        dragHandle.style.width = '100%';
-        dragHandle.style.height = '20px';
-        dragHandle.style.cursor = 'move';
-        popupBox.appendChild(dragHandle);
+        applyStyles(dragHandle, {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '20px',
+            cursor: 'move'
+        });
 
-        let isDragging = false;
-        let offsetX, offsetY;
-
-        dragHandle.addEventListener('mousedown', function (e) {
+        let isDragging = false, offsetX, offsetY;
+        dragHandle.addEventListener('mousedown', (e) => {
             isDragging = true;
             offsetX = e.clientX - popupBox.getBoundingClientRect().left;
             offsetY = e.clientY - popupBox.getBoundingClientRect().top;
@@ -2648,1324 +3031,840 @@ ${fraud.manager === managerName ? `
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
         }
+
+        return dragHandle;
+    }
+
+    async function createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
+        const showNDFL = GM_getValue('ndfDisplayKey', true);
+        const showAmount = GM_getValue('amountDisplayKey', true);
+        const currencySymbol = currencySymbols.get(getCurrency()) || '';
         const provider = await verificationProvider();
-        const maintext = document.createElement('div');
-        const currency = getCurrency();
-        let currencySymbol = currencySymbols.get(currency) || '';
-        maintext.className = 'popup-main-text';
-        maintext.innerHTML = `
-    ${showAmount ? `<center><b>Баланс: ${formattedBalance}${currencySymbol}</b></center>` : `<center><b>Баланс: ${Balance}${currencySymbol}</b></center>`}
-    ${showNDFL && NDFL !== 0 ? (showAmount ? `<center><b>НДФЛ: ${formattedNDFL}${currencySymbol}</b></center>` : `<center><b>НДФЛ: ${NDFL}${currencySymbol}</b></center>`) : ''}
-    <center><b>
-        Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA < 1 ? 'orange' : 'red')}">${MonthPA}</span> |
-        Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red')}">${TotalPA}</span>
-    </b></center>
-    ${totalPending > 0 ? (showAmount ? `<center><b>На виплаті: ${formattedTotalPending}${currencySymbol}</b></center>` : `<center><b>На виплаті: ${totalPending}${currencySymbol}</b></center>`) : ''}    ${cards.length > 0 ? `
-        <center><b>Картки для верифікації:</b><br>
-        ${cards.map(card => `
+
+        const mainText = document.createElement('div');
+        mainText.className = 'popup-main-text';
+        mainText.innerHTML = `
+        <center><b>Баланс: ${formatCurrency(Balance, showAmount, currencySymbol)}</b></center>
+        ${showNDFL && NDFL !== 0 ? `<center><b>НДФЛ: ${formatCurrency(NDFL, showAmount, currencySymbol)}</b></center>` : ''}
+        <center><b>Month: <span style="color: ${getColor(MonthPA)}">${MonthPA}</span> | Total: <span style="color: ${getColor(TotalPA)}">${TotalPA}</span></b></center>
+        ${totalPending > 0 ? `<center><b>На виплаті: ${formatCurrency(totalPending, showAmount, currencySymbol)}</b></center>` : ''}
+        ${cards && Array.isArray(cards) && cards.length > 0 ? `<center><b>Картки для верифікації:</b><br>${cards.map(card => `
             <div style="display: inline-block; margin-top: 5px;">
                 ${card}
-                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')"
-                        style="border: none; background: none; cursor: pointer; margin-left: 5px;">
+                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')" style="border: none; background: none; cursor: pointer; margin-left: 5px;">
                     <span class="fa fa-files-o"></span>
                 </button>
-            </div>
-        `).join('<br>')}
-        </center>` : ''}
-`;
-        if (provider === 'Kycaid' || provider === 'SumSub') {
-            maintext.innerHTML += `
-            <center>
-                <span style="color: red; font-weight: bold;">
-                  Верифікація: ${provider}
-                </span>
-            </center>`;
-        }
+            </div>`).join('<br>')}</center>` : ''}
+        ${['Kycaid', 'SumSub'].includes(provider) ? `<center><span style="color: red; font-weight: bold;">Верифікація: ${provider}</span></center>` : ''}
+    `;
+        return mainText;
+    }
 
-        popupBox.appendChild(maintext);
+    function createSettingsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-cog"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '10px', right: '10px' });
+        icon.title = 'Налаштування';
+        icon.onclick = createSettingsPopup;
+        return icon;
+    }
 
-        const text = document.createElement('div');
-        text.className = 'popup-text';
-        text.innerHTML = ``;
-
-        popupBox.appendChild(text);
-
-        const settingsIcon = document.createElement('div');
-        settingsIcon.innerHTML = '<i class="fa fa-cog"></i>';
-        settingsIcon.style.position = 'absolute';
-        settingsIcon.style.top = '10px';
-        settingsIcon.style.right = '10px';
-        settingsIcon.style.cursor = 'pointer';
-        settingsIcon.style.fontSize = '20px';
-        settingsIcon.title = 'Налаштування';
-        settingsIcon.onclick = () => {
-            createSettingsPopup();
+    function createSearchIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-search"></i>';
+        applyStyles(icon, { ...ICON_STYLES,
+                           top: '10px',
+                           right: '40px'
+                          });
+        icon.title = 'Швидкий пошук';
+        icon.onclick = () => {
+            createFindPopUp();
         };
-        popupBox.appendChild(settingsIcon);
+        return icon;
+    }
 
-        const statisticIcon = document.createElement('div');
-        statisticIcon.innerHTML = '<i class="fa fa-signal"></i>';
-        statisticIcon.style.position = 'absolute';
-        statisticIcon.style.top = '35px';
-        statisticIcon.style.right = '10px';
-        statisticIcon.style.cursor = 'pointer';
-        statisticIcon.style.fontSize = '20px';
-        statisticIcon.title = 'Статистика';
-        statisticIcon.onclick = () => {
-            createStatisticPopup();
-        };
-        popupBox.appendChild(statisticIcon);
+    function createStatisticIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-signal"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '35px', right: '10px' });
+        icon.title = 'Статистика';
+        icon.onclick = createStatisticPopup;
+        return icon;
+    }
 
-        const status = await checkUserStatus();
+    function createStatusIcon() {
+        const checkbox = document.getElementById('Players_enabled_autopayouts');
+        const showAutopayments = GM_getValue('autoPaymentsDisplayKey', true);
+        const icon = document.createElement('div');
+        icon.innerHTML = checkbox?.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '10px', left: '10px' });
+        icon.title = 'Автовиплата';
 
-        if (status === 'Admin') {
-            const adminIcon = document.createElement('div');
-            adminIcon.innerHTML = '<i class="fa fa-users"></i>';
-            adminIcon.style.position = 'absolute';
-            adminIcon.style.top = '70px';
-            adminIcon.style.right = '10px';
-            adminIcon.style.cursor = 'pointer';
-            adminIcon.style.fontSize = '18px';
-            adminIcon.title = 'Користувачі';
-            adminIcon.onclick = () => {
-                if (document.getElementById('admin-popup')) {
-                    return;
-                }
-                createAdminPopup();
-            };
-            popupBox.appendChild(adminIcon);
-        }
-
-        const showAutopayments = GM_getValue(autoPaymentsDisplayKey, true);
-
-        const statusIcon = document.createElement('div');
-        statusIcon.style.position = 'absolute';
-        statusIcon.style.top = '10px';
-        statusIcon.style.left = '10px';
-        statusIcon.style.fontSize = '20px';
-        statusIcon.style.cursor = 'pointer';
-        statusIcon.title = 'Автовиплата';
-        statusIcon.innerHTML = checkbox && checkbox.checked
-            ? '<i class="fa fa-check-circle" style="color: green;"></i>'
-        : '<i class="fa fa-times-circle" style="color: red;"></i>';
-
-        if (!showAutopayments) {
-            statusIcon.style.pointerEvents = 'none';
-        } else {
-            statusIcon.onclick = () => {
+        if (showAutopayments) {
+            icon.onclick = () => {
                 checkbox.click();
-
                 setTimeout(() => {
-                    const confirmButton = document.querySelector('.swal2-confirm');
-                    if (confirmButton) {
-                        confirmButton.click();
-                    }
-
+                    document.querySelector('.swal2-confirm')?.click();
                     setTimeout(() => {
-                        statusIcon.innerHTML = checkbox.checked
-                            ? '<i class="fa fa-check-circle" style="color: green;"></i>'
-                        : '<i class="fa fa-times-circle" style="color: red;"></i>';
+                        icon.innerHTML = checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
                     }, 200);
                 }, 200);
             };
+        } else {
+            icon.style.pointerEvents = 'none';
         }
+        return icon;
+    }
 
-        popupBox.appendChild(statusIcon);
+    function createFraudIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-eye"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '40px', left: '10px' });
+        icon.title = 'Нагляд';
+        icon.onclick = createFraudPopup;
+        return icon;
+    }
 
+    async function createReminderIcon() {
+        const showReminder = GM_getValue('reminderDisplayKey', true);
+        if (!showReminder) return document.createElement('div');
 
-        const fraudIcon = document.createElement('div');
-        fraudIcon.style.position = 'absolute';
-        fraudIcon.style.top = '40px';
-        fraudIcon.style.left = '10px';
-        fraudIcon.style.fontSize = '20px';
-        fraudIcon.style.cursor = 'pointer';
-        fraudIcon.title = 'Нагляд';
-        fraudIcon.innerHTML = '<i class="fa fa-eye"></i>';
-
-        fraudIcon.onclick = () => {
-            createFraudPopup();
-        };
-        popupBox.appendChild(fraudIcon);
-
-        const showReminder = GM_getValue(reminderDisplayKey, true);
-        const shouldBlink = GM_getValue(reminderBlinkKey, true);
         const hasNewArticles = await checkForNewArticles();
+        const shouldBlink = GM_getValue('reminderBlinkKey', true);
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-book"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '70px', left: '10px' });
+        icon.title = 'Памятка';
+        if (hasNewArticles || shouldBlink) icon.classList.add('blinking');
+        icon.onclick = () => {
+            createReminderPopup();
+            icon.classList.remove('blinking');
+            GM_setValue('reminderBlinkKey', false);
+        };
+        return icon;
+    }
 
-        if (showReminder === true) {
-            const reminderIcon = document.createElement('div');
-            reminderIcon.style.position = 'absolute';
-            reminderIcon.style.top = '70px';
-            reminderIcon.style.left = '10px';
-            reminderIcon.style.fontSize = '20px';
-            reminderIcon.style.cursor = 'pointer';
-            reminderIcon.title = 'Памятка';
-            reminderIcon.innerHTML = '<i class="fa fa-book"></i>';
+    async function addAdminIcon(popupBox) {
+        if (await checkUserStatus() !== 'Admin') return;
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-users"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '70px', right: '10px', fontSize: '18px' });
+        icon.title = 'Користувачі';
+        icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
+        popupBox.appendChild(icon);
+    }
 
-            if (hasNewArticles || shouldBlink) {
-                reminderIcon.classList.add('blinking');
-            }
+    function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
+        const firstRow = createContainer({ marginTop: '10px', display: 'block', gap: '10px', textAlign: 'center' });
+        firstRow.appendChild(createCleanButton(isCheckedToday));
 
-            reminderIcon.onclick = () => {
-                createReminderPopup();
-                reminderIcon.classList.remove('blinking');
-                GM_setValue(reminderBlinkKey, false);
-            };
-
-            popupBox.appendChild(reminderIcon);
+        const secondRow = createContainer({ marginTop: '10px', display: 'flex', gap: '10px' });
+        if (GM_getValue(pendingButtonsDisplayKey, true)) {
+            secondRow.appendChild(createPendingPlusButton(TotalPA));
+            secondRow.appendChild(createPendingMinusButton(TotalPA));
         }
 
-        const buttonStyle = `
-    font-family: Arial, sans-serif;
-    font-size: 15px;
-    font-weight: bold;
-    color: white;
-    padding: 10px 12px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-`;
+        const container = document.createElement('div');
+        container.appendChild(firstRow);
+        container.appendChild(secondRow);
+        return container;
+    }
 
+    function createCleanButton(isCheckedToday) {
+        const button = document.createElement('button');
+        button.className = 'clean-button';
 
+        const baseStyles = { ...BUTTON_STYLES };
 
-        const firstRowButtonContainer = document.createElement('div');
-        firstRowButtonContainer.style.marginTop = '10px';
-        firstRowButtonContainer.style.display = 'flex';
-        firstRowButtonContainer.style.gap = '10px';
+        const stateStyles = isCheckedToday
+        ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true, cursor: 'default' }
+        : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
 
-        const cleanButton = document.createElement('button');
-        cleanButton.className = 'clean-button';
-        cleanButton.innerText = 'Checked';
-        cleanButton.style.cssText = buttonStyle;
-        cleanButton.style.backgroundColor = '#28a745';
+        const finalStyles = { ...baseStyles, ...stateStyles };
+        Object.assign(button, finalStyles);
+        applyStyles(button, finalStyles);
 
-        cleanButton.addEventListener('click', () => {
-            if (cleanButton.disabled) return;
+        button.onmouseover = () => !button.disabled && (button.style.backgroundColor = '#218838');
+        button.onmouseout = () => !button.disabled && (button.style.backgroundColor = '#28a745');
 
-            const initials = GM_getValue(initialsKey, '');
-            const currentDate = getCurrentDate();
-            const playerID = getPlayerID();
-            const project = getProject();
-            const url = window.location.href;
-            const time = getCurrentTime();
+        button.addEventListener('click', handleCleanButtonClick);
+        return button;
+    }
 
-            const dataToInsert = {
-                date: currentDate,
-                url: url,
-                project: project,
-                playerID: playerID,
-                initials: initials,
-                comment: `Переглянутий в ${time}`,
-            };
+    function createPendingPlusButton(TotalPA) {
+        const button = document.createElement('button');
+        button.innerText = 'Pending (+)';
+        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#28a745' });
+        button.onmouseover = () => button.style.backgroundColor = '#218838';
+        button.onmouseout = () => button.style.backgroundColor = '#28a745';
+        button.addEventListener('click', () => handlePendingPlusButtonClick(TotalPA));
+        return button;
+    }
 
-            const token = localStorage.getItem('authToken');
+    function createPendingMinusButton(TotalPA) {
+        const button = document.createElement('button');
+        button.innerText = 'Pending (-)';
+        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#dc3545' });
+        button.onmouseover = () => button.style.backgroundColor = '#c82333';
+        button.onmouseout = () => button.style.backgroundColor = '#dc3545';
+        button.addEventListener('click', () => handlePendingMinusButtonClick(TotalPA));
+        return button;
+    }
 
-            sendDataToServer(dataToInsert, token)
-                .then(response => {
-                console.log('Data sent successfully:', response);
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Успішно!',
-                    text: 'Користувач позначений як переглянутий',
-                    confirmButtonText: 'ОК'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        location.reload();
-                    }
-                });
-            })
-                .catch(err => {
-                console.error('Error sending data:', err);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Помилка!',
-                    text: 'Не вдалося надіслати дані.',
-                    confirmButtonText: 'ОК'
-                });
-            });
-        });
+    async function createProjectButtonContainer() {
+        if (window.location.hostname.includes('admin.wildwinz.com')) return document.createElement('div');
 
-        firstRowButtonContainer.appendChild(cleanButton);
-
-        const foreignButton = document.createElement('button');
-        foreignButton.innerText = 'Чужа';
-        foreignButton.style.cssText = buttonStyle;
-        foreignButton.style.backgroundColor = '#dc3545';
-        foreignButton.onmouseover = () => foreignButton.style.backgroundColor = '#c82333';
-        foreignButton.onmouseout = () => foreignButton.style.backgroundColor = '#dc3545';
-        foreignButton.addEventListener('click', () => {
-            const date = getCurrentDate();
-            const time = getCurrentTime();
-            const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська');
-
-            let textToInsert;
-            const formattedBalance = formatAmount(Balance);
-            const formattedTotalPending = formatAmount(totalPending);
-            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-
-            if (currentLanguage === 'російська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1000) {
-                    const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
-                }
-
-                if (totalPending > 1) {
-                    const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `
-                }
-                textToInsert += `играет <b><font color="#ff0000">чужими</font></b> картами, <b>авто отключаем</b>`
-            }
-            else if (currentLanguage === 'українська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-                if (Balance > 1000) {
-                    const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
-                }
-
-                if (totalPending > 1) {
-                    const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                    textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `
-                }
-                textToInsert += `грає <b><font color="#ff0000">чужими</font></b> картками, <b>авто відключаємо</b>`
-            }
-            insertTextIntoField(textToInsert);
-        });
-        popupBox.appendChild(firstRowButtonContainer);
-
-        const secondRowButtonContainer = document.createElement('div');
-        secondRowButtonContainer.style.marginTop = '10px';
-        secondRowButtonContainer.style.display = 'flex';
-        secondRowButtonContainer.style.gap = '10px';
-
-        const showPendingsButton = GM_getValue(pendingButtonsDisplayKey, true);
-
-        const pendingPlusButton = document.createElement('button');
-        pendingPlusButton.innerText = 'Pending (+)';
-        pendingPlusButton.style.cssText = buttonStyle;
-        pendingPlusButton.style.backgroundColor = '#28a745';
-        pendingPlusButton.onmouseover = () => pendingPlusButton.style.backgroundColor = '#218838';
-        pendingPlusButton.onmouseout = () => pendingPlusButton.style.backgroundColor = '#28a745';
-        pendingPlusButton.addEventListener('click', () => {
-            const date = getCurrentDate();
-            const time = getCurrentTime();
-            const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська');
-
-            let textToInsert;
-            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-
-            if (currentLanguage === 'російська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
-            } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
-            } else {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`;
-            }
-
-            insertTextIntoField(textToInsert);
-        });
-        secondRowButtonContainer.appendChild(pendingPlusButton);
-
-        const pendingMinusButton = document.createElement('button');
-        pendingMinusButton.innerText = 'Pending (-)';
-        pendingMinusButton.style.cssText = buttonStyle;
-        pendingMinusButton.style.backgroundColor = '#dc3545';
-        pendingMinusButton.onmouseover = () => pendingMinusButton.style.backgroundColor = '#c82333';
-        pendingMinusButton.onmouseout = () => pendingMinusButton.style.backgroundColor = '#dc3545';
-        pendingMinusButton.addEventListener('click', () => {
-            const date = getCurrentDate();
-            const time = getCurrentTime();
-            const initials = GM_getValue(initialsKey, '');
-            const currentLanguage = GM_getValue(languageKey, 'російська');
-
-            let textToInsert;
-            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-
-            if (currentLanguage === 'російська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
-            } else if (currentLanguage === 'українська') {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
-            } else {
-                textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`;
-            }
-
-            insertTextIntoField(textToInsert);
-        });
-        secondRowButtonContainer.appendChild(pendingMinusButton);
-        if (showPendingsButton === true){
-            popupBox.appendChild(secondRowButtonContainer);}
-
-        const thirdRowButtonContainer = document.createElement('div');
-        thirdRowButtonContainer.style.marginTop = '10px';
-        thirdRowButtonContainer.style.display = 'flex';
-        thirdRowButtonContainer.style.justifyContent = 'center';
-
-        const projectButtonContainer = document.createElement('div');
-        projectButtonContainer.style.marginTop = '10px';
-        projectButtonContainer.style.display = 'block';
-        projectButtonContainer.style.justifyContent = 'center';
-        projectButtonContainer.style.alignItems = 'center';
-        projectButtonContainer.style.textAlign = 'center';
-
+        const container = createContainer({ marginTop: '10px', display: 'block', textAlign: 'center' });
         const searchImage = document.createElement('img');
         searchImage.src = 'https://cdn-icons-png.flaticon.com/512/64/64673.png';
-        searchImage.style.cursor = 'pointer';
-        searchImage.width = '50'
-        searchImage.height = '50'
-        searchImage.addEventListener('click', () => {
-            searchImage.remove();
+        applyStyles(searchImage, { cursor: 'pointer', width: '50px', height: '50px' });
+        searchImage.addEventListener('click', () => handleProjectSearchClick(container, searchImage));
+        container.appendChild(searchImage);
+        return container;
+    }
 
-            function getValueByLabel(doc, labelText) {
-                const rows = doc.querySelectorAll('tr');
-                for (const row of rows) {
-                    const th = row.querySelector('th');
-                    const td = row.querySelector('td');
-                    if (th && th.textContent.trim() === labelText) {
-                        const text = td ? td.textContent.trim() : 'Не найдено';
-                        return text.split('\n')[0].trim();
-                    }
-                }
-                return 'Не найдено';
-            }
+    function createTotalInOutRow({ Balance, totalPending }) {
+        const container = createContainer({ marginTop: '10px', display: 'block', textAlign: 'center' });
+        const button = document.createElement('button');
+        button.innerText = 'Total InOut';
+        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
+        button.onmouseover = () => button.style.backgroundColor = '#2f76ae';
+        button.onmouseout = () => button.style.backgroundColor = '#2196F3';
+        button.addEventListener('click', () => handleTotalInOutClick(container, { Balance, totalPending }));
+        container.appendChild(button);
+        return container;
+    }
 
-            function getFirstValueByLabel(labelText) {
-                const rows = document.querySelectorAll('tr');
-                for (const row of rows) {
-                    const th = row.querySelector('th');
-                    const td = row.querySelector('td');
-                    if (th && th.textContent.trim() === labelText) {
-                        const text = td ? td.textContent.trim() : 'Не найдено';
-                        return text.split('\n')[0].trim();
-                    }
-                }
-                return 'Не найдено';
-            }
-
-            function searchUser(query, fieldType, projectUrl, projectContainer) {
-                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
-
-                GM_xmlhttpRequest({
-                    method: "POST",
-                    url: projectUrl,
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
-                    onload: function (response) {
-                        if (response.finalUrl.includes('/update/')) {
-                            getUserInfo(response.finalUrl, fieldType, projectContainer);
-                        } else {
-                            const notFoundMessage = document.createElement('div');
-                            notFoundMessage.innerHTML = `<b>${searchTypeLabel}:</b> не знайдено`;
-                            notFoundMessage.style.textAlign = 'center';
-                            projectContainer.appendChild(notFoundMessage);
-                        }
-                    },
-                    onerror: function () {
-                        const errorMessage = document.createElement('div');
-                        errorMessage.innerHTML = `<b>${searchTypeLabel}:</b> Помилка при пошуку`;
-                        errorMessage.style.color = 'red';
-                        errorMessage.style.textAlign = 'center';
-                        projectContainer.appendChild(errorMessage);
-                    }
-                });
-            }
-
-            function getUserInfo(url, fieldType, projectContainer) {
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: url,
-                    onload: function(response) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = response.responseText;
-
-                        const playerId = getValueByLabel(tempDiv, 'Номер игрока');
-                        let status = 'success';
-                        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
-                        attentionHeaders.forEach(header => {
-                            const headerText = header.textContent.trim();
-                            if (headerText.includes('Дубликат') || headerText.includes('Отключен') || headerText.includes('Ограничение по возрасту!') || headerText.includes('Не подтвержден')) {
-                                status = 'danger';
-                            } else if (headerText.includes('Лудоман')) {
-                                status = 'info';
-                            }
-                        });
-
-                        if (status === 'success') {
-                            const isNotSpecified = [
-                                'Имя',
-                                'Middle Name',
-                                'Фамилия'
-                            ].every(field => {
-                                const row = [...tempDiv.querySelectorAll('tr')]
-                                .find(row => row.querySelector('th')?.textContent.includes(field));
-
-                                return row && (
-                                    row.querySelector('td').textContent.trim() === 'Не задан' ||
-                                    row.querySelector('td').textContent.trim() === 'Не заданий' ||
-                                    row.querySelector('td').textContent.trim() === ''
-                                );
-                            });
-
-                            if (isNotSpecified) {
-                                status = 'default';
-                            }
-                        }
-
-                        const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
-
-                        const userInfo = document.createElement('div');
-                        userInfo.innerHTML = `
-                <b>${searchTypeLabel}:</b>
-                <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>
-            `;
-                        userInfo.style.textAlign = 'center';
-                        projectContainer.appendChild(userInfo);
-                    },
-                    onerror: function() {
-                        const errorMessage = document.createElement('div');
-                        errorMessage.innerHTML = 'Помилка при отриманні даних користувача.';
-                        errorMessage.style.color = 'red';
-                        errorMessage.style.textAlign = 'center';
-                        projectContainer.appendChild(errorMessage);
-                    }
-                });
-            }
-
-
-
-            function getAjaxUrl() {
-                const scripts = document.querySelectorAll('script');
-                for (const script of scripts) {
-                    const scriptContent = script.textContent;
-                    if (scriptContent.includes('#credentials-info')) {
-                        const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
-                        if (urlMatch) {
-                            return urlMatch[1];
-                        }
-                    }
-                }
-                return null;
-            }
-
-            const url = getAjaxUrl();
-
-            if (url) {
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: url,
-                    onload: function(response) {
-                        let tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = response.responseText;
-
-                        let inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn').value;
-                        const email = getFirstValueByLabel('E-mail');
-                        const phone = getFirstValueByLabel('Телефон');
-
-                        const projectUrls = {
-                            'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
-                            '777': 'https://admin.777.ua/players/playersItems/search/',
-                            'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
-                        };
-
-                        const currentProject = window.location.hostname.includes('betking')
-                        ? 'betking'
-                        : (window.location.hostname.includes('777') ? '777' : 'vegas');
-
-                        const otherProjects = Object.keys(projectUrls).filter(project => project !== currentProject);
-
-                        otherProjects.forEach(project => {
-                            const projectContainer = document.createElement('div');
-                            projectContainer.style.marginBottom = '20px';
-
-                            const projectImage = document.createElement('img');
-                            if (project === 'betking') {
-                                projectImage.src = 'https://admin.betking.com.ua/img/betking.png';
-                                projectImage.style.width = '47px';
-                                projectImage.style.height = '47px';
-                            } else if (project === '777') {
-                                projectImage.src = 'https://admin.777.ua/img/777.png';
-                                projectImage.style.width = '75px';
-                                projectImage.style.height = 'auto';
-                            } else {
-                                projectImage.src = 'https://admin.vegas.ua/img/vegas.png';
-                                projectImage.style.width = '75px';
-                                projectImage.style.height = 'auto';
-                            }
-                            projectImage.alt = project;
-                            projectImage.style.display = 'block';
-                            projectImage.style.margin = '0 auto 10px';
-                            projectContainer.appendChild(projectImage);
-
-                            projectButtonContainer.appendChild(projectContainer);
-
-                            searchUser(inn, 'inn', projectUrls[project], projectContainer);
-                            searchUser(email, 'email', projectUrls[project], projectContainer);
-                            searchUser(phone, 'phone', projectUrls[project], projectContainer);
-
-                            processProjectCards(project, projectUrls[project], projectContainer);
-
-                        });
-                        processСurrentProjectCards(currentProject, projectUrls[currentProject]);
-                    },
-                    onerror: function() {
-                        projectButtonContainer.innerHTML += '<div>Ошибка при получении данных ИНН.</div>';
-                    }
-                });
-            } else {
-                projectButtonContainer.innerHTML += '<div>Не удалось найти URL для запроса.</div>';
-            }
-        });
-
-        function processProjectCards(project, projectUrl, projectContainer) {
-            fetchAllCards().then(data => {
-                const cards = data.cards;
-
-                const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
-                const openUrl = projectUrl.replace('/players/playersItems/search/', '');
-
-                cards.forEach(card => {
-                    const cardContainer = document.createElement('div');
-
-                    GM_xmlhttpRequest({
-                        method: "POST",
-                        url: searchUrl,
-                        headers: {
-                            "Content-Type": "application/x-www-form-urlencoded"
-                        },
-                        data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
-                        onload: function (response) {
-                            const tempDiv = document.createElement('div');
-                            tempDiv.innerHTML = response.responseText;
-                            const table = tempDiv.querySelector('table.items tbody');
-
-                            if (table) {
-                                const rows = table.querySelectorAll('tr');
-
-                                rows.forEach((row) => {
-                                    const playerCard = row.querySelector('td span.player_card');
-                                    if (playerCard) {
-                                        let cardHtml = playerCard.outerHTML;
-                                        let cardTempDiv = document.createElement('div');
-                                        cardTempDiv.innerHTML = cardHtml;
-                                        cardTempDiv.querySelectorAll('a').forEach(link => {
-                                            let href = link.getAttribute('href');
-                                            if (href) {
-                                                link.setAttribute('href', `${openUrl}${href}`);
-                                            }
-                                        });
-
-                                        cardHtml = cardTempDiv.innerHTML;
-                                        let spanElement = cardTempDiv.querySelector('.player_card');
-
-                                        if (spanElement) {
-                                            spanElement.removeAttribute('rel');
-                                            spanElement.removeAttribute('data-content');
-                                        }
-
-                                        cardHtml = cardTempDiv.innerHTML;
-                                        const first6 = card.slice(0, 6);
-                                        const last4 = card.slice(-4);
-
-                                        projectContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
-                                    }
-                                });
-                            }
-                        },
-                        onerror: function () {
-                            const errorDiv = document.createElement('div');
-                            errorDiv.textContent = `Помилка пошуку карти: ${card}`;
-                            errorDiv.style.color = 'red';
-                            cardContainer.appendChild(errorDiv);
-                        }
-                    });
-                });
-            });
-        }
-
-        function processСurrentProjectCards(project, projectUrl) {
-            fetchAllCards().then(data => {
-                const cards = data.cards;
-
-                const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
-                const openUrl = projectUrl.replace('/players/playersItems/search/', '');
-
-                let projectContainer;
-                let foundPlayers = false;
-
-                cards.forEach(card => {
-                    GM_xmlhttpRequest({
-                        method: "POST",
-                        url: searchUrl,
-                        headers: {
-                            "Content-Type": "application/x-www-form-urlencoded"
-                        },
-                        data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
-                        onload: function (response) {
-                            const tempDiv = document.createElement('div');
-                            tempDiv.innerHTML = response.responseText;
-                            const table = tempDiv.querySelector('table.items tbody');
-
-                            if (table) {
-                                const rows = table.querySelectorAll('tr');
-
-                                rows.forEach(row => {
-                                    const playerCard = row.querySelector('td span.player_card');
-                                    if (playerCard) {
-                                        if (!projectContainer) {
-                                            projectContainer = document.createElement('div');
-                                            projectContainer.style.marginBottom = '20px';
-
-                                            const projectImage = document.createElement('img');
-                                            if (projectUrl.includes('betking')) {
-                                                projectImage.src = 'https://admin.betking.com.ua/img/betking.png';
-                                                projectImage.style.width = '47px';
-                                                projectImage.style.height = '47px';
-                                            } else if (projectUrl.includes('777')) {
-                                                projectImage.src = 'https://admin.777.ua/img/777.png';
-                                                projectImage.style.width = '75px';
-                                                projectImage.style.height = 'auto';
-                                            } else {
-                                                projectImage.src = 'https://admin.vegas.ua/img/vegas.png';
-                                                projectImage.style.width = '75px';
-                                                projectImage.style.height = 'auto';
-                                            }
-                                            projectImage.alt = project;
-                                            projectImage.style.display = 'block';
-                                            projectImage.style.margin = '0 auto 10px';
-                                            projectContainer.appendChild(projectImage);
-                                        }
-
-                                        let cardHtml = playerCard.outerHTML;
-                                        const cardTempDiv = document.createElement('div');
-                                        cardTempDiv.innerHTML = cardHtml;
-
-                                        cardTempDiv.querySelectorAll('a').forEach(link => {
-                                            let href = link.getAttribute('href');
-                                            if (href) {
-                                                link.setAttribute('href', `${openUrl}${href}`);
-                                            }
-                                        });
-
-                                        cardHtml = cardTempDiv.innerHTML;
-
-                                        const spanElement = cardTempDiv.querySelector('.player_card');
-                                        if (spanElement) {
-                                            spanElement.removeAttribute('rel');
-                                            spanElement.removeAttribute('data-content');
-                                        }
-                                        cardHtml = cardTempDiv.innerHTML;
-                                        const first6 = card.slice(0, 6);
-                                        const last4 = card.slice(-4);
-                                        if (!cardHtml.includes(userId)) {
-                                            projectContainer.innerHTML += `<b>${first6}|${last4}:</b> ${cardHtml}`;
-                                            foundPlayers = true;
-                                        }
-                                    }
-                                });
-                            }
-                        },
-                        onerror: function () {
-                            console.error(`Ошибка при поиске карты: ${card}`);
-                        },
-                        onloadend: function () {
-                            if (foundPlayers && projectContainer && !projectContainer.parentElement) {
-                                projectButtonContainer.appendChild(projectContainer);
-                            }
-                        }
-                    });
-                });
-            });
-        }
-
-
-        if (!window.location.hostname.includes('admin.wildwinz.com')) {
-            popupBox.appendChild(projectButtonContainer);
-            projectButtonContainer.appendChild(searchImage);
-        }
-
-        const resultButton = document.createElement('button');
-        resultButton.innerText = 'Total InOut';
-        resultButton.style.cssText = buttonStyle;
-        resultButton.style.backgroundColor = '#2196F3';
-        resultButton.onmouseover = () => resultButton.style.backgroundColor = '#2f76ae';
-        resultButton.onmouseout = () => resultButton.style.backgroundColor = '#2196F3';
-        resultButton.addEventListener('click', () => {
-            if (!isProfitButtonClicked) {
-                isProfitButtonClicked = true;
-                fetchResults();
-            }
-        });
-        thirdRowButtonContainer.appendChild(resultButton);
-
-        const fourthRowContainer = document.createElement('div');
-        fourthRowContainer.style.marginTop = '10px';
-        fourthRowContainer.style.display = 'block';
-        fourthRowContainer.style.justifyContent = 'center';
-        fourthRowContainer.style.alignItems = 'center';
-        fourthRowContainer.style.textAlign = 'center';
-
-        popupBox.appendChild(thirdRowButtonContainer);
-        popupBox.appendChild(fourthRowContainer);
-
+    function addGlobalStyles(borderColor) {
         const styleSheet = document.createElement('style');
-        styleSheet.type = 'text/css';
         styleSheet.innerText = `
-    @keyframes borderGlow {
-        0% {
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
-            border-color: ${borderColor};
-        }
-        50% {
-            box-shadow: 0 0 15px gray;
-            border-color: ${borderColor};
-        }
-        100% {
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
-            border-color: ${borderColor};
-        }
-    }
-
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-        to {
-            opacity: 1;
-        }
-    }
-                                        @keyframes glow {
-                                        0% { box-shadow: 0 0 5px ${borderColor}; }
-                                        100% { box-shadow: 0 0 25px ${borderColor}; }
-                                    }
-
-
-    @keyframes blink-red {
-    0% { background-color: transparent; }
-    50% { background-color: red; }
-    100% { background-color: transparent; }
-}
-
-.blinking {
-    animation: blink-red 1s infinite;
-}
-
-        #players-documents_c6 {
-            cursor: pointer;
-        }
-`;
-        document.head.appendChild(styleSheet);
-        document.body.appendChild(popupBox);
-
-        function fetchResults() {
-            const loader = document.createElement('div');
-            loader.style.border = '8px solid #f3f3f3';
-            loader.style.borderTop = '8px solid #3498db';
-            loader.style.borderRadius = '50%';
-            loader.style.width = '50px';
-            loader.style.height = '50px';
-            loader.style.animation = 'spin 2s linear infinite';
-            loader.style.marginBottom = '10px';
-            fourthRowContainer.appendChild(loader);
-
-            const style = document.createElement('style');
-            style.textContent = `
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    #popup-container {
-        min-height: 200px;
-        overflow-y: auto;
-        white-space: normal;
-        word-wrap: break-word;
-    }
+        @keyframes glow { 0% { box-shadow: 0 0 5px ${borderColor}; } 100% { box-shadow: 0 0 25px ${borderColor}; } }
+        @keyframes blink-red { 0% { background-color: transparent; } 50% { background-color: red; } 100% { background-color: transparent; } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .blinking { animation: blink-red 1s infinite; }
+        #popup-container { min-height: 200px; overflow-y: auto; white-space: normal; word-wrap: break-word; }
     `;
-            document.head.appendChild(style);
-
-            const playerID = getPlayerID();
-            const baseURL = `${ProjectUrl}players/playersDetail/index/`;
-            console.log(baseURL)
-            GM_xmlhttpRequest({
-                method: 'POST',
-                url: baseURL,
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(playerID)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
-                onload: function(response) {
-                    if (response.status >= 200 && response.status < 300) {
-
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(response.responseText, 'text/html');
-
-                        const table = doc.querySelector('.detail-view');
-                        let depositsTotal = 0;
-                        let redeemsTotal = 0;
-
-                        if (table) {
-                            const rows = table.querySelectorAll('tr');
-
-                            rows.forEach(row => {
-                                const key = row.querySelector('th')?.textContent.trim();
-                                const value = row.querySelector('td')?.textContent.trim();
-
-                                if (key === 'Deposits Total') {
-                                    depositsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
-                                } else if (key === 'Redeems Total') {
-                                    redeemsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
-                                }
-                            });
-
-                            let cleanBalance = parseFloat(Balance);
-                            const safeBalance = getInnerBalanceValue();
-                            const profit = (depositsTotal - redeemsTotal);
-                            const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
-                            const PrognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
-                            const formattedProfit = formatAmount(profit)
-                            const formattedPrognoseInOut = formatAmount(PrognoseInOut)
-                            const showAmount = GM_getValue(amountDisplayKey, true);
-
-
-
-                            fourthRowContainer.removeChild(loader);
-                            fourthRowContainer.innerHTML += `
-    <div><b>Total InOut: ${showAmount ? formattedProfit : profit.toFixed(2)}${currencySymbol}</b></div>
-    ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
-        <div><b>Prognose InOut: ${showAmount ? formattedPrognoseInOut : PrognoseInOut.toFixed(2)}${currencySymbol}</b></div>
-        <div><b>Prognose PA:
-            <span style="color: ${PrognosePA < 75 ? 'green' : (PrognosePA < 100 ? 'orange' : 'red')}">
-                ${PrognosePA.toFixed(2)}%
-            </span>
-        </b></div>
-    ` : ''}
-`;
-
-                        } else {
-                            fourthRowContainer.removeChild(loader);
-                            fourthRowContainer.innerHTML += 'Таблица с результатами не найдена.';
-                        }
-                    } else {
-                        console.error('Ошибка ответа:', response.statusText);
-                        fourthRowContainer.removeChild(loader);
-                        fourthRowContainer.innerHTML += `Ошибка получения данных: ${response.statusText}`;
-                    }
-                },
-                onerror: function(error) {
-                    console.error('Ошибка запроса:', error);
-                    fourthRowContainer.removeChild(loader);
-                    fourthRowContainer.innerHTML += 'Ошибка запроса: ' + error.message;
-                }
-            });
-        }
+        document.head.appendChild(styleSheet);
     }
 
-    function updatePopupBox(balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index) {
-        if (!popupBox) {
-            console.error('Попап не существует');
+    function handleCleanButtonClick() {
+        const dataToInsert = {
+            date: getCurrentDate(),
+            url: window.location.href,
+            project: getProject(),
+            playerID: getPlayerID(),
+            initials: GM_getValue('initialsKey', ''),
+            comment: `Переглянутий в ${getCurrentTime()}`
+        };
+        sendDataToServer(dataToInsert, localStorage.getItem('authToken'))
+            .then(response => {
+            Swal.fire({ icon: 'success', title: 'Успішно!', text: 'Користувач позначений як переглянутий' })
+                .then(result => result.isConfirmed && location.reload());
+        })
+            .catch(err => Swal.fire({ icon: 'error', title: 'Помилка!', text: 'Не вдалося надіслати дані.' }));
+    }
+
+    function handlePendingPlusButtonClick(TotalPA) {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue('initialsKey', '');
+        const language = GM_getValue('languageKey', 'російська');
+        const colorPA = getColor(TotalPA);
+
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+        insertTextIntoField(textToInsert);
+    }
+
+    function handlePendingMinusButtonClick(TotalPA) {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue('initialsKey', '');
+        const language = GM_getValue('languageKey', 'російська');
+        const colorPA = getColor(TotalPA);
+
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+        insertTextIntoField(textToInsert);
+    }
+
+    function handleProjectSearchClick(container, searchImage) {
+        searchImage.remove();
+        const projectUrls = {
+            'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
+            '777': 'https://admin.777.ua/players/playersItems/search/',
+            'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
+        };
+        const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
+        const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
+
+        const url = getAjaxUrl();
+        if (!url) {
+            container.innerHTML += '<div>Не удалось найти URL для запроса.</div>';
             return;
         }
-
-        const textElement = popupBox.querySelector('.popup-text');
-        if (textElement) {
-            const newMessage = document.createElement('div');
-            newMessage.style.color = 'red';
-            newMessage.style.fontWeight = 'bold';
-            newMessage.style.marginTop = '10px';
-            newMessage.innerHTML = `
-            <center>
-            <span id="popup-clickable-text-${index}">
-                Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴
-            </span>
-            </center>
-        `;
-            textElement.appendChild(newMessage);
-
-            const clickableText = document.getElementById(`popup-clickable-text-${index}`);
-            if (clickableText) {
-                clickableText.addEventListener('click', () => {
-                    const date = getCurrentDate();
-                    const initials = GM_getValue(initialsKey);
-
-                    const textToInsert = `
-#<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
-#${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>
-                `;
-                    insertTextIntoField(textToInsert);
-                });
-            }
-        }
-    }
-
-
-
-    function showBonusViolationMessage(bonusId, dateStr, index) {
-        if (!popupBox) {
-            console.error('Попап не существует');
-            return;
-        }
-
-        const textElement = popupBox.querySelector('.popup-text');
-        if (textElement) {
-            const newMessage = document.createElement('div');
-            newMessage.style.color = 'red';
-            newMessage.style.fontWeight = 'bold';
-            newMessage.style.marginTop = '10px';
-            newMessage.innerHTML = `
-            <center>
-            <span id="popup-bonus-violation-${index}">
-                Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}
-            </span>
-            </center>
-        `;
-            textElement.appendChild(newMessage);
-
-            const clickableText = document.getElementById(`popup-bonus-violation-${index}`);
-            if (clickableText) {
-                clickableText.addEventListener('click', () => {
-                    const textToInsert = `
-#<b>Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}</b>
-                `;
-                    insertTextIntoField(textToInsert);
-                });
-            }
-        }
-    }
-
-    function showManualBalance(dateStr, bonusInfo) {
-        if (!popupBox) {
-            console.error('Попап не существует');
-            return;
-        }
-
-        const textElement = popupBox.querySelector('.popup-text');
-        if (textElement) {
-            const newMessage = document.createElement('div');
-            newMessage.style.color = 'blue';
-            newMessage.style.fontWeight = 'bold';
-            newMessage.style.marginTop = '10px';
-            newMessage.innerHTML = `
-            <center>
-            <span id="popup-manual-balance">
-                 ${bonusInfo} | ${dateStr}
-            </span>
-            </center>
-        `;
-            textElement.appendChild(newMessage);
-        };
-    }
-
-    function updateCleanButtonState(cleanButton, isCheckedToday) {
-        if (isCheckedToday) {
-            cleanButton.innerText = 'Checked ✔';
-            cleanButton.style.backgroundColor = '#d3d3d3';
-            cleanButton.style.color = '#000';
-            cleanButton.style.border = '2px solid #000';
-            cleanButton.disabled = true;
-        } else {
-            cleanButton.innerText = 'Checked';
-            cleanButton.style.backgroundColor = '#28a745';
-            cleanButton.disabled = false;
-        }
-
-        cleanButton.onmouseover = () => {
-            if (!cleanButton.disabled) {
-                cleanButton.style.backgroundColor = '#218838';
-            }
-        };
-
-        cleanButton.onmouseout = () => {
-            if (!cleanButton.disabled) {
-                cleanButton.style.backgroundColor = '#28a745';
-            }
-        };
-    }
-
-    function showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage) {
-        const popupText = document.querySelector('.popup-main-text');
-        if (popupText) {
-            const newLine = document.createElement('div');
-
-            const textColor = bonusDepositPercentage > 50 ? 'maroon' : 'black';
-
-            newLine.innerHTML = `
-            <center>
-                <b
-                    title="Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}"
-                    style="color: ${textColor};"
-                >
-                    BRP: ${bonusDepositPercentage.toFixed(2)}%
-                </b>
-            </center>
-        `;
-
-            popupText.appendChild(newLine);
-        } else {
-            console.warn('Елемент з класом .popup-main-text не знайдено');
-        }
-    }
-
-
-    function fetchAndProcessData() {
-        const project = getProject();
-        const fullProjectUrl = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
-
-        console.log('Запрос данных по URL:', fullProjectUrl);
 
         GM_xmlhttpRequest({
             method: 'GET',
-            url: fullProjectUrl,
-            onload: function(response) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(response.responseText, 'text/html');
-                const formData = new FormData();
-                formData.append('pageSize', '10000');
+            url,
+            onload: response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+                const inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
+                const email = getFirstValueByLabel('E-mail');
+                const phone = getFirstValueByLabel('Телефон');
 
+                otherProjects.forEach(project => {
+                    const projectContainer = createProjectContainer(project, projectUrls[project]);
+                    container.appendChild(projectContainer);
+                    searchUser(inn, 'inn', projectUrls[project], projectContainer);
+                    searchUser(email, 'email', projectUrls[project], projectContainer);
+                    searchUser(phone, 'phone', projectUrls[project], projectContainer);
+                    processProjectCards(project, projectUrls[project], projectContainer);
+                });
+                processCurrentProjectCards(currentProject, projectUrls[currentProject], container);
+            },
+            onerror: () => container.innerHTML += '<div>Ошибка при получении данных ИНН.</div>'
+        });
+    }
+
+    function createProjectContainer(project, projectUrl) {
+        const container = createContainer({ marginBottom: '20px' });
+        const image = document.createElement('img');
+
+        const domain = projectUrl.match(/https:\/\/[^\/]+/)[0];
+        image.src = `${domain}/img/${project}.png`;
+
+        applyStyles(image, {
+            display: 'block',
+            margin: '0 auto 10px',
+            width: project === 'betking' ? '47px' : '75px',
+            height: project === 'betking' ? '47px' : 'auto'
+        });
+        container.appendChild(image);
+        return container;
+    }
+
+    function searchUser(query, fieldType, projectUrl, container) {
+        const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: projectUrl,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
+            onload: response => {
+                response.finalUrl.includes('/update/')
+                    ? getUserInfo(response.finalUrl, fieldType, container)
+                : container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+            },
+            onerror: () => container.innerHTML += `<div><b>${searchTypeLabel}:</b> Помилка при пошуку</div>`
+        });
+    }
+
+    function getUserInfo(url, fieldType, container) {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+                const playerId = getValueByLabel(tempDiv, 'Номер игрока');
+                let status = determineUserStatus(tempDiv);
+                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
+                container.innerHTML += `<div><b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>`;
+            },
+            onerror: () => container.innerHTML += '<div>Помилка при отриманні даних користувача.</div>'
+        });
+    }
+
+    function determineUserStatus(tempDiv) {
+        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
+        for (const header of attentionHeaders) {
+            const text = header.textContent.trim();
+            if (text.includes('Дубликат') || text.includes('Отключен') || text.includes('Ограничение по возрасту!') || text.includes('Не подтвержден')) return 'danger';
+            if (text.includes('Лудоман')) return 'info';
+        }
+        return ['Имя', 'Middle Name', 'Фамилия'].every(field => {
+            const row = [...tempDiv.querySelectorAll('tr')].find(r => r.querySelector('th')?.textContent.includes(field));
+            return row && ['Не задан', 'Не заданий', ''].includes(row.querySelector('td')?.textContent.trim());
+        }) ? 'default' : 'success';
+    }
+
+    function processProjectCards(project, projectUrl, container) {
+        fetchAllCards().then(data => {
+            const cards = data.cards;
+            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+            cards.forEach(card => processCard(card, searchUrl, openUrl, container));
+        });
+    }
+
+    function processCurrentProjectCards(project, projectUrl, parentContainer) {
+        fetchAllCards().then(data => {
+            const cards = data.cards;
+            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+            let projectContainer;
+            let foundPlayers = false;
+
+            cards.forEach(card => {
                 GM_xmlhttpRequest({
                     method: 'POST',
-                    url: fullProjectUrl,
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    data: new URLSearchParams(formData).toString(),
-                    onload: function(response) {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(response.responseText, 'text/html');
+                    url: searchUrl,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                    onload: response => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+                        const table = tempDiv.querySelector('table.items tbody');
+                        if (!table) return;
 
-                        const rows = Array.from(doc.querySelectorAll('tr'));
-
-                        let withdrawAmount = 0;
-                        let balanceAfterBonus = 0;
-                        let bonusAmount = 0;
-                        let waitingForBonus = false;
-
-                        let bonusId = '';
-                        let bonusText = '';
-                        let withdrawId = '';
-                        let withdrawText = '';
-                        let bonusDate = '';
-
-                        let totalDeposits = 0;
-                        let bonusWithDeposits = 0;
-                        let totalWithdrawAmount = 0;
-
-                        let messageCount = 0;
-                        const maxMessages = 2;
-
-                        const bonusAssignments = {};
-                        const displayedMessages = {};
-
-                        const indexTransactionInfo = 7;
-                        const indexDate = 6;
-
-                        rows.forEach(row => {
-                            if (messageCount >= maxMessages) return;
-                            const cells = row.querySelectorAll('td');
-                            if (cells.length > 0) {
-                                const actionType = cells[1] ? cells[1].innerText.trim() : '';
-                                const bonusInfo = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
-                                const dateTimeStr = cells[indexDate] ? cells[indexDate].textContent.trim() : '';
-                                const dateMatch = dateTimeStr.match(/^(\d{2}\/\d{2}\/\d{4})/);
-                                const dateStr = dateMatch ? dateMatch[1] : '';
-
-                                if (actionType.includes('Вывод средств')) {
-                                    withdrawAmount = parseFloat(cells[2] ? cells[2].textContent.replace('-', '').replace(',', '.') : '0') || 0;
-                                    totalWithdrawAmount += withdrawAmount;
-                                    withdrawId = cells[0] ? cells[0].textContent.trim() : '';
-                                    withdrawText = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
-                                    waitingForBonus = true;
-
-                                } else if (actionType.includes('Ввод средств') || actionType.includes('Purchase') || actionType.includes('Возврат средств') || actionType.includes('Отмена вывода средств')) {
-                                    withdrawAmount = 0;
-                                    balanceAfterBonus = 0;
-                                    waitingForBonus = false;
-                                    totalWithdrawAmount = 0
-                                    totalDeposits++;
-                                } else if (actionType.includes('Ручное начисление баланса')) {
-                                    const amount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
-                                    if (amount > 1) {
-                                        showManualBalance(dateStr, bonusInfo);
-                                    }
-                                } else if (actionType.includes('Отыгрывание бонуса') && waitingForBonus) {
-                                    bonusAmount = parseFloat(cells[2] ? cells[2].textContent.replace(',', '.') : '0');
-                                    balanceAfterBonus = parseFloat(cells[3] ? cells[3].textContent.replace(',', '.') : '0');
-                                    bonusId = cells[0] ? cells[0].textContent.trim() : '';
-                                    bonusText = cells[indexTransactionInfo] ? cells[indexTransactionInfo].textContent.trim() : '';
-                                    const fullDate = cells[indexDate] ? cells[indexDate].textContent.trim() : '';
-                                    const dateMatch = fullDate.match(/^(\d{2}\/\d{2}\/\d{4})/);
-                                    bonusDate = dateMatch ? dateMatch[1] : '';
-                                    if (totalWithdrawAmount > balanceAfterBonus) {
-                                        const message = `Можливе порушення BTR:\n${bonusDate}\nвідіграв ${bonusAmount}₴, виводить ${totalWithdrawAmount}₴`;
-                                        console.log('Проверка на нарушение BTR:', message);
-
-                                        updatePopupBox(balanceAfterBonus, totalWithdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, messageCount);
-
-                                        messageCount++;
-                                    }
-
-                                    waitingForBonus = false;
-                                } else if (actionType.includes('Присвоение бонуса') || actionType.includes('Bonus assignment')) {
-                                    const paymentMatch = bonusInfo.match(/платеж № (\d+)/);
-                                    if (paymentMatch) {
-                                        bonusWithDeposits++;
-                                    }
-
-                                    const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
-                                    if (bonusIdMatch) {
-                                        const bonusId = bonusIdMatch[1];
-
-                                        if (!bonusAssignments[bonusId]) {
-                                            bonusAssignments[bonusId] = {};
-                                        }
-
-                                        if (!bonusAssignments[bonusId][dateStr]) {
-                                            bonusAssignments[bonusId][dateStr] = 0;
-                                        }
-
-                                        bonusAssignments[bonusId][dateStr]++;
-
-                                        if (bonusAssignments[bonusId][dateStr] > 2) {
-                                            const key = `${bonusId}_${dateStr}`;
-                                            if (!displayedMessages[key]) {
-                                                const additionalMessage = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
-                                                console.log('Проверка на нарушение присвоения бонуса:', additionalMessage);
-
-                                                showBonusViolationMessage(bonusId, dateStr, messageCount);
-
-                                                displayedMessages[key] = true;
-                                                messageCount++;
-                                            }
-                                        }
-                                    } else {
-                                        console.warn('Не удалось извлечь ID бонуса из строки:', bonusInfo);
-                                    }
+                        table.querySelectorAll('tr').forEach(row => {
+                            const playerCard = row.querySelector('td span.player_card');
+                            if (playerCard && !playerCard.outerHTML.includes(userId)) {
+                                if (!projectContainer) {
+                                    projectContainer = createProjectContainer(project);
                                 }
+                                projectContainer.innerHTML += `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`;
+                                foundPlayers = true;
                             }
                         });
-
-                        if (totalDeposits > 0) {
-                            let bonusDepositPercentage = (bonusWithDeposits / totalDeposits) * 100;
-                            console.log(`Загальна кількість депозитів: ${totalDeposits}`);
-                            console.log(`Кількість депозитів з бонусом: ${bonusWithDeposits}`);
-                            console.log(`BRP - ${bonusDepositPercentage.toFixed(2)}%`);
-                            showBRP(totalDeposits, bonusWithDeposits, bonusDepositPercentage);
-                        } else {
-                            console.log('Депозити відсутні.');
-                        }
                     },
-                    onerror: function(error) {
-                        console.error('Ошибка загрузки данных:', error);
+                    onloadend: () => foundPlayers && projectContainer && !projectContainer.parentElement && parentContainer.appendChild(projectContainer)
+                });
+            });
+        });
+    }
+
+    function processCard(card, searchUrl, openUrl, container) {
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: searchUrl,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+            onload: response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+                const table = tempDiv.querySelector('table.items tbody');
+                if (!table) return;
+
+                table.querySelectorAll('tr').forEach(row => {
+                    const playerCard = row.querySelector('td span.player_card');
+                    if (playerCard) {
+                        container.innerHTML += `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`;
                     }
                 });
             }
         });
     }
 
-    function fetchAndProcessPending() {
-        return new Promise((resolve, reject) => {
-            const PlayerID = getPlayerID();
-            const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
-            let totalPending = 0;
-            let cardsSet = new Set();
+    function cleanCardHtml(cardHtml, openUrl) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = cardHtml;
+        tempDiv.querySelectorAll('a').forEach(link => link.setAttribute('href', `${openUrl}${link.getAttribute('href')}`));
+        const span = tempDiv.querySelector('.player_card');
+        if (span) {
+            span.removeAttribute('rel');
+            span.removeAttribute('data-content');
+        }
+        return tempDiv.innerHTML;
+    }
 
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: fullProjectUrl,
-                onload: function(response) {
-                    const html = response.responseText;
+    function handleTotalInOutClick(container, { Balance, totalPending }) {
+        if (isProfitButtonClicked) return;
+        isProfitButtonClicked = true;
 
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
+        const loader = createLoader();
+        container.appendChild(loader);
 
-                    const pageSizeSelect = doc.querySelector('#newPageSize');
-                    if (pageSizeSelect) {
-                        pageSizeSelect.value = '450';
-                        const event = new Event('change', { bubbles: true });
-                        pageSizeSelect.dispatchEvent(event);
-                    } else {
-                        console.warn('Page size selector not found.');
-                    }
-
-                    const rows = doc.querySelectorAll('tr');
-                    rows.forEach(row => {
-                        const statusSpan = row.querySelector('span.label');
-                        if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
-                            const amountCode = row.querySelector('td:nth-child(5) code');
-                            if (amountCode) {
-                                const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
-                                const amount = parseFloat(amountText.replace(',', '.'));
-                                if (!isNaN(amount)) {
-                                    totalPending += amount;
-                                }
-                            }
-                        }
-
-                        const cardLabel = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
-                        if (cardLabel) {
-                            const cardNumber = cardLabel.textContent.trim();
-                            cardsSet.add(cardNumber);
-                        }
-                    });
-
-                    const uniqueCards = Array.from(cardsSet);
-                    resolve({ totalPending, cards: uniqueCards });
-                },
-                onerror: function(error) {
-                    console.error('Ошибка загрузки данных:', error);
-                    reject(error);
+        const playerID = getPlayerID();
+        const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: baseURL,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+            onload: response => {
+                container.removeChild(loader);
+                const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                const table = doc.querySelector('.detail-view');
+                if (!table) {
+                    container.innerHTML += 'Таблица с результатами не найдена.';
+                    return;
                 }
-            });
+
+                let depositsTotal = 0, redeemsTotal = 0;
+                table.querySelectorAll('tr').forEach(row => {
+                    const key = row.querySelector('th')?.textContent.trim();
+                    const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                    if (key === 'Deposits Total') depositsTotal = value;
+                    if (key === 'Redeems Total') redeemsTotal = value;
+                });
+
+                const cleanBalance = parseFloat(Balance);
+                const safeBalance = getInnerBalanceValue();
+                const profit = depositsTotal - redeemsTotal;
+                const prognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
+                const prognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
+                const showAmount = GM_getValue('amountDisplayKey', true);
+                const currencySymbol = currencySymbols.get(getCurrency()) || '';
+
+                container.innerHTML += `
+                <div><b>Total InOut: ${formatCurrency(profit, showAmount, currencySymbol)}</b></div>
+                ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
+                    <div><b>Prognose InOut: ${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</b></div>
+                    <div><b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b></div>
+                ` : ''}
+            `;
+            },
+            onerror: error => {
+                container.removeChild(loader);
+                container.innerHTML += `Ошибка запроса: ${error.message}`;
+            }
         });
     }
 
+    function createLoader() {
+        const loader = document.createElement('div');
+        applyStyles(loader, {
+            border: '8px solid #f3f3f3',
+            borderTop: '8px solid #3498db',
+            borderRadius: '50%',
+            width: '50px',
+            height: '50px',
+            animation: 'spin 2s linear infinite',
+            margin: '10px auto',
+            display: 'block'
+        });
+        return loader;
+    }
 
-    function fetchAllCards() {
-        return new Promise((resolve, reject) => {
-            const PlayerID = getPlayerID();
-            const fullProjectUrl = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${PlayerID}`;
-            let cardsSet = new Set();
+    function getValueByLabel(doc, labelText) {
+        for (const row of doc.querySelectorAll('tr')) {
+            const th = row.querySelector('th');
+            const td = row.querySelector('td');
+            if (th?.textContent.trim() === labelText) return td?.textContent.trim().split('\n')[0].trim() || 'Не найдено';
+        }
+        return 'Не найдено';
+    }
 
+    function getFirstValueByLabel(labelText) {
+        for (const row of document.querySelectorAll('tr')) {
+            const th = row.querySelector('th');
+            const td = row.querySelector('td');
+            if (th?.textContent.trim() === labelText) return td?.textContent.trim().split('\n')[0].trim() || 'Не найдено';
+        }
+        return 'Не найдено';
+    }
+
+    function getAjaxUrl() {
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+            if (script.textContent.includes('#credentials-info')) {
+                const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                return urlMatch ? urlMatch[1] : null;
+            }
+        }
+        return null;
+    }
+
+    const MESSAGE_STYLES = {
+        color: 'red',
+        fontWeight: 'bold',
+        marginTop: '10px'
+    };
+
+    function createClickableMessage(id, content, onClick) {
+        const message = document.createElement('div');
+        applyStyles(message, MESSAGE_STYLES);
+        message.innerHTML = `<center><span id="${id}">${content}</span></center>`;
+
+        const clickableText = message.querySelector(`#${id}`);
+        if (clickableText) {
+            clickableText.addEventListener('click', onClick);
+        }
+        return message;
+    }
+
+    async function updatePopupBox({ balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index }) {
+        console.log('Starting updatePopupBox with params:', { balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index });
+
+        if (!window.popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+        console.log('popupBox exists:', window.popupBox); // Проверяем, что попап есть
+
+        const textElement = window.popupBox.querySelector('.popup-text');
+        console.log('textElement:', textElement); // Проверяем, найден ли .popup-text
+
+        if (!textElement) {
+            console.warn('Элемент .popup-text не найден в попапе');
+            return;
+        }
+
+        const content = `Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴`;
+        const onClick = () => {
+            const textToInsert = `
+#<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
+#${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>`;
+            console.log('Inserting text:', textToInsert); // Отладка клика
+            insertTextIntoField(textToInsert);
+        };
+
+        const message = createClickableMessage(`popup-clickable-text-${index}`, content, onClick);
+        console.log('Message created:', message); // Проверяем, что сообщение создано
+        textElement.appendChild(message);
+        console.log('Message appended to textElement:', textElement.innerHTML); // Проверяем, добавлено ли
+    }
+
+    function showBonusViolationMessage({ bonusId, dateStr, index }) {
+        if (!popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = popupBox.querySelector('.popup-text');
+        if (!textElement) return;
+
+        const content = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
+        const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}</b>`);
+
+        textElement.appendChild(createClickableMessage(`popup-bonus-violation-${index}`, content, onClick));
+    }
+
+    function showManualBalance({ dateStr, bonusInfo }) {
+        if (!window.popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = window.popupBox.querySelector('.popup-text');
+        if (!textElement) return;
+
+        const message = document.createElement('div');
+        applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
+        message.innerHTML = `<center><span id="popup-manual-balance">${bonusInfo} | ${dateStr}</span></center>`;
+        textElement.appendChild(message);
+    }
+
+    function updateCleanButtonState(cleanButton, isCheckedToday) {
+        const styles = isCheckedToday
+        ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true }
+        : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
+
+        Object.assign(cleanButton, styles);
+        applyStyles(cleanButton, styles);
+
+        cleanButton.onmouseover = () => !cleanButton.disabled && (cleanButton.style.backgroundColor = '#218838');
+        cleanButton.onmouseout = () => !cleanButton.disabled && (cleanButton.style.backgroundColor = '#28a745');
+    }
+
+    function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
+        const popupText = document.querySelector('.popup-main-text');
+        if (!popupText) {
+            console.warn('Елемент з класом .popup-main-text не знайдено');
+            return;
+        }
+
+        const textColor = bonusDepositPercentage > 50 ? 'maroon' : 'black';
+        const newLine = document.createElement('div');
+        newLine.innerHTML = `
+        <center>
+            <b title="Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}" style="color: ${textColor};">
+                BRP: ${bonusDepositPercentage.toFixed(2)}%
+            </b>
+        </center>`;
+        popupText.appendChild(newLine);
+    }
+
+
+    async function fetchTransactionData(url) {
+        const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: fullProjectUrl,
-                onload: function(response) {
-                    const html = response.responseText;
-
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-
-                    const pageSizeSelect = doc.querySelector('#newPageSize');
-                    if (pageSizeSelect) {
-                        pageSizeSelect.value = '450';
-                        const event = new Event('change', { bubbles: true });
-                        pageSizeSelect.dispatchEvent(event);
-                    } else {
-                        console.warn('Page size selector не найден.');
-                    }
-
-                    const rows = doc.querySelectorAll('tr');
-                    rows.forEach(row => {
-                        const cardLabel = row.querySelector('td:nth-child(10)');
-                        if (cardLabel) {
-                            const cardNumber = cardLabel.textContent.trim();
-                            if (cardNumber) {
-                                cardsSet.add(cardNumber);
-                            }
-                        }
-                    });
-
-                    const uniqueCards = Array.from(cardsSet);
-                    console.log({ cards: uniqueCards })
-                    resolve({ cards: uniqueCards });
-                },
-                onerror: function(error) {
-                    console.error('Ошибка загрузки данных:', error);
-                    reject(error);
-                }
+                url,
+                onload: resolve,
+                onerror: reject
             });
         });
+        return new DOMParser().parseFromString(response.responseText, 'text/html');
+    }
+
+    async function fetchDetailedTransactionData(url, formData) {
+        const response = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: new URLSearchParams(formData).toString(),
+                onload: resolve,
+                onerror: reject
+            });
+        });
+        return new DOMParser().parseFromString(response.responseText, 'text/html');
+    }
+
+    function processTransactionRow(row, state) {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 0) return;
+
+        const actionType = cells[1]?.textContent.trim() || '';
+        const bonusInfo = cells[7]?.textContent.trim() || '';
+        const dateStr = (cells[6]?.textContent.trim().match(/^(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '';
+
+        if (actionType.includes('Вывод средств')) {
+            state.withdrawAmount = parseFloat(cells[2]?.textContent.replace('-', '').replace(',', '.') || '0');
+            state.totalWithdrawAmount += state.withdrawAmount;
+            state.withdrawId = cells[0]?.textContent.trim() || '';
+            state.withdrawText = bonusInfo;
+            state.waitingForBonus = true;
+        } else if (['Ввод средств', 'Purchase', 'Возврат средств', 'Отмена вывода средств'].some(t => actionType.includes(t))) {
+            state.withdrawAmount = 0;
+            state.balanceAfterBonus = 0;
+            state.waitingForBonus = false;
+            state.totalWithdrawAmount = 0;
+            state.totalDeposits++;
+        } else if (actionType.includes('Ручное начисление баланса')) {
+            const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
+            if (amount > 1) showManualBalance({ dateStr, bonusInfo });
+        } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
+            state.bonusAmount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
+            state.balanceAfterBonus = parseFloat(cells[3]?.textContent.replace(',', '.') || '0');
+            state.bonusId = cells[0]?.textContent.trim() || '';
+            state.bonusText = bonusInfo;
+            state.bonusDate = dateStr;
+            if (state.totalWithdrawAmount > state.balanceAfterBonus && state.messageCount < 2) {
+                updatePopupBox({ ...state, index: state.messageCount++ });
+            }
+            state.waitingForBonus = false;
+        } else if (actionType.includes('Присвоение бонуса') || actionType.includes('Bonus assignment')) {
+            if (bonusInfo.match(/платеж № (\d+)/)) state.bonusWithDeposits++;
+            const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
+            if (bonusIdMatch) {
+                const bonusId = bonusIdMatch[1];
+                state.bonusAssignments[bonusId] = state.bonusAssignments[bonusId] || {};
+                state.bonusAssignments[bonusId][dateStr] = (state.bonusAssignments[bonusId][dateStr] || 0) + 1;
+                if (state.bonusAssignments[bonusId][dateStr] > 2 && !state.displayedMessages[`${bonusId}_${dateStr}`] && state.messageCount < 2) {
+                    showBonusViolationMessage({ bonusId, dateStr, index: state.messageCount++ });
+                    state.displayedMessages[`${bonusId}_${dateStr}`] = true;
+                }
+            }
+        }
+    }
+
+    async function fetchAndProcessData() {
+        const project = getProject();
+        const url = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
+        console.log('Запрос данных по URL:', url);
+
+        try {
+            const initialDoc = await fetchTransactionData(url);
+            const formData = new FormData();
+            formData.append('pageSize', '10000');
+            const doc = await fetchDetailedTransactionData(url, formData);
+
+            const state = {
+                withdrawAmount: 0,
+                balanceAfterBonus: 0,
+                bonusAmount: 0,
+                waitingForBonus: false,
+                bonusId: '',
+                bonusText: '',
+                withdrawId: '',
+                withdrawText: '',
+                bonusDate: '',
+                totalDeposits: 0,
+                bonusWithDeposits: 0,
+                totalWithdrawAmount: 0,
+                messageCount: 0,
+                bonusAssignments: {},
+                displayedMessages: {}
+            };
+
+            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state));
+
+            if (state.totalDeposits > 0) {
+                const bonusDepositPercentage = (state.bonusWithDeposits / state.totalDeposits) * 100;
+                console.log(`Загальна кількість депозитів: ${state.totalDeposits}, Бонусів з депозитом: ${state.bonusWithDeposits}, BRP: ${bonusDepositPercentage.toFixed(2)}%`);
+                showBRP({ totalDeposits: state.totalDeposits, bonusWithDeposits: state.bonusWithDeposits, bonusDepositPercentage });
+            } else {
+                console.log('Депозити відсутні.');
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки данных:', error);
+        }
+    }
+
+    async function fetchPaymentsData({ searchLogin, includePending = false }) {
+        const url = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${searchLogin}`;
+        try {
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    onload: resolve,
+                    onerror: reject
+                });
+            });
+
+            const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+            const pageSizeSelect = doc.querySelector('#newPageSize');
+            if (pageSizeSelect) {
+                pageSizeSelect.value = '450';
+                pageSizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                console.warn('Page size selector не найден.');
+            }
+
+            const allCardsSet = new Set();       // Все карты
+            const displayCardsSet = new Set();   // Карты для отображения
+            let totalPending = 0;
+
+            doc.querySelectorAll('tr').forEach(row => {
+                // Карты со специфическим статусом (для отображения)
+                const cardLabelSpecific = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
+                if (cardLabelSpecific?.textContent.trim()) {
+                    displayCardsSet.add(cardLabelSpecific.textContent.trim());
+                }
+
+                // Все карты (для поиска)
+                const cardLabel = row.querySelector('td:nth-child(10)');
+                if (cardLabel?.textContent.trim()) {
+                    allCardsSet.add(cardLabel.textContent.trim());
+                }
+
+                // Подсчёт totalPending
+                if (includePending) {
+                    const statusSpan = row.querySelector('span.label');
+                    const status = statusSpan?.textContent.trim();
+                    if (['pending', 'review', 'on_hold'].includes(status)) {
+                        const amountText = row.querySelector('td:nth-child(5) code')?.textContent.trim().replace('UAH', '').replace(',', '.') || '0';
+                        totalPending += parseFloat(amountText) || 0;
+                    }
+                }
+            });
+
+            const allCards = Array.from(allCardsSet);
+            const displayCards = Array.from(displayCardsSet);
+            return includePending
+                ? { totalPending, cards: allCards, displayCards }
+            : { cards: allCards, displayCards };
+        } catch (error) {
+            console.error('Ошибка загрузки данных:', error);
+            throw error;
+        }
+    }
+    async function fetchAndProcessPending() {
+        return fetchPaymentsData({ searchLogin: getPlayerID(), includePending: true });
+    }
+
+    async function fetchAllCards() {
+        const result = await fetchPaymentsData({ searchLogin: getPlayerID() });
+        console.log('Fetched cards:', result.cards);
+        return result;
     }
 
     function createOrUpdatePopup(message, isLoading = false) {
@@ -4709,63 +4608,77 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    function handlePopup() {
-        function getInOutUrl() {
-            const scripts = document.querySelectorAll('script');
-            for (const script of scripts) {
-                const scriptContent = script.textContent;
-                if (scriptContent.includes('#show-player-in-out')) {
-                    const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
-                    if (urlMatch) {
-                        return urlMatch[1];
-                    }
-                }
+    function getInOutUrl() {
+        for (const script of document.querySelectorAll('script')) {
+            if (script.textContent.includes('#show-player-in-out')) {
+                const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                return urlMatch ? urlMatch[1] : null;
             }
-            return null;
         }
+        return null;
+    }
 
-        const url = getInOutUrl();
-
-        if (url) {
-            Promise.all([
-                fetch(url, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' }
-                }).then(response => {
-                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                    return response.json();
-                }),
-                fetch(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
-                    method: 'GET',
-                    headers: {
-                        'accept': '*/*',
-                        'x-requested-with': 'XMLHttpRequest'
-                    },
-                    credentials: 'include'
-                }).then(response => {
-                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                    return response.json();
-                })
-            ])
-                .then(([inOutData, balanceData]) => {
-                const TotalPA = inOutData.totalInOut;
-                const MonthPA = inOutData.monthInOut;
-                const Balance = getBalance();
-                const NDFL = balanceData.balance_after ? balanceData.balance_after : "0";
-
-                return fetchAndProcessPending()
-                    .then(({ totalPending, cards }) => {
-                    console.log(cards);
-                    fetchAndProcessData();
-                    createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
-                    addCheckButton(TotalPA, Balance, totalPending);
-                });
-            })
-                .catch(error => {
-                console.error('Ошибка при выполнении запросов:', error.message);
+    // Утилита для выполнения fetch-запроса с обработкой 404
+    async function fetchData(url, options = {}) {
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+                credentials: options.credentials || 'same-origin'
             });
-        } else {
-            console.log('Не удалось найти URL для запроса inOut.');
+            if (!response.ok) {
+                if (response.status === 404) {
+                    console.warn(`HTTP 404 for ${url}, returning default values`);
+                    return null;
+                }
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        } catch (error) {
+            if (error.message.includes('404')) {
+                console.warn(`Fetch error (404) for ${url}, returning default values`);
+                return null;
+            }
+            throw error;
+        }
+    }
+
+    async function handlePopup() {
+        try {
+            const inOutUrl = getInOutUrl();
+            if (!inOutUrl) {
+                console.log('Не удалось найти URL для запроса inOut.');
+                return;
+            }
+
+            const [inOutData, balanceData] = await Promise.all([
+                fetchData(inOutUrl),
+                fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
+                    credentials: 'include'
+                })
+            ]);
+
+            const params = {
+                MonthPA: inOutData?.monthInOut ?? '−',
+                TotalPA: inOutData?.totalInOut ?? '−',
+                Balance: getBalance(),
+                NDFL: balanceData?.balance_after ?? '0'
+            };
+
+            const { isCheckedToday } = await checkUserInChecklist();
+            params.isCheckedToday = isCheckedToday;
+            const { totalPending, cards, displayCards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards, displayCards });
+
+            await createPopupBox(params);
+            await fetchAndProcessData();
+
+            if (typeof addCheckButton === 'function') {
+                addCheckButton(params.TotalPA, params.Balance, params.totalPending);
+            }
+        } catch (error) {
+            console.error('Ошибка при выполнении handlePopup:', error.message);
         }
     }
 
@@ -5640,9 +5553,18 @@ ${fraud.manager === managerName ? `
             html: `
             <style>
                 .swal2-select {
-                    width: 100%;
-                    padding: 5px;
-                    font-size: 14px;
+                    width: 80%;
+                    padding: 10px;
+                    font-size: 16px;
+                    box-sizing: border-box;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    background-color: #fff;
+                    overflow-x: hidden;
+                }
+                .swal2-select option {
+                    white-space: nowrap;
+                    padding: 5px 10px;
                 }
             </style>
             <select id="reasonSelect" class="swal2-select">
@@ -5650,6 +5572,7 @@ ${fraud.manager === managerName ? `
                 ${reasons.map(r => `<option value="${r}">${r}</option>`).join('')}
             </select>
         `,
+            width: '350px',
             showCancelButton: true,
             confirmButtonText: 'Підтвердити',
             cancelButtonText: 'Відміна',
@@ -6255,20 +6178,20 @@ ${fraud.manager === managerName ? `
 
         const content = `
 <select id="project-select" required>
-            <option value="" disabled selected>Оберіть проєкт</option>
-            <option value="Betking">Betking</option>
-            <option value="777">777</option>
-            <option value="Vegas">Vegas</option>
-        </select>
-        <div id="alert-type-section" style="display: none;">
-            <select id="alert-type-select" required>
-                <option value="" disabled selected>Оберіть алерт</option>
-                <option value="Pendings">Pendings</option>
-                <option value="PayOut">PayOut</option>
-                <option value="Deposits">Deposits</option>
-                <option value="Verification">Доп. верифікація</option>
-            </select>
-        </div>
+    <option value="" disabled selected>Оберіть проєкт</option>
+    <option value="Betking">Betking</option>
+    <option value="777">777</option>
+    <option value="Vegas">Vegas</option>
+    <option value="Verification">Доп. верифікація</option>
+</select>
+<div id="alert-type-section" style="display: none;">
+    <select id="alert-type-select" required>
+        <option value="" disabled selected>Оберіть алерт</option>
+        <option value="Pendings">Pendings</option>
+        <option value="PayOut">PayOut</option>
+        <option value="Deposits">Deposits</option>
+    </select>
+</div>
 
         <div id="pendings-settings" style="display: none;">
             <div class="priority-amount-container">
@@ -6343,10 +6266,25 @@ ${fraud.manager === managerName ? `
     `;
         createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {});
 
-        byId('project-select').addEventListener('change', (e) => {
-            byId('alert-type-select').selectedIndex = 0;
-            byId('alert-type-section').style.display = e.target.value ? 'block' : 'none';
+        byId('project-select').addEventListener('change', async (e) => {
+            const selectedValue = e.target.value;
             hideAllSections();
+
+            if (!selectedValue) {
+                byId('alert-type-section').style.display = 'none';
+                return;
+            }
+
+            if (selectedValue === 'Verification') {
+                showSection(SETTINGS_SECTIONS.Verification);
+                byId('alert-type-section').style.display = 'none'; // Скрываем выбор типа алерта
+                const manager = new SettingsManager('Verification');
+                await manager.loadSettings(null); // Загружаем настройки без проекта
+            } else {
+                // Для остальных проектов показываем выбор типа алерта
+                byId('alert-type-section').style.display = 'block';
+                byId('alert-type-select').selectedIndex = 0; // Сбрасываем выбор типа алерта
+            }
         });
 
         byId('alert-type-select').addEventListener('change', async (e) => {
@@ -6356,17 +6294,10 @@ ${fraud.manager === managerName ? `
 
             const manager = new SettingsManager(alertType);
             showSection(SETTINGS_SECTIONS[alertType]);
-
-            if (alertType === 'Verification') {
-                byId('project-select').style.display = 'none'; // Скрываем выбор проекта
-                await manager.loadSettings(null); // Без проекта
-            } else {
-                byId('project-select').style.display = 'block';
-                const project = byId('project-select').value;
-                if (project) {
-                    await manager.loadManagers();
-                    await manager.loadSettings(project);
-                }
+            const project = byId('project-select').value;
+            if (project) {
+                await manager.loadManagers();
+                await manager.loadSettings(project);
             }
         });
 
@@ -6383,7 +6314,6 @@ ${fraud.manager === managerName ? `
         })
                                                                                                               );
     }
-
     function verificationProvider() {
         return new Promise((resolve, reject) => {
             const playerId = getPlayerID();
@@ -6409,11 +6339,9 @@ ${fraud.manager === managerName ? `
                             const provider = cells[7]?.textContent.trim();
 
                             if (verificationCount === '1') {
-                                console.log('Найден провайдер:', provider);
                                 resolve(provider);
                                 return;
                             } else if (!verificationCount && provider === 'SumSub') {
-                                console.log('Найден провайдер sumsub без верификаций:', provider);
                                 resolve(provider);
                                 return;
                             }
@@ -7768,7 +7696,6 @@ ${fraud.manager === managerName ? `
                 buttonToSave();
                 checkUserInFraudList();
                 activeUrlsManagers();
-                checkUserInChecklist();
                 updateBanButton();
                 checkForUpdates();
                 document.addEventListener('keydown', handleShortcut);

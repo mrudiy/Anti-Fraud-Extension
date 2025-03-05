@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.5
+// @version      5.9.6
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.5";
+    const currentVersion = "5.9.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1570,6 +1570,7 @@
                 searchResults.innerHTML = '<p>Введіть дані для пошуку в хоча б одне поле</p>';
                 return;
             }
+
             popup.style.top = '50%';
             popup.style.left = '50%';
             popup.style.transform = 'translate(-50%, -50%)';
@@ -1582,7 +1583,7 @@
                 'vegas': 'https://admin.vegas.ua/',
                 '777': 'https://admin.777.ua/'
             };
-            const projectUrl = projectUrls[project]; // Убираем ProjectUrl как запасной вариант, чтобы избежать путаницы
+            const projectUrl = projectUrls[project];
             if (!projectUrl) {
                 console.error(`Не удалось определить projectUrl для проекта ${project}`);
                 searchResults.innerHTML = '<p>Помилка: не вдалося визначити домен проекту</p>';
@@ -1637,6 +1638,7 @@
                         const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
                         console.log('Opening profile URL:', profileUrl);
                         window.open(profileUrl, '_blank');
+                        popup.remove();
                         return;
                     }
 
@@ -1645,29 +1647,57 @@
                         let rows = table.querySelectorAll('tbody tr');
 
                         let filteredRows;
-                        if (terms.length === 3 && surnameTerm) {
-                            const surname = terms[0].toLowerCase();
-                            const name = terms[1].toLowerCase();
-                            const patronymic = terms[2].toLowerCase();
+                        if (surnameTerm) {
+                            if (terms.length === 2) {
+                                // Фильтрация по фамилии и имени (игнорируем отчество)
+                                const surname = terms[0].toLowerCase();
+                                const name = terms[1].toLowerCase();
 
-                            filteredRows = Array.from(rows).filter(row => {
-                                const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
-                                const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
-                                const patronymicCell = row.cells[5]?.textContent.trim().toLowerCase() || '';
+                                filteredRows = Array.from(rows).filter(row => {
+                                    const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
+                                    const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
 
-                                const matchesSurname = surnameCell === surname;
-                                const matchesName = nameCell === name;
-                                const matchesPatronymic = patronymicCell === patronymic;
+                                    const matchesSurname = surnameCell === surname;
+                                    const matchesName = nameCell === name;
 
-                                console.log('Row data:', { surnameCell, nameCell, patronymicCell, matchesSurname, matchesName, matchesPatronymic });
+                                    console.log('Row data (surname + name):', { surnameCell, nameCell, matchesSurname, matchesName });
 
-                                return matchesSurname && matchesName && matchesPatronymic;
-                            });
+                                    return matchesSurname && matchesName;
+                                });
 
-                            if (filteredRows.length === 0) {
-                                searchResults.innerHTML = '<p>Нічого не знайдено за повним ПІБ</p>';
-                                setFixedPopupSize(popup);
-                                return;
+                                if (filteredRows.length === 0) {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено за прізвищем та ім\'ям</p>';
+                                    setFixedPopupSize(popup);
+                                    return;
+                                }
+                            } else if (terms.length === 3) {
+                                // Фильтрация по полному ПІБ (фамилия, имя, отчество)
+                                const surname = terms[0].toLowerCase();
+                                const name = terms[1].toLowerCase();
+                                const patronymic = terms[2].toLowerCase();
+
+                                filteredRows = Array.from(rows).filter(row => {
+                                    const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
+                                    const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
+                                    const patronymicCell = row.cells[5]?.textContent.trim().toLowerCase() || '';
+
+                                    const matchesSurname = surnameCell === surname;
+                                    const matchesName = nameCell === name;
+                                    const matchesPatronymic = patronymicCell === patronymic;
+
+                                    console.log('Row data (full PIB):', { surnameCell, nameCell, patronymicCell, matchesSurname, matchesName, matchesPatronymic });
+
+                                    return matchesSurname && matchesName && matchesPatronymic;
+                                });
+
+                                if (filteredRows.length === 0) {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено за повним ПІБ</p>';
+                                    setFixedPopupSize(popup);
+                                    return;
+                                }
+                            } else {
+                                // Если введено одно слово или больше трёх, берём все строки (поиск только по фамилии сервером)
+                                filteredRows = Array.from(rows);
                             }
                         } else {
                             filteredRows = Array.from(rows);

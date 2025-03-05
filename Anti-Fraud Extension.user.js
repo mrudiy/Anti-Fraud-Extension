@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.3
+// @version      5.9.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.3";
+    const currentVersion = "5.9.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1543,10 +1543,16 @@
             });
         }
 
-        function setLinksTargetBlank(table) {
+        function setLinksTargetBlank(table, projectUrl) {
             const links = table.querySelectorAll('td:nth-child(1) a');
             links.forEach(link => {
-                link.setAttribute('target', '_blank');
+                const relativeHref = link.getAttribute('href');
+                if (relativeHref) {
+                    const absoluteUrl = `${projectUrl}${relativeHref.startsWith('/') ? relativeHref.slice(1) : relativeHref}`;
+                    link.setAttribute('href', absoluteUrl);
+                    link.setAttribute('target', '_blank');
+                    console.log('Updated link:', link.href);
+                }
             });
         }
 
@@ -1571,7 +1577,12 @@
                 'vegas': 'https://admin.vegas.ua/',
                 '777': 'https://admin.777.ua/'
             };
-            const projectUrl = projectUrls[project] || ProjectUrl;
+            const projectUrl = projectUrls[project]; // Убираем ProjectUrl как запасной вариант, чтобы избежать путаницы
+            if (!projectUrl) {
+                console.error(`Не удалось определить projectUrl для проекта ${project}`);
+                searchResults.innerHTML = '<p>Помилка: не вдалося визначити домен проекту</p>';
+                return;
+            }
             const searchUrl = `${projectUrl}players/playersItems/search/`;
 
             if (surnameTerm) {
@@ -1594,7 +1605,7 @@
             }
             bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=&yt0=`;
 
-            console.log('Sending search request with body:', bodyData);
+            console.log('Sending search request with body:', bodyData, 'to URL:', searchUrl);
 
             searchResults.innerHTML = '<p>Завантаження...</p>';
 
@@ -1614,9 +1625,12 @@
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
 
+                    console.log('Search response URL:', finalUrl);
+
                     if (finalUrl.includes('/players/playersItems/update/')) {
                         const playerId = finalUrl.split('/').filter(Boolean).pop();
                         const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
+                        console.log('Opening profile URL:', profileUrl);
                         window.open(profileUrl, '_blank');
                         return;
                     }
@@ -1640,9 +1654,10 @@
                                 const matchesName = nameCell === name;
                                 const matchesPatronymic = patronymicCell === patronymic;
 
+                                console.log('Row data:', { surnameCell, nameCell, patronymicCell, matchesSurname, matchesName, matchesPatronymic });
+
                                 return matchesSurname && matchesName && matchesPatronymic;
                             });
-
 
                             if (filteredRows.length === 0) {
                                 searchResults.innerHTML = '<p>Нічого не знайдено за повним ПІБ</p>';
@@ -1661,7 +1676,7 @@
                         newTable.appendChild(newTbody);
 
                         decodeEmails(newTable);
-                        setLinksTargetBlank(newTable);
+                        setLinksTargetBlank(newTable, projectUrl);
 
                         searchResults.innerHTML = '';
                         if (filteredRows.length > 0) {
@@ -1683,6 +1698,7 @@
                 }
             });
         }
+
         function setFixedPopupSize(popup) {
             popup.style.width = '1477px';
             popup.style.height = '700px';

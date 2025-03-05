@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.6
+// @version      5.9.7
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.6";
+    const currentVersion = "5.9.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -425,10 +425,12 @@
                 const currency = getCurrency();
                 let currencySymbol = currencySymbols.get(currency) || '';
 
+                const safeBalance = getInnerBalanceValue();
+                const formattedSafeBalance = formatAmount(safeBalance);
+                console.log(safeBalance)
                 let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
 
                 if (currentLanguage === 'українська') {
-
                     if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
                         textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
@@ -439,6 +441,10 @@
                         textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
                     }
 
+                    if (safeBalance >= 4200) {
+                        const safeStyle = safeBalance > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>В сейфі:</b> <b style="${safeStyle}">${formattedSafeBalance}${currencySymbol}</b> | `;
+                    }
                 } else {
                     if (Balance > 1000) {
                         const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
@@ -448,6 +454,11 @@
                     if (totalPending > 1000) {
                         const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
                         textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
+                    }
+
+                    if (safeBalance >= 4200) {
+                        const safeStyle = safeBalance > 1000000 ? 'color: red;' : '';
+                        textToInsert += `<b>В сейфе:</b> <b style="${safeStyle}">${formattedSafeBalance}${currencySymbol}</b> | `;
                     }
                 }
 
@@ -2833,27 +2844,24 @@ ${fraud.manager === managerName ? `
     }
 
 
-    function getInnerBalanceValue() {
-        const input = document.querySelector('input[data-field="inner_balance"]');
-        let innerBalance = 0;
+    const getInnerBalanceValue = () => {
+        const innerBalance = Number(document.querySelector('input[data-field="inner_balance"]')?.value) || 0;
 
-        if (input) {
-            const value = input.value;
-            innerBalance = parseFloat(value) || 0;
-        }
-
-        const holdAmounts = document.querySelectorAll('.hold-amount > span.hold-amount');
-        let totalHoldAmount = 0;
-
-        holdAmounts.forEach(hold => {
+        const totalHoldAmount = Array.from(document.querySelectorAll('.hold-amount > span.hold-amount'))
+        .reduce((sum, hold) => {
             const match = hold.textContent.trim().match(/^([\d.]+)/);
-            if (match) {
-                totalHoldAmount += parseFloat(match[1]) || 0;
-            }
-        });
+            return sum + (match ? Number(match[1]) || 0 : 0);
+        }, 0);
 
-        return innerBalance + totalHoldAmount;
-    }
+        const safeBalance = Number(
+            Array.from(document.querySelectorAll('tr'))
+            .find(row => row.querySelector('th')?.textContent.trim() === 'Баланс сейфа')
+            ?.querySelector('td code')?.textContent.trim()
+        ) || 0;
+
+        const totalBalance = innerBalance + totalHoldAmount + safeBalance;
+        return totalBalance;
+    };
 
 
     function getPlayerID() {
@@ -3341,6 +3349,36 @@ ${fraud.manager === managerName ? `
         insertTextIntoField(textToInsert);
     }
 
+    function createProjectContainer(project, projectUrl) {
+        const container = createContainer({ marginBottom: '20px' });
+        const image = document.createElement('img');
+
+        if (!projectUrl) {
+            console.error(`projectUrl is undefined for project: ${project}`);
+            container.innerHTML = `<div>Ошибка: не удалось определить домен для проекта ${project}</div>`;
+            return container;
+        }
+
+        const domainMatch = projectUrl.match(/https:\/\/[^\/]+/);
+        if (!domainMatch) {
+            console.error(`Invalid projectUrl for project ${project}: ${projectUrl}`);
+            container.innerHTML = `<div>Ошибка: некорректный домен для проекта ${project}</div>`;
+            return container;
+        }
+
+        const domain = domainMatch[0];
+        image.src = `${domain}/img/${project}.png`;
+
+        applyStyles(image, {
+            display: 'block',
+            margin: '0 auto 10px',
+            width: project === 'betking' ? '47px' : '75px',
+            height: project === 'betking' ? '47px' : 'auto'
+        });
+        container.appendChild(image);
+        return container;
+    }
+
     function handleProjectSearchClick(container, searchImage) {
         searchImage.remove();
         const projectUrls = {
@@ -3348,6 +3386,7 @@ ${fraud.manager === managerName ? `
             '777': 'https://admin.777.ua/players/playersItems/search/',
             'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
         };
+
         const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
         const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
 
@@ -3368,34 +3407,20 @@ ${fraud.manager === managerName ? `
                 const phone = getFirstValueByLabel('Телефон');
 
                 otherProjects.forEach(project => {
-                    const projectContainer = createProjectContainer(project, projectUrls[project]);
+                    const projectUrl = projectUrls[project];
+                    const projectContainer = createProjectContainer(project, projectUrl);
                     container.appendChild(projectContainer);
-                    searchUser(inn, 'inn', projectUrls[project], projectContainer);
-                    searchUser(email, 'email', projectUrls[project], projectContainer);
-                    searchUser(phone, 'phone', projectUrls[project], projectContainer);
-                    processProjectCards(project, projectUrls[project], projectContainer);
+
+                    searchUser(inn, 'inn', projectUrl, projectContainer);
+                    searchUser(email, 'email', projectUrl, projectContainer);
+                    searchUser(phone, 'phone', projectUrl, projectContainer);
+                    processProjectCards(project, projectUrl, projectContainer);
                 });
+
                 processCurrentProjectCards(currentProject, projectUrls[currentProject], container);
             },
             onerror: () => container.innerHTML += '<div>Ошибка при получении данных ИНН.</div>'
         });
-    }
-
-    function createProjectContainer(project, projectUrl) {
-        const container = createContainer({ marginBottom: '20px' });
-        const image = document.createElement('img');
-
-        const domain = projectUrl.match(/https:\/\/[^\/]+/)[0];
-        image.src = `${domain}/img/${project}.png`;
-
-        applyStyles(image, {
-            display: 'block',
-            margin: '0 auto 10px',
-            width: project === 'betking' ? '47px' : '75px',
-            height: project === 'betking' ? '47px' : 'auto'
-        });
-        container.appendChild(image);
-        return container;
     }
 
     function searchUser(query, fieldType, projectUrl, container) {
@@ -3446,6 +3471,7 @@ ${fraud.manager === managerName ? `
     function processProjectCards(project, projectUrl, container) {
         fetchAllCards().then(data => {
             const cards = data.cards;
+            console.log(cards)
             const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
             const openUrl = projectUrl.replace('/players/playersItems/search/', '');
             cards.forEach(card => processCard(card, searchUrl, openUrl, container));
@@ -3476,7 +3502,7 @@ ${fraud.manager === managerName ? `
                             const playerCard = row.querySelector('td span.player_card');
                             if (playerCard && !playerCard.outerHTML.includes(userId)) {
                                 if (!projectContainer) {
-                                    projectContainer = createProjectContainer(project);
+                                    projectContainer = createProjectContainer(project, projectUrl);
                                 }
                                 projectContainer.innerHTML += `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`;
                                 foundPlayers = true;

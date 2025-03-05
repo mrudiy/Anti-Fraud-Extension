@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.4
+// @version      5.9.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.4";
+    const currentVersion = "5.9.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1362,131 +1362,135 @@
         const popupId = 'findPopup';
 
         const content = `
-        <div class="search-container">
-            <div class="input-group">
-                <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
-                <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
-                <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
-                <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
-                <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
-                <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
-            </div>
-            <div class="button-group">
-                <button id="searchBetkingBtn">Betking</button>
-                <button id="searchVegasBtn">Vegas</button>
-                <button id="search777Btn">777</button>
-            </div>
-            <div id="searchResults" class="search-results"></div>
+    <div class="search-container">
+        <div class="input-group">
+            <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
+            <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
+            <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
+            <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
+            <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
+            <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
         </div>
+        <div class="button-group">
+            <button id="searchBetkingBtn">Betking</button>
+            <button id="searchVegasBtn">Vegas</button>
+            <button id="search777Btn">777</button>
+        </div>
+        <div id="searchResults" class="search-results"></div>
+    </div>
     `;
 
         const style = document.createElement('style');
+        style.id = 'findPopupStyles';
         style.textContent = `
-        .search-container {
-            padding: 15px;
-        }
-        .input-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .search-input {
-            flex: 1 1 30%;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            min-width: 200px;
-        }
-        .button-group {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 15px;
-        }
-        .search-container button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 25px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .search-container button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        }
-        .search-container button:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        }
-        #searchBetkingBtn {
-            background-color: #e63946;
-            color: #ffd60a;
-        }
-        #searchVegasBtn {
-            background-color: #48cae4;
-            color: #d00000;
-        }
-        #search777Btn {
-            background-color: #1d1d1d;
-            color: #d00000;
-        }
-        .search-results {
-            margin-top: 10px;
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: 550px;
-        }
-        .custom-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            border: 1px solid #ccc;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            min-width: 300px;
-            min-height: 200px;
-        }
-        .items.table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .items.table th, .items.table td {
-            padding: 8px;
-            border: 1px solid #ddd;
-        }
-        .popup-header {
-            padding: 5px 10px;
-            background: #f0f0f0;
-            cursor: move;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .close-btn {
-            cursor: pointer;
-            font-size: 20px;
-        }
-        .popup-content {
-            padding: 10px;
-        }
-        .popup-resize-handle {
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 10px;
-            height: 10px;
-            background: #ccc;
-            cursor: se-resize;
-        }
+    .find-popup .search-container {
+        padding: 15px;
+    }
+    .find-popup .input-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .find-popup .search-input {
+        flex: 1 1 30%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+        min-width: 200px;
+    }
+    .find-popup .button-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    .find-popup .search-container button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 25px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .find-popup .search-container button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .find-popup .search-container button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .find-popup #searchBetkingBtn {
+        background-color: #e63946;
+        color: #ffd60a;
+    }
+    .find-popup #searchVegasBtn {
+        background-color: #48cae4;
+        color: #d00000;
+    }
+    .find-popup #search777Btn {
+        background-color: #1d1d1d;
+        color: #d00000;
+    }
+    .find-popup .search-results {
+        margin-top: 10px;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 550px;
+    }
+    .find-popup.custom-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 1px solid #ccc;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        min-width: 300px;
+        min-height: 200px;
+    }
+    .find-popup .items.table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .find-popup .items.table th, .find-popup .items.table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+    }
+    .find-popup .popup-header {
+        padding: 5px 10px;
+        background: #f0f0f0;
+        cursor: move;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .find-popup .close-btn {
+        cursor: pointer;
+        font-size: 20px;
+    }
+    .find-popup .popup-content {
+        padding: 10px;
+    }
+    .find-popup .popup-resize-handle {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 10px;
+        height: 10px;
+        background: #ccc;
+        cursor: se-resize;
+    }
     `;
         document.head.appendChild(style);
 
         createPopup(popupId, 'Швидкий пошук', content);
+
+        const popup = document.getElementById(popupId);
+        popup.classList.add('find-popup');
 
         const searchSurnameInput = document.getElementById('searchSurnameInput');
         const searchIdInput = document.getElementById('searchIdInput');
@@ -1498,8 +1502,6 @@
         const searchVegasBtn = document.getElementById('searchVegasBtn');
         const search777Btn = document.getElementById('search777Btn');
         const searchResults = document.getElementById('searchResults');
-        const popup = document.getElementById(popupId);
-
         const ProjectUrl = {
             '777.ua': 'https://admin.777.ua/',
             'vegas.ua': 'https://admin.vegas.ua/',
@@ -1568,6 +1570,9 @@
                 searchResults.innerHTML = '<p>Введіть дані для пошуку в хоча б одне поле</p>';
                 return;
             }
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
 
             const terms = surnameTerm.split(' ').filter(Boolean);
             let bodyData = '';
@@ -4698,46 +4703,40 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    function handlePopupWildWinz() {
-        function getInOutUrl() {
-            const scripts = document.querySelectorAll('script');
-            for (const script of scripts) {
-                const scriptContent = script.textContent;
-                if (scriptContent.includes('#show-player-in-out')) {
-                    const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
-                    if (urlMatch) {
-                        return urlMatch[1];
-                    }
-                }
+    async function handlePopupWildWinz() {
+        try {
+            const inOutUrl = getInOutUrl();
+            if (!inOutUrl) {
+                console.log('Не удалось найти URL для запроса inOut.');
+                return;
             }
-            return null;
-        }
 
-        const url = getInOutUrl();
-        if (url) {
-            $.ajax({
-                type: 'GET',
-                url: url,
-            }).done(function(data) {
-                const TotalPA = data.totalInOut;
-                const MonthPA = data.monthInOut;
-                const Balance = getBalance();
+            const [inOutData, balanceData] = await Promise.all([
+                fetchData(inOutUrl),
+                fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
+                    credentials: 'include'
+                })
+            ]);
 
-                setTimeout(() => {
-                    const NDFL = 0;
-                    fetchAndProcessPending().then(({ totalPending, cards }) => {
-                        console.log(cards);
-                        fetchAndProcessData();
-                        createPopupBox(MonthPA, TotalPA, Balance, NDFL, totalPending, cards);
-                        addCheckButton(TotalPA, Balance, totalPending);
-                    }).catch(error => {
-                        console.error('Error processing pending payments:', error);
-                    });
-                }, 350);
+            const params = {
+                MonthPA: inOutData?.monthInOut ?? '−',
+                TotalPA: inOutData?.totalInOut ?? '−',
+                Balance: getBalance(),
+                NDFL: balanceData?.balance_after ?? '0'
+            };
 
-            }).fail(function(xhr) {
-                console.error('Ошибка при выполнении запроса:', xhr.responseText);
-            });
+            const { isCheckedToday } = await checkUserInChecklist();
+            params.isCheckedToday = isCheckedToday;
+            const { totalPending, cards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards });
+            await createPopupBox(params);
+            await fetchAndProcessData();
+            if (typeof addCheckButton === 'function') {
+                addCheckButton(params.TotalPA, params.Balance, params.totalPending);
+            }
+        } catch (error) {
+            console.error('Ошибка при выполнении handlePopupWildWinz:', error.message);
         }
     }
 
@@ -7711,7 +7710,6 @@ ${fraud.manager === managerName ? `
                 enableFraudButton();
                 buttonToSave();
                 checkUserInFraudList();
-                activeUrlsManagers();
                 updateBanButton();
                 checkForUpdates();
                 document.addEventListener('keydown', handleShortcut);
@@ -7721,6 +7719,7 @@ ${fraud.manager === managerName ? `
                 goToGoogleSheet();
                 addAgeToBirthdate();
                 addPibRow();
+                activeUrlsManagers();
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
                     changeCardStatus();
@@ -7729,14 +7728,13 @@ ${fraud.manager === managerName ? `
                     }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
+                handlePopupWildWinz();
                 addForeignButton();
                 buttonToSave();
                 checkUserInFraudList();
                 activeUrlsManagers();
-                checkUserInChecklist();
                 updateBanButton();
                 checkForUpdates();
-                handlePopupWildWinz();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();

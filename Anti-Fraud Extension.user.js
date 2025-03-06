@@ -1649,7 +1649,6 @@
                         const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
                         console.log('Opening profile URL:', profileUrl);
                         window.open(profileUrl, '_blank');
-                        popup.remove();
                         return;
                     }
 
@@ -1660,7 +1659,6 @@
                         let filteredRows;
                         if (surnameTerm) {
                             if (terms.length === 2) {
-                                // Фильтрация по фамилии и имени (игнорируем отчество)
                                 const surname = terms[0].toLowerCase();
                                 const name = terms[1].toLowerCase();
 
@@ -1682,7 +1680,6 @@
                                     return;
                                 }
                             } else if (terms.length === 3) {
-                                // Фильтрация по полному ПІБ (фамилия, имя, отчество)
                                 const surname = terms[0].toLowerCase();
                                 const name = terms[1].toLowerCase();
                                 const patronymic = terms[2].toLowerCase();
@@ -1707,7 +1704,6 @@
                                     return;
                                 }
                             } else {
-                                // Если введено одно слово или больше трёх, берём все строки (поиск только по фамилии сервером)
                                 filteredRows = Array.from(rows);
                             }
                         } else {

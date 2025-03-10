@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.7
+// @version      5.9.8
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -20,6 +20,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      admin.777.ua
+// @connect      ip-api.com
 // @connect      admin.vegas.ua
 // @connect      admin.betking.com.ua
 // @connect      admin.wildwinz.com
@@ -64,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.7";
+    const currentVersion = "5.9.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -6522,6 +6523,106 @@ ${fraud.manager === managerName ? `
         button.addEventListener('click', (event) => handleVerificationClick(event, verificationSheets));
     }
 
+    function setupModalHandler() {
+        const decrementButton = document.querySelector('#decrement-balance');
+        if (!decrementButton) return;
+
+        decrementButton.addEventListener('click', () => {
+            const waitForModal = setInterval(() => {
+                const title = document.querySelector('.swal2-title');
+                const confirmButton = document.querySelector('.swal2-confirm');
+
+                if (title && confirmButton && title.textContent === 'Уменьшить Баланс') {
+                    if (!confirmButton.dataset.listenerAdded) {
+                        confirmButton.dataset.listenerAdded = 'true';
+                        confirmButton.addEventListener('click', () => {
+                            if (!userId) return;
+                            setTimeout(() => updateComment(userId), 1000);
+                        });
+                    }
+                    clearInterval(waitForModal);
+                }
+            }, 100);
+        });
+    }
+
+    function fetchTransactionLog(userId) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${ProjectUrl}players/playersItems/transactionLog/${userId}/`,
+                onload: function(response) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+                        const rows = Array.from(doc.querySelectorAll('table.table.table-striped.table-hover tbody tr'));
+                        let manualBalance = '';
+                        let refundDeposit = '';
+
+                        for (const row of rows) {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length < 8) continue;
+
+                            const operation = cells[1].textContent.trim();
+                            const date = cells[6].textContent.trim();
+                            const comment = cells[7].textContent.trim();
+                            const entry = `${date} ${comment}`;
+
+                            if (operation === 'Ручное начисление баланса' && !manualBalance) {
+                                manualBalance = entry;
+                            } else if (operation === 'Рефанд депозита' && !refundDeposit) {
+                                refundDeposit = entry;
+                            }
+
+                            if (manualBalance && refundDeposit) break;
+                        }
+
+                        let result = '';
+                        if (manualBalance) result += manualBalance;
+                        if (refundDeposit) result += (manualBalance ? '<br>' : '') + refundDeposit;
+                        resolve(result || 'Не найдено подходящих операций');
+                    } catch (e) {
+                        reject(e.message);
+                    }
+                },
+                onerror: function(error) {
+                    reject(error.statusText || 'Неизвестная ошибка');
+                }
+            });
+        });
+    }
+
+    async function updateComment(userId) {
+        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        if (!gatewayElement) return;
+
+        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
+        const insertText = await fetchTransactionLog(userId) + `<br>`;
+        const today = getCurrentDate();
+
+        const lines = gatewayElement.innerHTML.trim().split('<br>').filter(line => line.trim() !== '');
+        const todayIndex = lines.findIndex(line => line.includes(today));
+
+        if (todayIndex !== -1) {
+            let insertPosition = todayIndex;
+            for (let i = todayIndex + 1; i < lines.length; i++) {
+                if (lines[i].match(/\d{2}\.\d{2}\.\d{4}/)) {
+                    insertPosition = i - 1;
+                    break;
+                }
+                insertPosition = i;
+            }
+            lines.splice(insertPosition + 1, 0, insertText);
+        } else {
+            lines.unshift(insertText);
+        }
+
+        gatewayElement.innerHTML = lines.join('<br>') + '<br>';
+        gatewayElement.dispatchEvent(new Event('input'));
+
+        if (doneButton) doneButton.click();
+    }
+
     function createVerificationButton() {
         const button = document.createElement('button');
         button.id = 'custom-verification-button';
@@ -7727,6 +7828,82 @@ ${fraud.manager === managerName ? `
         });
     }
 
+    function getIPInfo(ip) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `http://ip-api.com/json/${ip}?fields=country,city,isp`,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                },
+                onload: function(response) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        if (data.country && data.city && data.isp) {
+                            resolve(`${data.country}, ${data.city} (ISP: ${data.isp})`);
+                        } else {
+                            resolve(`Информация недоступна. Причина: ${data.message || 'неизвестно'}`);
+                        }
+                    } catch (e) {
+                        resolve(`Ошибка парсинга: ${e.message}`);
+                    }
+                },
+                onerror: function(error) {
+                    console.log('Ошибка запроса:', error);
+                    resolve(`Ошибка запроса: ${error.statusText || 'Неизвестная ошибка'}`);
+                }
+            });
+        });
+    }
+
+    function addLocationButton() {
+        const rows = document.querySelectorAll('tr td');
+
+        rows.forEach(td => {
+            const ipMatch = td.textContent.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+            if (ipMatch) {
+                const ip = ipMatch[0];
+
+                const button = document.createElement('button');
+                button.textContent = '📍';
+                button.type = 'button';
+                button.title = 'Показать местоположение';
+
+                Object.assign(button.style, {
+                    marginLeft: '8px',
+                    padding: '4px',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: '#E6E6FA',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                    transition: 'all 0.2s ease'
+                });
+
+                button.addEventListener('mouseover', () => {
+                    button.style.backgroundColor = '#D8BFD8';
+                    button.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+                });
+                button.addEventListener('mouseout', () => {
+                    button.style.backgroundColor = '#E6E6FA';
+                    button.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                });
+
+                button.addEventListener('click', async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const info = await getIPInfo(ip);
+                    alert(`IP: ${ip}\n${info}`);
+                });
+
+                td.appendChild(button);
+            }
+        });
+    }
+
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
 
@@ -7743,6 +7920,7 @@ ${fraud.manager === managerName ? `
     });
 
     window.addEventListener('load', async function() {
+        addLocationButton();
         const tokenIsValid = await checkToken();
         const currentHost = window.location.hostname;
         if (tokenIsValid) {
@@ -7772,6 +7950,7 @@ ${fraud.manager === managerName ? `
                 addAgeToBirthdate();
                 addPibRow();
                 activeUrlsManagers();
+                setupModalHandler();
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
                     changeCardStatus();

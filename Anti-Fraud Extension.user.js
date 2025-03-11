@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.9
+// @version      6.0
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.9";
+    const currentVersion = "6.0";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -400,6 +400,37 @@
         }
     }
 
+    function addExcludeButton() {
+        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+
+        if (formatableTextDiv) {
+            const existingButton = document.getElementById('exclude-button');
+            if (existingButton) {
+                existingButton.remove();
+            }
+
+            const excludeButton = document.createElement('button');
+            excludeButton.id = 'exclude-button';
+            excludeButton.type = 'button';
+            excludeButton.innerHTML = 'Виключити з моніторингу';
+            excludeButton.title = 'Виключити з моніторингу';
+            excludeButton.style.marginLeft = '5px';
+
+            excludeButton.onclick = () => {
+                const date = getCurrentDate();
+                const time = getCurrentTime();
+                const initials = GM_getValue(initialsKey);
+                let textToInsert = `${date} в ${time} виключений з моніторингу/${initials}<br>`;
+
+                insertTextIntoField(textToInsert);
+            };
+
+            const boldButton = formatableTextDiv.querySelector('button[onclick="makeBold()"]');
+            if (boldButton) {
+                boldButton.insertAdjacentElement('afterend', excludeButton);
+            }
+        }
+    }
 
 
     function addCheckButton(TotalPA, Balance, totalPending) {
@@ -3208,6 +3239,7 @@ ${fraud.manager === managerName ? `
         icon.title = 'Користувачі';
         icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
         popupBox.appendChild(icon);
+        addExcludeButton();
     }
 
     function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
@@ -7138,8 +7170,6 @@ ${fraud.manager === managerName ? `
             popupBox.appendChild(statisticIcon);
 
             const status = await checkUserStatus();
-            console.log(status)
-
             if (status === 'Admin') {
                 const adminIcon = document.createElement('div');
                 adminIcon.innerHTML = '<i class="fa fa-users"></i>';
@@ -7156,6 +7186,7 @@ ${fraud.manager === managerName ? `
                     createAdminPopup();
                 };
                 popupBox.appendChild(adminIcon);
+                addExcludeButton();
             }
 
             const fraudIcon = document.createElement('div');

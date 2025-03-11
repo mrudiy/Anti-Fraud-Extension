@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      5.9.8
+// @version      5.9.9
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -65,7 +65,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "5.9.8";
+    const currentVersion = "5.9.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -229,7 +229,7 @@
 
     function processTableRows() {
         const rules = getRules();
-        const rows = document.querySelectorAll('tr');
+        const rows = document.querySelectorAll('table.items.table.table-striped.table-hover tbody tr');
         const batchSize = 50;
         let index = 0;
 
@@ -3324,9 +3324,8 @@ ${fraud.manager === managerName ? `
         const date = getCurrentDate();
         const time = getCurrentTime();
         const initials = GM_getValue('initialsKey', '');
-        const language = GM_getValue('languageKey', 'російська');
+        const language = GM_getValue(languageKey, 'російська');
         const colorPA = getColor(TotalPA);
-
         const textToInsert = language === 'російська'
         ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
         : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
@@ -3337,7 +3336,7 @@ ${fraud.manager === managerName ? `
         const date = getCurrentDate();
         const time = getCurrentTime();
         const initials = GM_getValue('initialsKey', '');
-        const language = GM_getValue('languageKey', 'російська');
+        const language = GM_getValue(languageKey, 'російська');
         const colorPA = getColor(TotalPA);
 
         const textToInsert = language === 'російська'

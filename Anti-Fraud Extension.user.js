@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.1
+// @version      6.0.2
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.1";
+    const currentVersion = "6.0.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3756,18 +3756,6 @@ ${fraud.manager === managerName ? `
         textElement.appendChild(message);
     }
 
-    function updateCleanButtonState(cleanButton, isCheckedToday) {
-        const styles = isCheckedToday
-        ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true }
-        : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
-
-        Object.assign(cleanButton, styles);
-        applyStyles(cleanButton, styles);
-
-        cleanButton.onmouseover = () => !cleanButton.disabled && (cleanButton.style.backgroundColor = '#218838');
-        cleanButton.onmouseout = () => !cleanButton.disabled && (cleanButton.style.backgroundColor = '#28a745');
-    }
-
     function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
         const popupText = document.querySelector('.popup-main-text');
         if (!popupText) {
@@ -7251,64 +7239,8 @@ ${fraud.manager === managerName ? `
             firstRowButtonContainer.style.gap = '10px';
 
             popupBox.appendChild(firstRowButtonContainer);
-
-            const cleanButton = document.createElement('button');
-            cleanButton.className = 'clean-button';
-            cleanButton.innerText = 'Checked';
-            cleanButton.style.padding = '5px 10px';
-            cleanButton.style.backgroundColor = '#2196F3';
-            cleanButton.style.color = 'white';
-            cleanButton.style.border = 'none';
-            cleanButton.style.borderRadius = '5px';
-            cleanButton.style.cursor = 'pointer';
-
-            cleanButton.addEventListener('click', () => {
-                if (cleanButton.disabled) return;
-
-                const initials = GM_getValue(initialsKey, '');
-                const currentDate = getCurrentDate();
-                const playerID = getPlayerID();
-                const project = getProject();
-                const url = window.location.href;
-                const time = getCurrentTime();
-
-                const dataToInsert = {
-                    date: currentDate,
-                    url: url,
-                    project: project,
-                    playerID: playerID,
-                    initials: initials,
-                    comment: `Переглянутий в ${time}`,
-                };
-
-                const token = localStorage.getItem('authToken');
-
-                sendDataToServer(dataToInsert, token)
-                    .then(response => {
-                    console.log('Data sent successfully:', response);
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Успішно!',
-                        text: 'Користувач позначений як переглянутий',
-                        confirmButtonText: 'ОК'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            location.reload();
-                        }
-                    });
-                })
-                    .catch(err => {
-                    console.error('Error sending data:', err);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Помилка!',
-                        text: 'Не вдалося надіслати дані.',
-                        confirmButtonText: 'ОК'
-                    });
-                });
-            });
-
-            firstRowButtonContainer.appendChild(cleanButton);
+            const { isCheckedToday } = await checkUserInChecklist();
+            firstRowButtonContainer.appendChild(createCleanButton(isCheckedToday));
 
             const secondRowButtonContainer = document.createElement('div');
             secondRowButtonContainer.style.marginTop = '10px';
@@ -7327,13 +7259,10 @@ ${fraud.manager === managerName ? `
                 let isProfitButtonClicked = false;
 
                 const profitButton = document.createElement('button');
+                applyStyles(profitButton, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
+                profitButton.onmouseover = () => profitButton.style.backgroundColor = '#2f76ae';
                 profitButton.innerText = 'Total InOut';
-                profitButton.style.padding = '5px 10px';
-                profitButton.style.backgroundColor = '#2196F3';
-                profitButton.style.color = 'white';
-                profitButton.style.border = 'none';
-                profitButton.style.borderRadius = '5px';
-                profitButton.style.cursor = 'pointer';
+                profitButton.onmouseout = () => profitButton.style.backgroundColor = '#2196F3';
                 profitButton.addEventListener('click', () => {
                     if (!isProfitButtonClicked) {
                         isProfitButtonClicked = true;
@@ -7418,22 +7347,27 @@ ${fraud.manager === managerName ? `
 
                 const style = document.createElement('style');
                 style.textContent = `
-                                @keyframes spin {
-                                    0% { transform: rotate(0deg); }
-                                    100% { transform: rotate(360deg); }
-                                }
-                                #popup-container {
-                                    min-height: 200px;
-                                    overflow-y: auto;
-                                    white-space: normal;
-                                    word-wrap: break-word;
-                                }
-                            `;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #popup-container {
+            min-height: 200px;
+            overflow-y: auto;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+    `;
                 document.head.appendChild(style);
 
                 const playerID = getPlayerID();
                 const project = getProject();
                 const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
+                const paymentsURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
+
+                let depositsTotal = 0;
+                let redeemsTotal = 0;
+                let closedWithdrawalsSum = 0;
 
                 GM_xmlhttpRequest({
                     method: 'POST',
@@ -7444,22 +7378,15 @@ ${fraud.manager === managerName ? `
                     data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(playerID)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
                     onload: function(response) {
                         if (response.status >= 200 && response.status < 300) {
-                            console.log('HTML-ответ:', response.responseText);
-
                             const parser = new DOMParser();
                             const doc = parser.parseFromString(response.responseText, 'text/html');
-
                             const table = doc.querySelector('.detail-view');
-                            let depositsTotal = 0;
-                            let redeemsTotal = 0;
 
                             if (table) {
                                 const rows = table.querySelectorAll('tr');
-
                                 rows.forEach(row => {
                                     const key = row.querySelector('th')?.textContent.trim();
                                     const value = row.querySelector('td')?.textContent.trim();
-
                                     if (key === 'Deposits Total') {
                                         depositsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
                                     } else if (key === 'Redeems Total') {
@@ -7467,34 +7394,62 @@ ${fraud.manager === managerName ? `
                                     }
                                 });
 
-                                let cleanBalance = parseFloat(winnings);
+                                GM_xmlhttpRequest({
+                                    method: 'GET',
+                                    url: paymentsURL,
+                                    onload: function(paymentsResponse) {
+                                        if (paymentsResponse.status >= 200 && paymentsResponse.status < 300) {
+                                            const paymentsDoc = parser.parseFromString(paymentsResponse.responseText, 'text/html');
+                                            const paymentsTable = paymentsDoc.querySelector('.items.table.table-striped.table-hover');
 
-                                const profit = depositsTotal - redeemsTotal;
-                                const PrognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance);
-                                const PrognosePA = ((redeemsTotal + totalPending + cleanBalance) / depositsTotal) * 100;
+                                            if (paymentsTable) {
+                                                const rows = paymentsTable.querySelectorAll('tr');
+                                                rows.forEach(row => {
+                                                    const cells = row.querySelectorAll('td');
+                                                    if (cells.length >= 12) {
+                                                        const status = cells[1].querySelector('.label')?.textContent.trim();
+                                                        const gateway = cells[11].textContent.trim();
+                                                        const amountText = cells[5].textContent.trim();
 
-                                secondRowButtonContainer.removeChild(loader);
-                                secondRowButtonContainer.innerHTML += `
-                                                <div><b>Total InOut: ${profit.toFixed(2)}$</b></div>
-                                                ${(totalPending > 1 || cleanBalance > 1) ? `
-                                                    <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}$</b></div>
-                                                    <div><b>Prognose PA: ${PrognosePA.toFixed(2)}%</b></div>
-                                                ` : ''}
-                                            `;
+                                                        if (status === 'closed' && gateway !== 'Другое') {
+                                                            const amount = parseFloat(amountText.replace(/[^0-9.-]/g, '')) || 0;
+                                                            closedWithdrawalsSum += amount;
+                                                        }
+                                                    }
+                                                });
+                                            }
+
+                                            let cleanBalance = parseFloat(winnings);
+                                            const profit = depositsTotal - closedWithdrawalsSum;
+                                            const PrognoseInOut = depositsTotal - (totalPending + closedWithdrawalsSum + cleanBalance);
+                                            const PrognosePA = ((closedWithdrawalsSum + totalPending + cleanBalance) / depositsTotal) * 100;
+
+                                            secondRowButtonContainer.removeChild(loader);
+                                            secondRowButtonContainer.innerHTML += `
+                                    <div><b>Total InOut: ${profit.toFixed(2)}$</b></div>
+                                    ${(totalPending > 1 || cleanBalance > 1) ? `
+                                        <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}$</b></div>
+                                        <div><b>Prognose PA: <span style="color: ${getColor(PrognosePA / 100)}">${PrognosePA.toFixed(2)}%</span></b></div>
+                                    ` : ''}
+                                `;
+                                        }
+                                    },
+                                    onerror: function(error) {
+                                        console.error('Ошибка второго запроса:', error);
+                                        secondRowButtonContainer.removeChild(loader);
+                                        secondRowButtonContainer.innerHTML += 'Ошибка второго запроса: ' + error.message;
+                                    }
+                                });
                             } else {
                                 secondRowButtonContainer.removeChild(loader);
                                 secondRowButtonContainer.innerHTML += 'Таблица с результатами не найдена.';
                             }
-                        } else {
-                            console.error('Ошибка ответа:', response.statusText);
-                            document.body.removeChild(loader);
-                            secondRowButtonContainer.innerHTML += `Ошибка получения данных: ${response.statusText}`;
                         }
                     },
                     onerror: function(error) {
-                        console.error('Ошибка запроса:', error);
-                        document.body.removeChild(loader);
-                        secondRowButtonContainer.innerHTML += 'Ошибка запроса: ' + error.message;
+                        console.error('Ошибка первого запроса:', error);
+                        secondRowButtonContainer.removeChild(loader);
+                        secondRowButtonContainer.innerHTML += 'Ошибка первого запроса: ' + error.message;
                     }
                 });
             }
@@ -8002,7 +7957,6 @@ ${fraud.manager === managerName ? `
                 analyzeTransaction();
                 buttonToSave();
                 checkUserInFraudList();
-                checkUserInChecklist();
                 activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()

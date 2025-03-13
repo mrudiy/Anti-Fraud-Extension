@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.3
+// @version      6.0.4
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.3";
+    const currentVersion = "6.0.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3124,8 +3124,8 @@ ${fraud.manager === managerName ? `
     }
 
     async function createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
-        const showNDFL = GM_getValue('ndfDisplayKey', true);
-        const showAmount = GM_getValue('amountDisplayKey', true);
+        const showNDFL = GM_getValue(ndfDisplayKey, true);
+        const showAmount = GM_getValue(amountDisplayKey, true);
         const currencySymbol = currencySymbols.get(getCurrency()) || '';
         const provider = await verificationProvider();
 
@@ -3614,7 +3614,7 @@ ${fraud.manager === managerName ? `
                 const profit = depositsTotal - redeemsTotal;
                 const prognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
                 const prognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
-                const showAmount = GM_getValue('amountDisplayKey', true);
+                const showAmount = GM_getValue(amountDisplayKey, true);
                 const currencySymbol = currencySymbols.get(getCurrency()) || '';
 
                 container.innerHTML += `
@@ -5748,7 +5748,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function updateCommentField(currentDate, initials, updateButton) {
-        const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+        const message = `<strong style="color: purple;">${currentDate} | Відправляємо на верифікацію по схемі юриста | ${initials} </strong><br><br>`;
         const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
         if (!commentField) throw new Error('Поле комментария не найдено');
 

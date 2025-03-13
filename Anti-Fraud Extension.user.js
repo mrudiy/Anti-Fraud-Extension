@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.2
+// @version      6.0.3
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.2";
+    const currentVersion = "6.0.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3893,7 +3893,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function fetchPaymentsData({ searchLogin, includePending = false }) {
-        const url = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${searchLogin}`;
+        const url = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${searchLogin}&newPageSize=2000`;
         try {
             const response = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
@@ -3905,32 +3905,22 @@ ${fraud.manager === managerName ? `
             });
 
             const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
-            const pageSizeSelect = doc.querySelector('#newPageSize');
-            if (pageSizeSelect) {
-                pageSizeSelect.value = '450';
-                pageSizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-            } else {
-                console.warn('Page size selector не найден.');
-            }
 
-            const allCardsSet = new Set();       // Все карты
-            const displayCardsSet = new Set();   // Карты для отображения
+            const allCardsSet = new Set();
+            const displayCardsSet = new Set();
             let totalPending = 0;
 
             doc.querySelectorAll('tr').forEach(row => {
-                // Карты со специфическим статусом (для отображения)
                 const cardLabelSpecific = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
                 if (cardLabelSpecific?.textContent.trim()) {
                     displayCardsSet.add(cardLabelSpecific.textContent.trim());
                 }
 
-                // Все карты (для поиска)
                 const cardLabel = row.querySelector('td:nth-child(10)');
                 if (cardLabel?.textContent.trim()) {
                     allCardsSet.add(cardLabel.textContent.trim());
                 }
 
-                // Подсчёт totalPending
                 if (includePending) {
                     const statusSpan = row.querySelector('span.label');
                     const status = statusSpan?.textContent.trim();
@@ -4217,9 +4207,16 @@ ${fraud.manager === managerName ? `
 
     function checkRoundIntervals(data) {
         const roundData = {};
+        let pending_balance = 0;
+
+        const excludedProviders = ['pragmatic', 'riverslot', 'booming-games', 'endorphina', 'pateplay'];
 
         data.forEach(entry => {
             const round_id = entry.round_id;
+            console.log(entry.provider)
+            if (entry.provider && excludedProviders.includes(entry.provider.toLowerCase())) {
+                return;
+            }
 
             if (!roundData[round_id]) {
                 roundData[round_id] = { bet: null, win: null };
@@ -4232,6 +4229,7 @@ ${fraud.manager === managerName ? `
         });
 
         const alerts = [];
+        const pendingRounds = [];
 
         for (const round_id in roundData) {
             const { bet, win } = roundData[round_id];
@@ -4250,12 +4248,24 @@ ${fraud.manager === managerName ? `
                         date: bet.date
                     });
                 }
+            } else if (bet && !win && Math.abs(bet.amount) >= 50000) {
+                pendingRounds.push({
+                    round_id,
+                    game: bet.game,
+                    amount: bet.amount,
+                    balance: bet.balance,
+                    date: bet.date
+                });
+                pending_balance += Math.abs(bet.amount);
             }
         }
 
-        return alerts;
+        return {
+            delayedRounds: alerts,
+            pendingRounds: pendingRounds,
+            pendingBalance: pending_balance
+        };
     }
-
 
     function checkLargeBets(data) {
         const largeBets = data.filter(entry =>
@@ -4270,35 +4280,61 @@ ${fraud.manager === managerName ? `
 
     function createScrollableContent(items) {
         const content = `
-    <div style="
-        max-height: 300px;
-        overflow-y: auto;
-        background-color: #f9f9f9;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        padding: 10px;
-        margin-top: 10px;
-        display: none;
-    " class="scrollable-content">
-        ${items.map(item => `
-            <div style="
-                border-bottom: 1px solid #ddd;
-                padding-bottom: 10px;
-                margin-bottom: 10px;
-            ">
-                ${item.message ? item.message : `
-                <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
-                <strong>Game:</strong> ${item.game}<br>
-                <strong>Bet Amount:</strong> ${item.amount}<br>
-                <strong>Balance:</strong> ${item.balance}<br>
-                <strong>Date:</strong> ${item.date}<br>
-                `}
-            </div>
-        `).join('')}
-    </div>
-`;
-
+        <div style="
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            display: none;
+        " class="scrollable-content">
+            ${items.map(item => `
+                <div style="
+                    border-bottom: 1px solid #ddd;
+                    padding-bottom: 10px;
+                    margin-bottom: 10px;
+                ">
+                    ${item.message ? item.message : `
+                    <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
+                    <strong>Game:</strong> ${item.game}<br>
+                    <strong>Bet Amount:</strong> ${item.amount}<br>
+                    <strong>Balance:</strong> ${item.balance}<br>
+                    <strong>Date:</strong> ${item.date}<br>
+                    ${item.type ? `<strong>Type:</strong> ${item.type}<br>` : ''}
+                    `}
+                </div>
+            `).join('')}
+        </div>
+    `;
         return content;
+    }
+
+    function formatRoundData(roundData) {
+        const formattedItems = [];
+
+        roundData.delayedRounds.forEach(item => {
+            formattedItems.push({
+                ...item,
+                type: 'Delayed (> 5 min)'
+            });
+        });
+
+        roundData.pendingRounds.forEach(item => {
+            formattedItems.push({
+                ...item,
+                type: 'Pending (no win)'
+            });
+        });
+
+        if (roundData.pendingBalance > 0) {
+            formattedItems.push({
+                message: `<strong>Загальна сума відкладених ставок:</strong> ${roundData.pendingBalance}`
+            });
+        }
+
+        return formattedItems;
     }
 
     function toggleContentVisibility(event) {
@@ -4363,7 +4399,7 @@ ${fraud.manager === managerName ? `
 
         const data = analyzeTable();
 
-        const roundAlerts = checkRoundIntervals(data);
+        const roundData = checkRoundIntervals(data);
         const largeBetAlerts = checkLargeBets(data);
         const winResults = calculateWinsByRoundType(data);
         const betResults = calculateBetsByRoundType(data);
@@ -4375,11 +4411,11 @@ ${fraud.manager === managerName ? `
         console.log(largeBetAlerts);
         console.log(anomalousBetIncreasesAlerts);
 
-        if (roundAlerts.length > 0) {
+        if (roundData.delayedRounds.length > 0 || roundData.pendingRounds.length > 0) {
             message += `
         <b>Знайдено можливі відкладені раунди:</b>
         <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
-        ${createScrollableContent(roundAlerts)}
+        ${createScrollableContent(formatRoundData(roundData))}
         <br>
     `;
         } else {

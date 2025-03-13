@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.3
+// @version      6.0.5
 // @description  Расширение для удобства АнтиФрод команды
 // @author       Maxim Rudiy
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.3";
+    const currentVersion = "6.0.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3124,8 +3124,8 @@ ${fraud.manager === managerName ? `
     }
 
     async function createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
-        const showNDFL = GM_getValue('ndfDisplayKey', true);
-        const showAmount = GM_getValue('amountDisplayKey', true);
+        const showNDFL = GM_getValue(ndfDisplayKey, true);
+        const showAmount = GM_getValue(amountDisplayKey, true);
         const currencySymbol = currencySymbols.get(getCurrency()) || '';
         const provider = await verificationProvider();
 
@@ -3614,7 +3614,7 @@ ${fraud.manager === managerName ? `
                 const profit = depositsTotal - redeemsTotal;
                 const prognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
                 const prognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
-                const showAmount = GM_getValue('amountDisplayKey', true);
+                const showAmount = GM_getValue(amountDisplayKey, true);
                 const currencySymbol = currencySymbols.get(getCurrency()) || '';
 
                 container.innerHTML += `
@@ -5748,7 +5748,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function updateCommentField(currentDate, initials, updateButton) {
-        const message = `<strong style="color: purple;">Відправляємо на верифікацію по схемі юриста | ${currentDate} | ${initials} </strong><br><br>`;
+        const message = `<strong style="color: purple;">${currentDate} | Відправляємо на верифікацію по схемі юриста | ${initials} </strong><br><br>`;
         const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
         if (!commentField) throw new Error('Поле комментария не найдено');
 
@@ -6613,29 +6613,38 @@ ${fraud.manager === managerName ? `
                         const doc = parser.parseFromString(response.responseText, 'text/html');
                         const rows = Array.from(doc.querySelectorAll('table.table.table-striped.table-hover tbody tr'));
                         let manualBalance = '';
-                        let refundDeposit = '';
+                        let refundDeposits = [];
+                        const today = new Date();
+                        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`; // "13/03/2025"
 
                         for (const row of rows) {
                             const cells = row.querySelectorAll('td');
                             if (cells.length < 8) continue;
 
                             const operation = cells[1].textContent.trim();
-                            const date = cells[6].textContent.trim();
+                            const fullDate = cells[6].textContent.trim();
+                            const dateOnly = fullDate.split(' ')[0];
                             const comment = cells[7].textContent.trim();
-                            const entry = `${date} ${comment}`;
+                            const entry = { date: fullDate, comment: comment };
 
                             if (operation === 'Ручное начисление баланса' && !manualBalance) {
-                                manualBalance = entry;
-                            } else if (operation === 'Рефанд депозита' && !refundDeposit) {
-                                refundDeposit = entry;
+                                manualBalance = `${fullDate} ${comment}`;
+                            } else if (operation === 'Рефанд депозита' && dateOnly === todayStr) {
+                                refundDeposits.push(entry);
                             }
-
-                            if (manualBalance && refundDeposit) break;
                         }
 
                         let result = '';
-                        if (manualBalance) result += manualBalance;
-                        if (refundDeposit) result += (manualBalance ? '<br>' : '') + refundDeposit;
+                        if (manualBalance) {
+                            result += manualBalance;
+                        }
+                        if (refundDeposits.length > 0) {
+                            if (manualBalance) result += '<br>';
+                            const firstRefund = refundDeposits[0];
+                            const refundNumbers = refundDeposits.map(refund => refund.comment.match(/№\s*(\d+)/)[1]);
+                            result += `${firstRefund.date} Рефанд депозита № ${refundNumbers.join(', № ')}`;
+                        }
+
                         resolve(result || 'Не найдено подходящих операций');
                     } catch (e) {
                         reject(e.message);
@@ -6649,31 +6658,20 @@ ${fraud.manager === managerName ? `
     }
 
     async function updateComment(userId) {
-        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const gatewayElement = document.getElementById('gateway-method-description-visible-common');
         if (!gatewayElement) return;
 
-        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
-        const insertText = await fetchTransactionLog(userId) + `<br>`;
-        const today = getCurrentDate();
+        const doneButton = document.querySelector('.btn-update-comment-common');
+        const insertText = await fetchTransactionLog(userId);
 
-        const lines = gatewayElement.innerHTML.trim().split('<br>').filter(line => line.trim() !== '');
-        const todayIndex = lines.findIndex(line => line.includes(today));
+        let currentContent = gatewayElement.innerHTML.trim();
 
-        if (todayIndex !== -1) {
-            let insertPosition = todayIndex;
-            for (let i = todayIndex + 1; i < lines.length; i++) {
-                if (lines[i].match(/\d{2}\.\d{2}\.\d{4}/)) {
-                    insertPosition = i - 1;
-                    break;
-                }
-                insertPosition = i;
-            }
-            lines.splice(insertPosition + 1, 0, insertText);
+        if (currentContent === '') {
+            gatewayElement.innerHTML = insertText + '<br>';
         } else {
-            lines.unshift(insertText);
+            gatewayElement.innerHTML = currentContent + '<br>' + insertText + '<br>';
         }
 
-        gatewayElement.innerHTML = lines.join('<br>') + '<br>';
         gatewayElement.dispatchEvent(new Event('input'));
 
         if (doneButton) doneButton.click();

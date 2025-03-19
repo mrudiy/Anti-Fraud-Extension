@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.5
-// @description  Расширение для удобства АнтиФрод команды
-// @author       Maxim Rudiy
+// @version      6.0.6
+// @description  Anti-Fraud Extension
+// @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.vegas.ua/*
 // @match        https://admin.777.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.5";
+    const currentVersion = "6.0.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1680,8 +1680,81 @@
                     if (finalUrl.includes('/players/playersItems/update/')) {
                         const playerId = finalUrl.split('/').filter(Boolean).pop();
                         const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
-                        console.log('Opening profile URL:', profileUrl);
-                        window.open(profileUrl, '_blank');
+                        console.log('Fetching profile URL for validation:', profileUrl);
+
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: profileUrl,
+                            headers: {
+                                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                                'cache-control': 'no-cache',
+                                'pragma': 'no-cache'
+                            },
+                            onload: function(profileResponse) {
+                                const profileHtml = profileResponse.responseText;
+                                const parser = new DOMParser();
+                                const profileDoc = parser.parseFromString(profileHtml, 'text/html');
+
+                                // Извлекаем данные из таблицы профиля
+                                const rows = profileDoc.querySelectorAll('table tr');
+                                let profileData = {};
+
+                                rows.forEach(row => {
+                                    const th = row.querySelector('th')?.textContent.trim().toLowerCase();
+                                    const td = row.querySelector('td')?.textContent.trim();
+                                    if (th && td) {
+                                        if (th === 'фамилия') profileData.surname = td.toLowerCase();
+                                        if (th === 'middle name') profileData.patronymic = td.toLowerCase();
+                                        if (th === 'имя') profileData.name = td.toLowerCase();
+                                    }
+                                });
+
+                                // Подготовка введенных данных для сравнения
+                                const terms = surnameTerm ? surnameTerm.split(' ').filter(Boolean).map(t => t.toLowerCase()) : [];
+                                const inputData = {
+                                    surname: terms[0] || '',
+                                    name: terms.length >= 2 ? terms[1] : '',
+                                    patronymic: terms.length === 3 ? terms[2] : ''
+                                };
+
+                                // Проверка совпадения данных
+                                let dataMatches = true;
+
+                                if (surnameTerm) {
+                                    if (terms.length === 1 && profileData.surname !== inputData.surname) {
+                                        dataMatches = false;
+                                    }
+                                    if (terms.length === 2 &&
+                                        (profileData.surname !== inputData.surname ||
+                                         profileData.name !== inputData.name)) {
+                                        dataMatches = false;
+                                    }
+                                    if (terms.length === 3 &&
+                                        (profileData.surname !== inputData.surname ||
+                                         profileData.name !== inputData.name ||
+                                         profileData.patronymic !== inputData.patronymic)) {
+                                        dataMatches = false;
+                                    }
+                                }
+
+                                console.log('Profile data:', profileData);
+                                console.log('Input data:', inputData);
+                                console.log('Data matches:', dataMatches);
+
+                                if (dataMatches) {
+                                    console.log('Opening profile URL:', profileUrl);
+                                    window.open(profileUrl, '_blank');
+                                } else {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено: дані профілю не співпадають з введеними</p>';
+                                    setFixedPopupSize(popup);
+                                }
+                            },
+                            onerror: function(error) {
+                                searchResults.innerHTML = `<p>Помилка при завантаженні профілю: ${error.responseText || error}</p>`;
+                                console.error('Profile fetch error:', error);
+                                setFixedPopupSize(popup);
+                            }
+                        });
                         return;
                     }
 

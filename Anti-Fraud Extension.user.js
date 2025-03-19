@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.6
+// @version      6.0.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.6";
+    const currentVersion = "6.0.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -6885,33 +6885,143 @@ ${fraud.manager === managerName ? `
         return sheetName;
     }
 
-    function makeBonusClickable() {
-        document.querySelectorAll('td').forEach(td => {
-            const bonusMatch = td.textContent.match(/бонус(а)? №\s*(\d+)/i);
-            if (bonusMatch) {
-                const bonusNumber = bonusMatch[2];
+    const BONUS_PATTERNS = {
+        regular: /бонус(а)? №\s*(\d+)/i,
+        sport: /Присвоение бонуса \(ставки на спорт\) №\s*(\d+)/i
+    };
 
-                const link = document.createElement('a');
-                link.href = '#';
-                link.textContent = `№ ${bonusNumber}`;
-                link.style.color = 'blue';
-                link.style.cursor = 'pointer';
-                link.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    fetchBonusInfo(bonusNumber);
-                });
+    const STYLES = `
+    .well { min-height: 20px; padding: 19px; margin-bottom: 20px; background-color: #f5f5f5; border: 1px solid #e3e3e3; border-radius: 4px; }
+    .well-sm { padding: 9px; border-radius: 3px; }
+    .label { display: inline; padding: .2em .6em .3em; font-size: 75%; font-weight: 700; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25em; }
+    .label-success { background-color: #5cb85c; }
+    .col-xs-12 { width: 100%; }
+    .col-md-3 { width: 25%; }
+    .col-md-5 { width: 41.66667%; }
+    .col-md-6 { width: 50%; }
+    .row { margin-right: -15px; margin-left: -15px; display: flex; flex-wrap: wrap; }
+    .container-fluid { padding-right: 15px; padding-left: 15px; margin-right: auto; margin-left: auto; }
+    .modal-header h3 { margin: 0; line-height: 1.42857143; }
+    .modal-body { position: relative; padding: 15px; }
+    ul.p-rich_text_list__bullet { padding-left: 0; list-style: disc outside; }
+`;
 
-                td.innerHTML = td.innerHTML.replace(
-                    bonusMatch[0],
-                    `бонуса <a href="#" style="color: blue; cursor: pointer;">№ ${bonusNumber}</a>`
-                );
-                td.querySelector('a').addEventListener('click', (event) => {
-                    event.preventDefault();
-                    fetchBonusInfo(bonusNumber);
-                });
-            }
+    const makeBonusClickable = () => document.querySelectorAll('td').forEach(td => {
+        const [type, match] = Object.entries(BONUS_PATTERNS).find(([_, pattern]) => pattern.test(td.textContent)) || [];
+        if (!match) return;
+
+        const bonusNumber = match.exec(td.textContent)[type === 'sport' ? 1 : 2];
+        const isSportBonus = type === 'sport';
+        const replaceText = match.exec(td.textContent)[0];
+
+        td.innerHTML = td.innerHTML.replace(replaceText,
+                                            `${isSportBonus ? 'Присвоение бонуса (ставки на спорт)' : 'бонуса'} ` +
+                                            `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">№ ${bonusNumber}</a>`
+                                           );
+
+        td.querySelector('.bonus-link').addEventListener('click', e => {
+            e.preventDefault();
+            fetchBonusInfo(bonusNumber, isSportBonus);
         });
-    }
+    });
+
+    const fetchBonusInfo = (bonusNumber, isSportBonus = false) => fetch(
+        `${ProjectUrl}${isSportBonus ? 'sportBetting/sportBettingBonus' : 'bonuses/bonusesItems'}/preview/${bonusNumber}/`,
+        { method: 'POST', headers: { "accept": "*/*", "x-requested-with": "XMLHttpRequest" }, credentials: 'include' }
+    )
+    .then(res => res.text())
+    .then(html => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let content;
+
+        if (isSportBonus) {
+            content = formatSportBonusContent(doc.querySelector('.popup-content'));
+        } else {
+            const modalContent = doc.querySelector('.modal-content');
+            if (modalContent) {
+                // Прибираємо кнопку закриття з HTML
+                const closeButton = modalContent.querySelector('.close');
+                if (closeButton) closeButton.remove();
+                content = modalContent.innerHTML;
+            }
+        }
+
+        if (content) showPopup(content);
+        else alert(`Ошибка: не удалось получить данные о ${isSportBonus ? 'спортивном ' : ''}бонусе.`);
+    })
+    .catch(error => console.error('Ошибка при запросе бонуса:', error))
+
+    const formatSportBonusContent = popupContent => {
+        if (!popupContent) return '';
+        const getText = (sel, fallback = '') => popupContent.querySelector(sel)?.textContent || fallback;
+        const getHtml = (sel, fallback = '') => popupContent.querySelector(sel)?.innerHTML || fallback;
+
+        return `
+        <div class="popup-content">
+            <div class="modal-header"><h3>${getText('.modal-header h3', 'Спортивний бонус')}</h3></div>
+            <div class="modal-body">
+                <div class="container-fluid">
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#f5e8e8;">
+                        <div><label>Название</label></div><div><span>${getText('.well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row">
+                        <div class="col-xs-12 col-md-6"><div class="well well-sm">
+                            <div><label>Дата/время с</label></div><div><span>${getText('.col-md-6:nth-child(1) .well-sm span')}</span></div>
+                        </div></div>
+                        <div class="col-xs-12 col-md-6"><div class="well well-sm">
+                            <div><label>Дата/время до</label></div><div><span>${getText('.col-md-6:nth-child(2) .well-sm span')}</span></div>
+                        </div></div>
+                    </div>
+                    <div class="row"><div class="col-xs-12 col-md-3"><div class="well well-sm">
+                        <div><label>Тип бонуса</label></div><div><span class="label label-success">${getText('.label-success')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12 col-md-3"><div class="well well-sm">
+                        <div><label>Доступно раз</label></div><div><span>${getText('.col-md-3:nth-child(1) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12 col-md-5"><div class="well well-sm">
+                        <div><label>Минимальная сумма депозита</label></div><div><span>${getText('.col-md-5 .well-sm span')}</span></div>
+                    </div></div></div>
+                    <hr>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Текст сумма</label></div><div><span>${getText('.row:nth-last-child(3) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Вейджер описание</label></div><div><span>${getText('.row:nth-last-child(2) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Промо описание</label></div><div>${getHtml('.row:last-child .well-sm > div:nth-child(2)')}</div>
+                    </div></div></div>
+                </div>
+            </div>
+        </div>
+    `.trim();
+    };
+
+    const showPopup = content => {
+        let popup = document.getElementById('custom-popup');
+        if (!popup) {
+            popup = document.createElement('div');
+            Object.assign(popup.style, {
+                position: 'fixed', top: '10%', left: '50%', transform: 'translate(-50%, 0)',
+                backgroundColor: '#fff', boxShadow: '0 0 10px rgba(0,0,0,0.5)', zIndex: '9999',
+                width: '60%', padding: '20px', borderRadius: '8px', overflowY: 'auto', maxHeight: '80%'
+            });
+            popup.id = 'custom-popup';
+            document.body.appendChild(popup);
+
+            const style = document.createElement('style');
+            style.textContent = STYLES;
+            popup.appendChild(style);
+        }
+
+        popup.innerHTML = content;
+        const closeBtn = Object.assign(document.createElement('button'), {
+            innerHTML: '×',
+            style: 'position: absolute; top: 10px; right: 10px; background: transparent; color: red; border: none; font-size: 24px; cursor: pointer;'
+        });
+        closeBtn.onclick = () => popup.remove();
+        popup.appendChild(closeBtn);
+    };
 
     function addAgeToBirthdate() {
         function calculateAge(birthDate) {
@@ -7012,97 +7122,6 @@ ${fraud.manager === managerName ? `
         }
     }
 
-
-    function fetchBonusInfo(bonusNumber) {
-        const project = getProject();
-        console.log(project)
-        const url = `${ProjectUrl}bonuses/bonusesItems/preview/${bonusNumber}/`;
-
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                "accept": "*/*",
-                "x-requested-with": "XMLHttpRequest"
-            },
-            credentials: 'include'
-        })
-            .then(response => response.text())
-            .then(html => {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            let modalContent = doc.querySelector('.modal-content');
-
-            if (modalContent) {
-                const closeButton = modalContent.querySelector('button.close');
-                if (closeButton) {
-                    closeButton.remove();
-                }
-
-                showPopup(modalContent.innerHTML);
-            } else {
-                alert('Ошибка: не удалось получить данные о бонусе.');
-            }
-        })
-            .catch(error => {
-            console.error('Ошибка при запросе бонуса:', error);
-        });
-    }
-
-
-    function showPopup(content) {
-        let popup = document.getElementById('custom-popup');
-        if (!popup) {
-            popup = document.createElement('div');
-            popup.id = 'custom-popup';
-            popup.style.position = 'fixed';
-            popup.style.top = '10%';
-            popup.style.left = '50%';
-            popup.style.transform = 'translate(-50%, 0)';
-            popup.style.backgroundColor = '#fff';
-            popup.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
-            popup.style.zIndex = '9999';
-            popup.style.width = '60%';
-            popup.style.padding = '20px';
-            popup.style.borderRadius = '8px';
-            popup.style.overflowY = 'auto';
-            popup.style.maxHeight = '80%';
-
-            const closeButton = document.createElement('button');
-            closeButton.textContent = 'Закрыть';
-            closeButton.style.position = 'absolute';
-            closeButton.style.top = '10px';
-            closeButton.style.right = '10px';
-            closeButton.style.backgroundColor = 'red';
-            closeButton.style.color = 'white';
-            closeButton.style.border = 'none';
-            closeButton.style.padding = '5px 10px';
-            closeButton.style.cursor = 'pointer';
-            closeButton.addEventListener('click', () => {
-                popup.remove();
-            });
-
-            popup.appendChild(closeButton);
-            document.body.appendChild(popup);
-        }
-
-        popup.innerHTML = content;
-        const closeButton = document.createElement('button');
-        closeButton.innerHTML = '&times;'; // Крестик
-        closeButton.style.position = 'absolute';
-        closeButton.style.top = '10px';
-        closeButton.style.right = '10px';
-        closeButton.style.backgroundColor = 'transparent';
-        closeButton.style.color = 'red';
-        closeButton.style.border = 'none';
-        closeButton.style.fontSize = '24px';
-        closeButton.style.cursor = 'pointer';
-
-        closeButton.addEventListener('click', () => {
-            popup.remove();
-        });
-        popup.innerHTML = content;
-        popup.appendChild(closeButton);
-    }
 
     function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');

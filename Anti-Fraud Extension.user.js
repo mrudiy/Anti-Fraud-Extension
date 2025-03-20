@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.7
+// @version      6.0.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -66,7 +66,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.7";
+    const currentVersion = "6.0.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3789,27 +3789,32 @@ ${fraud.manager === managerName ? `
             const textToInsert = `
 #<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
 #${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>`;
-            console.log('Inserting text:', textToInsert); // Отладка клика
+            console.log('Inserting text:', textToInsert);
             insertTextIntoField(textToInsert);
         };
 
         const message = createClickableMessage(`popup-clickable-text-${index}`, content, onClick);
-        console.log('Message created:', message); // Проверяем, что сообщение создано
+        console.log('Message created:', message);
         textElement.appendChild(message);
         console.log('Message appended to textElement:', textElement.innerHTML); // Проверяем, добавлено ли
     }
 
-    function showBonusViolationMessage({ bonusId, dateStr, index }) {
-        if (!popupBox) {
+    function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
+
+        if (!window.popupBox) {
             console.error('Попап не существует');
             return;
         }
 
-        const textElement = popupBox.querySelector('.popup-text');
-        if (!textElement) return;
+        const textElement = window.popupBox.querySelector('.popup-text');
+
+        if (!textElement) {
+            console.warn('Элемент .popup-text не найден в попапе');
+            return;
+        }
 
         const content = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
-        const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}</b>`);
+        const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
         textElement.appendChild(createClickableMessage(`popup-bonus-violation-${index}`, content, onClick));
     }
@@ -3914,8 +3919,15 @@ ${fraud.manager === managerName ? `
                 const bonusId = bonusIdMatch[1];
                 state.bonusAssignments[bonusId] = state.bonusAssignments[bonusId] || {};
                 state.bonusAssignments[bonusId][dateStr] = (state.bonusAssignments[bonusId][dateStr] || 0) + 1;
-                if (state.bonusAssignments[bonusId][dateStr] > 2 && !state.displayedMessages[`${bonusId}_${dateStr}`] && state.messageCount < 2) {
-                    showBonusViolationMessage({ bonusId, dateStr, index: state.messageCount++ });
+                const bonusCount = state.bonusAssignments[bonusId][dateStr];
+
+                if (bonusCount >= 3 && !state.displayedMessages[`${bonusId}_${dateStr}`] && state.messageCount < 2) {
+                    showBonusViolationMessage({
+                        bonusId,
+                        dateStr,
+                        index: state.messageCount++,
+                        count: bonusCount
+                    });
                     state.displayedMessages[`${bonusId}_${dateStr}`] = true;
                 }
             }
@@ -8016,6 +8028,30 @@ ${fraud.manager === managerName ? `
         });
     }
 
+    function addMainMenuButtons() {
+        const navElement = document.querySelector('div.collapse.navbar-collapse ul.pull-right.nav.navbar-nav');
+
+        if (navElement) {
+            const referralItem = document.createElement('li');
+            referralItem.innerHTML = `
+                <a href="/referrals/referralsStatistics/report">
+                    <i class="fa fa-users"></i> Реферальна система
+                </a>
+            `;
+
+            const boostersItem = document.createElement('li');
+            boostersItem.innerHTML = `
+                <a href="/rankLeague/rankLeaguePlayersBoostersReport/view">
+                    <i class="fa fa-rocket"></i> Бустери
+                </a>
+            `;
+
+            navElement.insertBefore(boostersItem, navElement.firstChild);
+            navElement.insertBefore(referralItem, navElement.firstChild);
+        }
+    }
+
+
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
 
@@ -8033,6 +8069,7 @@ ${fraud.manager === managerName ? `
 
     window.addEventListener('load', async function() {
         addLocationButton();
+        addMainMenuButtons();
         const tokenIsValid = await checkToken();
         const currentHost = window.location.hostname;
         if (tokenIsValid) {

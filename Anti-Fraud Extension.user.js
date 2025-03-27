@@ -25,6 +25,13 @@
 // @connect      admin.vegas.ua
 // @connect      admin.betking.com.ua
 // @connect      admin.wildwinz.com
+// @connect      admin.funrize.com
+// @connect      admin.nolimitcoins.com
+// @connect      admin.taofortune.com
+// @connect      admin.funzcity.com
+// @connect      admin.wildwinz.com
+// @connect      admin.fortunewheelz.com
+// @connect      admin.jackpotrabbit.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
 // @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
@@ -3813,7 +3820,7 @@ ${fraud.manager === managerName ? `
             return;
         }
 
-        const content = `Бонус ${bonusId} присвоєно більше 2 разів за день ${dateStr}`;
+        const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
         const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
         textElement.appendChild(createClickableMessage(`popup-bonus-violation-${index}`, content, onClick));
@@ -7134,6 +7141,100 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function disablePromoOffersUSA() {
+
+        const project = getProject();
+        const baseHeaders = {
+            accept: "*/*",
+            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+            "cache-control": "no-cache",
+            pragma: "no-cache",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-requested-with": "XMLHttpRequest"
+        };
+
+        const baseConfig = {
+            referrer: `https://admin.${project}.com/players/playersItems/update/${userId}/`,
+            referrerPolicy: "strict-origin-when-cross-origin",
+            method: "POST",
+            mode: "cors",
+            credentials: "include"
+        };
+
+        const targetTr = Array.from(document.querySelectorAll('tr.even'))
+        .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
+        const targetTd = targetTr?.querySelector('td');
+
+        if (!targetTd) {
+            console.error('Не найден элемент <td> в строке с "Лимит промо оферов в день"');
+            return;
+        }
+
+
+        const disableButton = $('<input>', {
+            type: 'button',
+            value: 'Вимкнути всі активності',
+            class: 'btn btn-xs btn-danger',
+            css: { 'margin-right': '10px' }
+        }).on('click', e => {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'question',
+                title: 'Вимкнути всі активності?',
+                showCancelButton: true,
+                cancelButtonText: 'Відміна',
+                confirmButtonText: 'Так',
+                preConfirm: async () => {
+                    try {
+                        const limitResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changePromoOfferLimitPerDay/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                                body: `playerId=${userId}&offerLimit=0`
+                            }
+                        ).then(res => res.json());
+
+                        if (!limitResponse.success) throw new Error(limitResponse.message || 'Помилка першого запиту');
+
+                        const featuresResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/json" },
+                                body: JSON.stringify({
+                                    playerId: userId,
+                                    racesBlocked: true,
+                                    tournamentsBlocked: true,
+                                    jackpotsBlocked: true,
+                                    lotteriesBlocked: true,
+                                    rankLeagueBlocked: true,
+                                    wheelsBlocked: true,
+                                    cashbackBlocked: true,
+                                    refererBlocked: true,
+                                    moneyBoxBlocked: true
+                                })
+                            }
+                        ).then(res => res.json());
+
+                        if (!featuresResponse.success) throw new Error(featuresResponse.message || 'Помилка другого запиту');
+
+                        Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
+                            .then(() => location.reload());
+                    } catch (error) {
+                        Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
+                    }
+                }
+            });
+        });
+        targetTd.appendChild(disableButton[0]);
+    }
 
     function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
@@ -7165,77 +7266,289 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    async function createUSAPopupBox() {
-        let popupBox = document.getElementById('custom-popup-box');
-        if (popupBox) {
-            return;
-        }
-        async function fetchMonthAndTotalPA() {
-            async function getInOutUrl() {
-                const scripts = document.querySelectorAll('script');
-                for (const script of scripts) {
-                    const scriptContent = script.textContent;
-                    if (scriptContent.includes('#show-player-in-out')) {
-                        const urlMatch = scriptContent.match(/url:\s*'([^']+)'/);
-                        if (urlMatch) {
-                            return urlMatch[1];
-                        }
+    const POPUP_STYLES_USA = {
+        position: 'fixed',
+        top: '53px',
+        left: '1409px',
+        width: '310px',
+        height: 'auto',
+        padding: '20px',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        border: '2px solid black',
+        boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
+        zIndex: '10000',
+        fontFamily: '"Roboto", sans-serif',
+        fontSize: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        borderRadius: '10px',
+        resize: 'both',
+        overflow: 'auto',
+        animation: 'glow 1s infinite alternate'
+    };
+
+    const COMBINED_STYLES = `
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    #popup-container {
+        min-height: 200px;
+        overflow-y: auto;
+        white-space: normal;
+        word-wrap: break-word;
+        font-family: Arial, sans-serif;
+    }
+    .profit-section {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        text-align: justify;
+    }
+    .main-profit {
+        border-bottom: 2px solid #3498db;
+    }
+    .related-projects {
+        border-bottom: 1px dashed #ccc;
+    }
+    .total-profit {
+        background-color: #e6f3ff;
+        font-weight: bold;
+    }
+    .project-link {
+        color: #2c3e50;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .project-link:hover {
+        text-decoration: underline;
+        color: #3498db;
+    }
+`;
+
+    async function getProjectProfit(project, id) {
+        const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
+        const paymentsURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
+
+        let deposits = 0;
+        let withdrawals = 0;
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: baseURL,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
+                onload: (response) => {
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const table = doc.querySelector('.detail-view');
+                    if (table) {
+                        table.querySelectorAll('tr').forEach(row => {
+                            if (row.querySelector('th')?.textContent.trim() === 'Deposits Total') {
+                                deposits = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            }
+                        });
                     }
-                }
-                return null;
-            }
+
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: paymentsURL,
+                        onload: (paymentsResponse) => {
+                            const paymentsDoc = new DOMParser().parseFromString(paymentsResponse.responseText, 'text/html');
+                            const paymentsTable = paymentsDoc.querySelector('.items.table.table-striped.table-hover');
+                            if (paymentsTable) {
+                                paymentsTable.querySelectorAll('tr').forEach(row => {
+                                    const cells = row.querySelectorAll('td');
+                                    if (cells.length >= 12) {
+                                        const status = cells[1].querySelector('.label')?.textContent.trim();
+                                        const gateway = cells[11].textContent.trim();
+                                        const amount = parseFloat(cells[5].textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                                        if (status === 'closed' && gateway !== 'Другое') {
+                                            withdrawals += amount;
+                                        }
+                                    }
+                                });
+                            }
+                            const profit = deposits - withdrawals;
+                            console.log(`${project}: Deposits=${deposits}, Withdrawals=${withdrawals}, Profit=${profit}`);
+                            resolve({ project, profit, deposits, withdrawals });
+                        },
+                        onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
+                    });
+                },
+                onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
+            });
+        });
+    }
+
+    // Функция для получения связанных аккаунтов
+    async function getRelatedAccounts(currentProject, playerID) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: `https://admin.${currentProject}.com/fraudDetectors/antifraudBase/personAccounts/?playerId=${userId}`,
+                headers: {
+                    "accept": "*/*",
+                    "content-type": "application/x-www-form-urlencoded",
+                    "x-requested-with": "XMLHttpRequest"
+                },
+                onload: (response) => {
+                    if (response.status !== 200) {
+                        reject(new Error(`Server error: ${response.status} - ${response.responseText}`));
+                        return;
+                    }
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const accounts = doc.querySelectorAll('.person-account');
+                    const relatedAccounts = [];
+                    const projectLinks = {};
+
+                    accounts.forEach(account => {
+                        const project = account.querySelector('.person-account__project b')?.textContent.trim();
+                        const id = account.querySelector('.person-account__login a')?.textContent.trim();
+                        const link = account.querySelector('.person-account__login a')?.getAttribute('href');
+                        if (project && id) {
+                            projectLinks[project] = link;
+                            if (project !== currentProject) {
+                                relatedAccounts.push({ project, id });
+                            }
+                        }
+                    });
+                    resolve({ relatedAccounts, projectLinks });
+                },
+                onerror: (error) => reject(error)
+            });
+        });
+    }
+
+    // Функция для форматирования вывода
+    function formatProfitOutput(mainResult, relatedProjects, totalProfit, projectLinks, totalPending, winnings) {
+        const cleanBalance = parseFloat(winnings) || 0;
+        const prognoseInOut = mainResult.deposits - (totalPending + mainResult.withdrawals + cleanBalance);
+        const prognosePA = mainResult.deposits ? ((mainResult.withdrawals + totalPending + cleanBalance) / mainResult.deposits * 100) : 0;
+
+        let outputHTML = `
+        <div class="profit-section main-profit">
+            <div><b>Total InOut:</b> ${mainResult.profit.toFixed(2)}$</div>
+            ${(totalPending > 1 || cleanBalance > 1) ? `
+                <div><b>Prognose InOut:</b> ${prognoseInOut.toFixed(2)}$</div>
+                <div><b>Prognose PA:</b> <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></div>
+            ` : ''}
+        </div>
+        <div class="profit-section related-projects">
+            <b>Related Projects:</b><br>
+    `;
+
+        relatedProjects.forEach(proj => {
+            const projectName = proj.project.charAt(0).toUpperCase() + proj.project.slice(1);
+            const link = projectLinks[proj.project] || '#';
+            outputHTML += `
+            <div>
+                <a href="${link}" target="_blank" class="project-link">${projectName}</a>: ${proj.profit.toFixed(2)}$
+            </div>
+        `;
+        });
+
+        outputHTML += `
+        </div>
+        <div class="profit-section total-profit">
+            <div><b>Person InOut:</b> ${totalProfit.toFixed(2)}$</div>
+        </div>
+    `;
+
+        return outputHTML;
+    }
+
+    async function fetchProfit(totalPending, winnings, profitButton, container) {
+        const loader = document.createElement('div');
+        loader.style.cssText = 'border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 10px auto;';
+        container.appendChild(loader);
+
+        const style = document.createElement('style');
+        style.textContent = COMBINED_STYLES;
+        document.head.appendChild(style);
+
+        profitButton.remove();
+
+        try {
+            const playerID = getPlayerID();
+            const currentProject = getProject();
+            console.log(`Starting for ${currentProject} with ID ${playerID}`);
+
+            const mainResult = await getProjectProfit(currentProject, playerID);
+            const { relatedAccounts, projectLinks } = await getRelatedAccounts(currentProject, playerID);
+            const relatedPromises = relatedAccounts.map(acc => getProjectProfit(acc.project, acc.id));
+            const relatedResults = await Promise.all(relatedPromises);
+
+            const allProjectsProfit = [mainResult, ...relatedResults];
+            const totalProfit = allProjectsProfit.reduce((sum, item) => sum + item.profit, 0);
+
+            container.removeChild(loader);
+            container.innerHTML = formatProfitOutput(mainResult, relatedResults, totalProfit, projectLinks, totalPending, winnings);
+        } catch (error) {
+            console.error('Error in fetchProfit:', error);
+            container.removeChild(loader);
+            container.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
+        }
+    }
+
+    function createIcon(iconClass, positionStyles, title, onClick) {
+        const icon = document.createElement('div');
+        icon.innerHTML = `<i class="fa ${iconClass}"></i>`;
+        applyStyles(icon, { ...ICON_STYLES, ...positionStyles });
+        icon.title = title;
+        icon.onclick = onClick;
+        return icon;
+    }
+
+    async function createUSAPopupBox() {
+        if (document.getElementById('custom-popup-box')) return;
+
+        async function fetchMonthAndTotalPA() {
+            const urlMatch = Array.from(document.querySelectorAll('script'))
+            .find(script => script.textContent.includes('#show-player-in-out'))
+            ?.textContent.match(/url:\s*'([^']+)'/)?.[1];
+            if (!urlMatch) return null;
 
             try {
-                const url = await getInOutUrl();
-                if (!url) {
-                    console.error('URL не найден');
-                    return null;
-                }
-                const response = await $.ajax({
-                    type: 'GET',
-                    url: url,
-                });
-                const { totalInOut: TotalPA, monthInOut: MonthPA } = response;
-                if (TotalPA === undefined || MonthPA === undefined) {
-                    console.error('Не удалось получить TotalPA или MonthPA');
-                    return null;
-                }
-                return { TotalPA, MonthPA };
+                const response = await $.ajax({ type: 'GET', url: urlMatch });
+                return { TotalPA: response.totalInOut, MonthPA: response.monthInOut };
             } catch (error) {
-                console.error('Ошибка при получении данных:', error);
+                console.error('Error fetching PA:', error);
                 return null;
             }
         }
-        setTimeout(async function() {
 
-            const result = await fetchMonthAndTotalPA();
-            const TotalPA = result.TotalPA;
-            const MonthPA = result.MonthPA;
+        setTimeout(async () => {
+            const { TotalPA, MonthPA } = (await fetchMonthAndTotalPA()) || {};
+            const entries = document.querySelector('#Players_balance')?.value.trim() || 'N/A';
+            const winnings = getWinnings() || 'N/A';
 
-            const entries = document.querySelector('#Players_balance').value.trim();
-            const winnings = getWinnings();
-            popupBox = document.createElement('div');
-            popupBox.style.position = 'fixed';
-            popupBox.style.top = '20px';
-            popupBox.style.right = '';
-
-            const popupWidth = 305;
-            popupBox.style.left = `calc(100% - ${popupWidth + 20}px)`;
-            popupBox.style.width = `${popupWidth}px`;
+            const popupBox = document.createElement('div');
+            const popupWidth = parseInt(POPUP_STYLES_USA.width.replace('px', ''), 10);
+            applyStyles(popupBox, {
+                ...POPUP_STYLES_USA,
+                left: `calc(100% - ${popupWidth + 20}px)`,
+                border: `2px solid ${getColor(TotalPA)}`,
+                animation: 'glow 1s infinite alternate'
+            });
+            popupBox.id = 'custom-popup-box';
 
             const dragHandle = document.createElement('div');
-            dragHandle.style.position = 'absolute';
-            dragHandle.style.top = '0';
-            dragHandle.style.left = '0';
-            dragHandle.style.width = '100%';
-            dragHandle.style.height = '20px';
-            dragHandle.style.cursor = 'move';
+            applyStyles(dragHandle, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '20px',
+                cursor: 'move'
+            });
             popupBox.appendChild(dragHandle);
 
             let isDragging = false;
             let offsetX, offsetY;
-
-            dragHandle.addEventListener('mousedown', function (e) {
+            dragHandle.addEventListener('mousedown', (e) => {
                 isDragging = true;
                 offsetX = e.clientX - popupBox.getBoundingClientRect().left;
                 offsetY = e.clientY - popupBox.getBoundingClientRect().top;
@@ -7255,343 +7568,104 @@ ${fraud.manager === managerName ? `
                 document.removeEventListener('mouseup', onMouseUp);
             }
 
-            popupBox.style.padding = '20px';
-            popupBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-            popupBox.style.border = `2px solid black`;
-            popupBox.style.boxShadow = `0px 4px 12px rgba(0, 0, 0, 0.1)`;
-            popupBox.style.zIndex = '10000';
-            popupBox.style.fontFamily = '"Roboto", sans-serif';
-            popupBox.style.fontSize = '16px';
-            popupBox.style.display = 'flex';
-            popupBox.style.flexDirection = 'column';
-            popupBox.style.alignItems = 'center';
-            popupBox.style.borderRadius = '10px';
-            popupBox.style.animation = 'glow 1s infinite alternate';
-            popupBox.style.resize = 'both';
-            popupBox.style.overflow = 'auto';
+            const mainText = document.createElement('div');
+            mainText.className = 'popup-main-text';
+            mainText.innerHTML = `
+            <center><h3 id="freemoney-info"></h3></center>
+            <center><b>Entries: ${entries}$ | Winnings: ${winnings}$</center>
+            <center>Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA >= 0.75 && MonthPA < 1 ? 'orange' : 'red')}">${MonthPA || 'N/A'}</span> | Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red')}">${TotalPA || 'N/A'}</span></center>
+            <center id="pending-info"></center>
+            <center id="offer-info">Loading deposit analysis...</center>
+            <center id="activitymoney-info"></b></center>
+        `;
+            popupBox.appendChild(mainText);
 
-            const settingsIcon = document.createElement('div');
-            settingsIcon.innerHTML = '<i class="fa fa-cog"></i>';
-            settingsIcon.style.position = 'absolute';
-            settingsIcon.style.top = '10px';
-            settingsIcon.style.right = '10px';
-            settingsIcon.style.cursor = 'pointer';
-            settingsIcon.style.fontSize = '20px';
-            settingsIcon.title = 'Налаштування';
-            settingsIcon.onclick = () => {
-                createSettingsPopup();
-            };
-            popupBox.appendChild(settingsIcon);
-
-            const statisticIcon = document.createElement('div');
-            statisticIcon.innerHTML = '<i class="fa fa-signal"></i>';
-            statisticIcon.style.position = 'absolute';
-            statisticIcon.style.top = '35px';
-            statisticIcon.style.right = '10px';
-            statisticIcon.style.cursor = 'pointer';
-            statisticIcon.style.fontSize = '20px';
-            statisticIcon.title = 'Статистика';
-            statisticIcon.onclick = () => {
-                createStatisticPopup();
-            };
-            popupBox.appendChild(statisticIcon);
-
-            const status = await checkUserStatus();
-            if (status === 'Admin') {
-                const adminIcon = document.createElement('div');
-                adminIcon.innerHTML = '<i class="fa fa-users"></i>';
-                adminIcon.style.position = 'absolute';
-                adminIcon.style.top = '70px';
-                adminIcon.style.right = '10px';
-                adminIcon.style.cursor = 'pointer';
-                adminIcon.style.fontSize = '18px';
-                adminIcon.title = 'Користувачі';
-                adminIcon.onclick = () => {
-                    if (document.getElementById('admin-popup')) {
-                        return;
-                    }
-                    createAdminPopup();
-                };
-                popupBox.appendChild(adminIcon);
-                addExcludeButton();
-            }
-
-            const fraudIcon = document.createElement('div');
-            fraudIcon.style.position = 'absolute';
-            fraudIcon.style.top = '10px';
-            fraudIcon.style.left = '10px';
-            fraudIcon.style.cursor = 'pointer';
-            fraudIcon.style.fontSize = '20px';
-            fraudIcon.title = 'Нагляд';
-            fraudIcon.innerHTML = '<i class="fa fa-eye"></i>';
-
-            fraudIcon.onclick = () => {
-                createFraudPopup();
-            };
-            popupBox.appendChild(fraudIcon);
-
-            const showReminder = GM_getValue(reminderDisplayKey, true);
-
-            const shouldBlink = GM_getValue(reminderBlinkKey, true);
-            const hasNewArticles = await checkForNewArticles();
-
-            if (showReminder === true) {
-                const reminderIcon = document.createElement('div');
-                reminderIcon.style.position = 'absolute';
-                reminderIcon.style.top = '40px';
-                reminderIcon.style.left = '10px';
-                reminderIcon.style.fontSize = '20px';
-                reminderIcon.style.cursor = 'pointer';
-                reminderIcon.title = 'Памятка';
-                reminderIcon.innerHTML = '<i class="fa fa-book"></i>';
-
-                if (hasNewArticles || shouldBlink) {
-                    reminderIcon.classList.add('blinking');
-                }
-
-                reminderIcon.onclick = () => {
+            popupBox.appendChild(createSettingsIcon());
+            popupBox.appendChild(createStatisticIcon());
+            popupBox.appendChild(createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup()));
+            const showReminder = GM_getValue('reminderDisplayKey', true);
+            if (showReminder) {
+                const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
                     createReminderPopup();
                     reminderIcon.classList.remove('blinking');
-                    GM_setValue(reminderBlinkKey, false);
-                };
-
+                    GM_setValue('reminderBlinkKey', false);
+                });
+                if (await checkForNewArticles() || GM_getValue('reminderBlinkKey', true)) {
+                    reminderIcon.classList.add('blinking');
+                }
                 popupBox.appendChild(reminderIcon);
             }
-
-            const maintext = document.createElement('div');
-            maintext.className = 'popup-main-text';
-            maintext.innerHTML = `
-                        <center><h3 id="freemoney-info"></center>
-                        <center><b>Entries: ${entries}$ | Winnings: ${winnings}$</center>
-                        <center>Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA >= 0.75 && MonthPA < 1 ? 'orange' : 'red')}">${MonthPA}</span> | Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red')}">${TotalPA}</span></center>
-                        <center id="pending-info"></center>
-                        <center id="offer-info">Loading deposit analysis...</center>
-                        <center id="activitymoney-info"></center>
-
-                    `;
-            popupBox.appendChild(maintext);
+            await addAdminIcon(popupBox);
 
             const firstRowButtonContainer = document.createElement('div');
-            firstRowButtonContainer.style.marginTop = '10px';
-            firstRowButtonContainer.style.display = 'flex';
-            firstRowButtonContainer.style.gap = '10px';
-
+            applyStyles(firstRowButtonContainer, { marginTop: '10px', display: 'flex', gap: '10px' });
             popupBox.appendChild(firstRowButtonContainer);
+
             const { isCheckedToday } = await checkUserInChecklist();
             firstRowButtonContainer.appendChild(createCleanButton(isCheckedToday));
 
             const secondRowButtonContainer = document.createElement('div');
-            secondRowButtonContainer.style.marginTop = '10px';
-            secondRowButtonContainer.style.display = 'block';
-            secondRowButtonContainer.style.justifyContent = 'center';
-            secondRowButtonContainer.style.alignItems = 'center';
-            secondRowButtonContainer.style.textAlign = 'center';
-            getPendings(function(totalPending) {
+            applyStyles(secondRowButtonContainer, { marginTop: '10px', textAlign: 'center' });
+            popupBox.appendChild(secondRowButtonContainer);
 
-                const pendingInfoElement = document.getElementById('pending-info');
-                if (totalPending === 0) {
-                    pendingInfoElement.remove();
-                } else {
-                    pendingInfoElement.textContent = `Total Pending: ${totalPending}$`;
-                }
-                let isProfitButtonClicked = false;
+            getPendings(totalPending => {
+                const pendingInfo = document.getElementById('pending-info');
+                if (totalPending) pendingInfo.textContent = `Total Pending: ${totalPending}$`;
+                else pendingInfo.remove();
 
                 const profitButton = document.createElement('button');
                 applyStyles(profitButton, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
-                profitButton.onmouseover = () => profitButton.style.backgroundColor = '#2f76ae';
                 profitButton.innerText = 'Total InOut';
+                profitButton.onmouseover = () => profitButton.style.backgroundColor = '#2f76ae';
                 profitButton.onmouseout = () => profitButton.style.backgroundColor = '#2196F3';
-                profitButton.addEventListener('click', () => {
-                    if (!isProfitButtonClicked) {
-                        isProfitButtonClicked = true;
-                        fetchProfit(totalPending, winnings);
-                    }
-                });
+                profitButton.addEventListener('click', () => fetchProfit(totalPending, winnings, profitButton, secondRowButtonContainer));
                 secondRowButtonContainer.appendChild(profitButton);
-            })
 
-            popupBox.appendChild(secondRowButtonContainer);
-
-
-            document.body.appendChild(popupBox);
-
-            analyzePayments(function(offerPercentage, totalMoneyFromOffer, totalDeposits, moneyFromOfferPercentage, totalDepositsAmount, depositsWithOffer) {
-                const offerInfoElement = document.getElementById('offer-info');
-
-                if (offerInfoElement) {
-                    const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
-
-                    const offerPercentageText = colorText(`Deposits With Offer: ${offerPercentage}%`, offerPercentage >= 50);
-                    const moneyFromOfferPercentageText = colorText(`Money From Offer: ${moneyFromOfferPercentage}%`, moneyFromOfferPercentage >= 25);
-
-                    offerInfoElement.innerHTML = `${offerPercentageText}<br>${moneyFromOfferPercentageText}`;
-                    offerInfoElement.title = `Кількість депозитів: ${totalDeposits}\nКількість оферів: ${depositsWithOffer}\nСума депозитів: ${totalDepositsAmount}$\nСума entries: ${totalMoneyFromOffer}$`;
-                }
-                analyzeTransaction(function(totalUSD) {
-                    const activityMoneyInfoElement = document.getElementById('activitymoney-info');
-                    const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : 0;
-
-                    if (activityMoneyInfoElement) {
+                analyzePayments((offerPercentage, totalMoneyFromOffer, totalDeposits, moneyFromOfferPercentage, totalDepositsAmount, depositsWithOffer) => {
+                    const offerInfoElement = document.getElementById('offer-info');
+                    if (offerInfoElement) {
                         const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
-                        const activityMoneyPercentageText = colorText(`Activity Money: ${activityMoneyPercentage.toFixed(2)}%`, activityMoneyPercentage >= 50);
-
-                        activityMoneyInfoElement.innerHTML = `${activityMoneyPercentageText}`;
-                        activityMoneyInfoElement.title = `Activity Money: ${totalUSD}$`;
-
-                        const freeMoneyInfoElement = document.getElementById('freemoney-info');
-                        let freeMoneyTotal = activityMoneyPercentage + parseFloat(moneyFromOfferPercentage)
-                        let textColor;
-                        if (freeMoneyTotal < 10) {
-                            textColor = 'green';
-                        } else if (freeMoneyTotal >= 10 && freeMoneyTotal < 50) {
-                            textColor = 'orange';
-                        } else {
-                            textColor = 'red';
-                        }
-                        freeMoneyInfoElement.innerHTML = `Free Money: ${freeMoneyTotal.toFixed(2)}%`;
-                        freeMoneyInfoElement.style.color = textColor;
-                        popupBox.style.borderColor = textColor;
-                        popupBox.style.animation = `glow 1s infinite alternate`;
-
-                        const style = document.createElement('style');
-                        style.textContent = `
-                                    @keyframes glow {
-                                        0% { box-shadow: 0 0 5px ${textColor}; }
-                                        100% { box-shadow: 0 0 25px ${textColor}; }
-                                    }
-                                `;
-                        document.head.appendChild(style);
-                        getPendingss().then(totalPendings => {
-                            addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings);
-                        }).catch(error => {
-                            console.error('Ошибка при получении данных:', error);
-                        });
-
-
+                        offerInfoElement.innerHTML = `
+                        ${colorText(`Deposits With Offer: ${offerPercentage}%`, offerPercentage >= 50)}<br>
+                        ${colorText(`Money From Offer: ${moneyFromOfferPercentage}%`, moneyFromOfferPercentage >= 25)}
+                    `;
+                        offerInfoElement.title = `Кількість депозитів: ${totalDeposits}\nКількість оферів: ${depositsWithOffer}\nСума депозитів: ${totalDepositsAmount}$\nСума entries: ${totalMoneyFromOffer}$`;
                     }
+
+                    analyzeTransaction(totalUSD => {
+                        const activityMoneyInfoElement = document.getElementById('activitymoney-info');
+                        const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : 0;
+                        if (activityMoneyInfoElement) {
+                            const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
+                            activityMoneyInfoElement.innerHTML = colorText(`<b>Activity Money: ${activityMoneyPercentage.toFixed(2)}%</b>`, activityMoneyPercentage >= 50);
+                            activityMoneyInfoElement.title = `Activity Money: ${totalUSD}$`;
+
+                            const freeMoneyInfoElement = document.getElementById('freemoney-info');
+                            const freeMoneyTotal = activityMoneyPercentage + parseFloat(moneyFromOfferPercentage);
+                            const textColor = freeMoneyTotal < 10 ? 'green' : (freeMoneyTotal < 50 ? 'orange' : 'red');
+                            freeMoneyInfoElement.innerHTML = `Free Money: ${freeMoneyTotal.toFixed(2)}%`;
+                            freeMoneyInfoElement.style.color = textColor;
+                            popupBox.style.borderColor = textColor;
+                            popupBox.style.animation = `glow 1s infinite alternate`;
+
+                            const style = document.createElement('style');
+                            style.textContent = `
+                            @keyframes glow {
+                                0% { box-shadow: 0 0 5px ${textColor}; }
+                                100% { box-shadow: 0 0 25px ${textColor}; }
+                            }
+                        `;
+                            document.head.appendChild(style);
+
+                            getPendingss().then(totalPendings => {
+                                addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings);
+                            }).catch(error => console.error('Ошибка при получении данных:', error));
+                        }
+                    });
                 });
             });
 
-            function fetchProfit(totalPending, winnings) {
-                const loader = document.createElement('div');
-                loader.style.border = '8px solid #f3f3f3';
-                loader.style.borderTop = '8px solid #3498db';
-                loader.style.borderRadius = '50%';
-                loader.style.width = '50px';
-                loader.style.height = '50px';
-                loader.style.animation = 'spin 2s linear infinite';
-                loader.style.marginBottom = '10px';
-                secondRowButtonContainer.appendChild(loader);
-
-                const style = document.createElement('style');
-                style.textContent = `
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #popup-container {
-            min-height: 200px;
-            overflow-y: auto;
-            white-space: normal;
-            word-wrap: break-word;
-        }
-    `;
-                document.head.appendChild(style);
-
-                const playerID = getPlayerID();
-                const project = getProject();
-                const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
-                const paymentsURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
-
-                let depositsTotal = 0;
-                let redeemsTotal = 0;
-                let closedWithdrawalsSum = 0;
-
-                GM_xmlhttpRequest({
-                    method: 'POST',
-                    url: baseURL,
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(playerID)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
-                    onload: function(response) {
-                        if (response.status >= 200 && response.status < 300) {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(response.responseText, 'text/html');
-                            const table = doc.querySelector('.detail-view');
-
-                            if (table) {
-                                const rows = table.querySelectorAll('tr');
-                                rows.forEach(row => {
-                                    const key = row.querySelector('th')?.textContent.trim();
-                                    const value = row.querySelector('td')?.textContent.trim();
-                                    if (key === 'Deposits Total') {
-                                        depositsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
-                                    } else if (key === 'Redeems Total') {
-                                        redeemsTotal = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
-                                    }
-                                });
-
-                                GM_xmlhttpRequest({
-                                    method: 'GET',
-                                    url: paymentsURL,
-                                    onload: function(paymentsResponse) {
-                                        if (paymentsResponse.status >= 200 && paymentsResponse.status < 300) {
-                                            const paymentsDoc = parser.parseFromString(paymentsResponse.responseText, 'text/html');
-                                            const paymentsTable = paymentsDoc.querySelector('.items.table.table-striped.table-hover');
-
-                                            if (paymentsTable) {
-                                                const rows = paymentsTable.querySelectorAll('tr');
-                                                rows.forEach(row => {
-                                                    const cells = row.querySelectorAll('td');
-                                                    if (cells.length >= 12) {
-                                                        const status = cells[1].querySelector('.label')?.textContent.trim();
-                                                        const gateway = cells[11].textContent.trim();
-                                                        const amountText = cells[5].textContent.trim();
-
-                                                        if (status === 'closed' && gateway !== 'Другое') {
-                                                            const amount = parseFloat(amountText.replace(/[^0-9.-]/g, '')) || 0;
-                                                            closedWithdrawalsSum += amount;
-                                                        }
-                                                    }
-                                                });
-                                            }
-
-                                            let cleanBalance = parseFloat(winnings);
-                                            const profit = depositsTotal - closedWithdrawalsSum;
-                                            const PrognoseInOut = depositsTotal - (totalPending + closedWithdrawalsSum + cleanBalance);
-                                            const PrognosePA = ((closedWithdrawalsSum + totalPending + cleanBalance) / depositsTotal) * 100;
-
-                                            secondRowButtonContainer.removeChild(loader);
-                                            secondRowButtonContainer.innerHTML += `
-                                    <div><b>Total InOut: ${profit.toFixed(2)}$</b></div>
-                                    ${(totalPending > 1 || cleanBalance > 1) ? `
-                                        <div><b>Prognose InOut: ${PrognoseInOut.toFixed(2)}$</b></div>
-                                        <div><b>Prognose PA: <span style="color: ${getColor(PrognosePA / 100)}">${PrognosePA.toFixed(2)}%</span></b></div>
-                                    ` : ''}
-                                `;
-                                        }
-                                    },
-                                    onerror: function(error) {
-                                        console.error('Ошибка второго запроса:', error);
-                                        secondRowButtonContainer.removeChild(loader);
-                                        secondRowButtonContainer.innerHTML += 'Ошибка второго запроса: ' + error.message;
-                                    }
-                                });
-                            } else {
-                                secondRowButtonContainer.removeChild(loader);
-                                secondRowButtonContainer.innerHTML += 'Таблица с результатами не найдена.';
-                            }
-                        }
-                    },
-                    onerror: function(error) {
-                        console.error('Ошибка первого запроса:', error);
-                        secondRowButtonContainer.removeChild(loader);
-                        secondRowButtonContainer.innerHTML += 'Ошибка первого запроса: ' + error.message;
-                    }
-                });
-            }
-            ;
+            document.body.appendChild(popupBox);
         }, 300);
     }
 
@@ -8119,6 +8193,7 @@ ${fraud.manager === managerName ? `
                 createUSAPopupBox();
                 analyzeTransaction();
                 buttonToSave();
+                disablePromoOffersUSA();
                 checkUserInFraudList();
                 activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {

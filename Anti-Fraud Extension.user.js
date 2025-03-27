@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.0.8
+// @version      6.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -73,7 +73,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.0.8";
+    const currentVersion = "6.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -570,6 +570,46 @@
             }
         }
     }
+
+    const COMBINED_STYLES = `
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    #popup-container {
+        min-height: 200px;
+        overflow-y: auto;
+        white-space: normal;
+        word-wrap: break-word;
+        font-family: Arial, sans-serif;
+    }
+    .profit-section {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        text-align: justify;
+    }
+    .main-profit {
+        border-bottom: 2px solid #3498db;
+    }
+    .related-projects {
+        border-bottom: 1px dashed #ccc;
+    }
+    .total-profit {
+        background-color: #e6f3ff;
+        font-weight: bold;
+    }
+    .project-link {
+        color: #2c3e50;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .project-link:hover {
+        text-decoration: underline;
+        color: #3498db;
+    }
+`;
 
     async function checkUserInFraudList() {
         const token = localStorage.getItem('authToken');
@@ -3399,7 +3439,7 @@ ${fraud.manager === managerName ? `
         applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
         button.onmouseover = () => button.style.backgroundColor = '#2f76ae';
         button.onmouseout = () => button.style.backgroundColor = '#2196F3';
-        button.addEventListener('click', () => handleTotalInOutClick(container, { Balance, totalPending }));
+        button.addEventListener('click', () => handleCombinedProfit(container, { Balance, totalPending }));
         container.appendChild(button);
         return container;
     }
@@ -3656,6 +3696,191 @@ ${fraud.manager === managerName ? `
             span.removeAttribute('data-content');
         }
         return tempDiv.innerHTML;
+    }
+
+    const PROJECT_DOMAINS = [
+        'https://admin.777.ua/',
+        'https://admin.vegas.ua/',
+        'https://admin.betking.com.ua/'
+    ];
+
+    async function handleCombinedProfit(container, { Balance, totalPending }) {
+        const loader = createLoader();
+        container.appendChild(loader);
+
+        const styleElement = document.createElement('style');
+        style.textContent = COMBINED_STYLES;
+        document.head.appendChild(style);
+
+        try {
+            const playerID = getPlayerID();
+            const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+            const currentPlayerData = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: baseURL,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+                    onload: response => {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        const table = doc.querySelector('.detail-view');
+                        if (!table) {
+                            reject(new Error('Таблица текущего игрока не найдена'));
+                            return;
+                        }
+
+                        let depositsTotal = 0, redeemsTotal = 0;
+                        table.querySelectorAll('tr').forEach(row => {
+                            const key = row.querySelector('th')?.textContent.trim();
+                            const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            if (key === 'Deposits Total') depositsTotal = value;
+                            if (key === 'Redeems Total') redeemsTotal = value;
+                        });
+
+                        const profit = depositsTotal - redeemsTotal;
+                        resolve({ deposits: depositsTotal, withdrawals: redeemsTotal, profit });
+                    },
+                    onerror: error => reject(error)
+                });
+            });
+
+            const inn = await getPlayerInn();
+            if (!inn) throw new Error('ИНН игрока не найден');
+
+            const currentProject = window.location.origin + '/';
+            const searchDomains = PROJECT_DOMAINS.filter(domain => domain !== currentProject);
+            const foundPlayers = await Promise.all(
+                searchDomains.map(domain => searchPlayerByInn(domain, inn))
+            );
+
+            const validPlayers = foundPlayers.filter(result => result && result.playerId);
+            const relatedResults = await Promise.all(
+                validPlayers.map(result => calculateTotalInOut(result.domain, result.playerId))
+            );
+
+            const cleanBalance = parseFloat(Balance) || 0;
+            const safeBalance = getInnerBalanceValue();
+            const profit = currentPlayerData.profit;
+            const prognoseInOut = currentPlayerData.deposits - (totalPending + currentPlayerData.withdrawals + cleanBalance + safeBalance);
+            const prognosePA = currentPlayerData.deposits ? ((currentPlayerData.withdrawals + totalPending + cleanBalance + safeBalance) / currentPlayerData.deposits) * 100 : 0;
+            const showAmount = GM_getValue(amountDisplayKey, true);
+            const currencySymbol = currencySymbols.get(getCurrency()) || '';
+            const totalProfit = currentPlayerData.profit + relatedResults.reduce((sum, r) => sum + (r.depositsTotal - r.redeemsTotal), 0);
+
+            container.removeChild(loader);
+            container.innerHTML = `
+            <div class="profit-section main-profit">
+                <b>Total InOut: ${formatCurrency(profit, showAmount, currencySymbol)}</b><br>
+                ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
+                    <b>Prognose InOut: ${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</b><br>
+                    <b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
+                ` : ''}
+            </div>
+            <div class="profit-section related-projects">
+                <b>Related Projects:</b><br>
+                ${relatedResults.map((proj, index) => {
+                const projectName = proj.domain.split('.')[1].toUpperCase();
+                const playerId = validPlayers[index].playerId; // Берем playerId из validPlayers
+                const link = `${proj.domain}players/playersItems/search?PlayersSearchForm[number]=${playerId || 'unknown'}`;
+                return `<div><a href="${link}" target="_blank" class="project-link">${projectName}</a>: ${formatCurrency(proj.depositsTotal - proj.redeemsTotal, true, currencySymbol)}</div>`;
+            }).join('')}
+            </div>
+            <div class="profit-section total-profit">
+                <div><b>Person InOut:</b> ${formatCurrency(totalProfit, true, currencySymbol)}</div>
+            </div>
+        `;
+
+        } catch (error) {
+            container.removeChild(loader);
+            container.innerHTML = `<div style="color: red;">Ошибка: ${error.message}</div>`;
+        }
+    }
+
+    function getPlayerInn() {
+        return new Promise((resolve, reject) => {
+            const scripts = Array.from(document.querySelectorAll('script'));
+            const credentialsScript = scripts.find(script =>
+                                                   script.textContent.includes('#credentials-info') && script.textContent.includes('/players/playerCredentials/show/')
+                                                  );
+            if (!credentialsScript) return reject(new Error('Скрипт с URL для ИНН не найден'));
+
+            const urlMatch = credentialsScript.textContent.match(/url:\s*['"]\/players\/playerCredentials\/show\/\d+\/['"]/);
+            if (!urlMatch) return reject(new Error('URL для ИНН не найден'));
+            const url = urlMatch[0].match(/['"]([^'"]+)['"]/)[1];
+
+            $.ajax({
+                url: url,
+                method: 'GET',
+                success: response => {
+                    const doc = new DOMParser().parseFromString(response, 'text/html');
+                    const innInput = doc.querySelector('#common_services_players_models_PlayerCredentials_inn');
+                    resolve(innInput?.value || null);
+                },
+                error: () => reject(new Error('Не удалось загрузить ИНН'))
+            });
+        });
+    }
+
+    function searchPlayerByInn(domain, inn) {
+        return new Promise(resolve => {
+            const url = `${domain}players/playersItems/search?PlayersSearchForm[inn]=${inn}`;
+            function handleRequest(currentUrl) {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: currentUrl,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    onload: response => {
+                        if (response.status === 301 || response.status === 302) {
+                            const redirectUrlMatch = response.responseHeaders.match(/location: (.+)/i);
+                            const redirectUrl = redirectUrlMatch ? redirectUrlMatch[1].trim() : null;
+                            if (redirectUrl) handleRequest(redirectUrl);
+                            else resolve(null);
+                        } else if (response.status === 200) {
+                            const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                            const playerRow = doc.querySelector('tr.even');
+                            if (playerRow) {
+                                const playerIdSpan = playerRow.querySelector('td span:not(.fa):not(.manager-names)');
+                                const playerId = playerIdSpan ? playerIdSpan.textContent.trim() : null;
+                                resolve(playerId ? { domain, playerId } : null);
+                            } else {
+                                resolve(null);
+                            }
+                        } else {
+                            resolve(null);
+                        }
+                    },
+                    onerror: () => resolve(null)
+                });
+            }
+            handleRequest(url);
+        });
+    }
+
+    function calculateTotalInOut(domain, playerId) {
+        return new Promise(resolve => {
+            const baseURL = `${domain}players/playersDetail/index/`;
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: baseURL,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+                onload: response => {
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const table = doc.querySelector('.detail-view');
+                    let depositsTotal = 0, redeemsTotal = 0;
+                    if (table) {
+                        table.querySelectorAll('tr').forEach(row => {
+                            const key = row.querySelector('th')?.textContent.trim();
+                            const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            if (key === 'Deposits Total') depositsTotal = value;
+                            if (key === 'Redeems Total') redeemsTotal = value;
+                        });
+                    }
+                    resolve({ domain, depositsTotal, redeemsTotal, playerId }); // Добавляем playerId в результат
+                },
+                onerror: () => resolve({ domain, depositsTotal: 0, redeemsTotal: 0, playerId })
+            });
+        });
     }
 
     function handleTotalInOutClick(container, { Balance, totalPending }) {
@@ -7288,46 +7513,6 @@ ${fraud.manager === managerName ? `
         animation: 'glow 1s infinite alternate'
     };
 
-    const COMBINED_STYLES = `
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    #popup-container {
-        min-height: 200px;
-        overflow-y: auto;
-        white-space: normal;
-        word-wrap: break-word;
-        font-family: Arial, sans-serif;
-    }
-    .profit-section {
-        margin: 10px 0;
-        padding: 10px;
-        border-radius: 5px;
-        background-color: #f9f9f9;
-        text-align: justify;
-    }
-    .main-profit {
-        border-bottom: 2px solid #3498db;
-    }
-    .related-projects {
-        border-bottom: 1px dashed #ccc;
-    }
-    .total-profit {
-        background-color: #e6f3ff;
-        font-weight: bold;
-    }
-    .project-link {
-        color: #2c3e50;
-        text-decoration: none;
-        font-weight: bold;
-    }
-    .project-link:hover {
-        text-decoration: underline;
-        color: #3498db;
-    }
-`;
-
     async function getProjectProfit(project, id) {
         const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
         const paymentsURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
@@ -7422,7 +7607,6 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    // Функция для форматирования вывода
     function formatProfitOutput(mainResult, relatedProjects, totalProfit, projectLinks, totalPending, winnings) {
         const cleanBalance = parseFloat(winnings) || 0;
         const prognoseInOut = mainResult.deposits - (totalPending + mainResult.withdrawals + cleanBalance);
@@ -7442,7 +7626,11 @@ ${fraud.manager === managerName ? `
 
         relatedProjects.forEach(proj => {
             const projectName = proj.project.charAt(0).toUpperCase() + proj.project.slice(1);
-            const link = projectLinks[proj.project] || '#';
+            let link = projectLinks[proj.project] || '#';
+            if (link.includes('/players/playersItems/index/?Players[login]=')) {
+                const playerId = link.split('/players/playersItems/index/?Players[login]=')[1];
+                link = `https://admin.${proj.project}.com/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+            }
             outputHTML += `
             <div>
                 <a href="${link}" target="_blank" class="project-link">${projectName}</a>: ${proj.profit.toFixed(2)}$
@@ -7458,6 +7646,30 @@ ${fraud.manager === managerName ? `
     `;
 
         return outputHTML;
+    }
+
+    function modifyPersonAccountsLinks() {
+        document.querySelector('.get-person-accounts-button').addEventListener('click', () => {
+            const resultDiv = document.getElementById('result');
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach(() => {
+                    const links = resultDiv.querySelectorAll('.person-account__login a');
+                    links.forEach(link => {
+                        let href = link.getAttribute('href');
+                        if (href.includes('/players/playersItems/index/?Players[login]=')) {
+                            const playerId = href.split('/players/playersItems/index/?Players[login]=')[1];
+                            const domain = href.split('/players/')[0]; // Берем домен, например https://admin.funzcity.com
+                            const newHref = `${domain}/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+                            link.setAttribute('href', newHref);
+                        }
+                    });
+                });
+            });
+
+            observer.observe(resultDiv, { childList: true, subtree: true });
+
+            setTimeout(() => observer.disconnect(), 5000);
+        });
     }
 
     async function fetchProfit(totalPending, winnings, profitButton, container) {
@@ -8138,6 +8350,29 @@ ${fraud.manager === managerName ? `
                     window.open(link.href, '_blank');
                 }
             });
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.get-person-accounts-button');
+
+        if (button) {
+            setTimeout(() => {
+                const resultDiv = document.getElementById('result');
+                if (resultDiv && resultDiv.style.display !== 'none') {
+                    const links = resultDiv.querySelectorAll('.person-account__login a');
+                    links.forEach(link => {
+                        let href = link.getAttribute('href');
+                        if (href && href.includes('/players/playersItems/index/?Players[login]=')) {
+                            const playerId = href.split('/players/playersItems/index/?Players[login]=')[1];
+                            const domain = href.split('/players/')[0];
+                            const newHref = `${domain}/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+                            link.setAttribute('href', newHref);
+                            console.log(`Ссылка изменена: ${href} -> ${newHref}`); // Для отладки
+                        }
+                    });
+                }
+            }, 500);
         }
     });
 

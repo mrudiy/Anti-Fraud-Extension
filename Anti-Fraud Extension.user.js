@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.2
+// @version      6.1.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -73,7 +73,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.2";
+    const currentVersion = "6.1.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4051,21 +4051,6 @@ ${fraud.manager === managerName ? `
         textElement.appendChild(createClickableMessage(`popup-bonus-violation-${index}`, content, onClick));
     }
 
-    function showManualBalance({ dateStr, bonusInfo }) {
-        if (!window.popupBox) {
-            console.error('Попап не существует');
-            return;
-        }
-
-        const textElement = window.popupBox.querySelector('.popup-text');
-        if (!textElement) return;
-
-        const message = document.createElement('div');
-        applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
-        message.innerHTML = `<center><span id="popup-manual-balance">${bonusInfo} | ${dateStr}</span></center>`;
-        textElement.appendChild(message);
-    }
-
     function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
         const popupText = document.querySelector('.popup-main-text');
         if (!popupText) {
@@ -4133,7 +4118,9 @@ ${fraud.manager === managerName ? `
             state.totalDeposits++;
         } else if (actionType.includes('Ручное начисление баланса')) {
             const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
-            if (amount > 1) showManualBalance({ dateStr, bonusInfo });
+            if (amount > 1 && state.manualBalanceCount < 3) { // Добавляем проверку на количество
+                showManualBalance({ dateStr, bonusInfo, index: state.manualBalanceCount++ });
+            }
         } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
             state.bonusAmount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
             state.balanceAfterBonus = parseFloat(cells[3]?.textContent.replace(',', '.') || '0');
@@ -4166,6 +4153,21 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function showManualBalance({ dateStr, bonusInfo, index }) {
+        if (!window.popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const textElement = window.popupBox.querySelector('.popup-text');
+        if (!textElement) return;
+
+        const message = document.createElement('div');
+        applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
+        message.innerHTML = `<center><span id="popup-manual-balance-${index}">${bonusInfo} | ${dateStr}</span></center>`;
+        textElement.appendChild(message);
+    }
+
     async function fetchAndProcessData() {
         const project = getProject();
         const url = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
@@ -4179,6 +4181,7 @@ ${fraud.manager === managerName ? `
 
             const state = {
                 withdrawAmount: 0,
+                manualBalanceCount: 0,
                 balanceAfterBonus: 0,
                 bonusAmount: 0,
                 waitingForBonus: false,
@@ -7470,8 +7473,8 @@ ${fraud.manager === managerName ? `
                             console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
                         } else {
                             let insertText = currentLanguage === 'українська'
-                            ? `Відключив всі активності, офери`
-                            : `Отключил все активности, оферы`;
+                            ? `Відключив всі активності, офери, бонуси`
+                            : `Отключил все активности, оферы, бонусы`;
 
                             const fieldDate = getDateFromField();
                             const today = getCurrentDate();

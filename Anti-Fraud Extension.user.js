@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.3
+// @version      6.1.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -20,6 +20,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_deleteValue
 // @connect      admin.777.ua
 // @connect      ip-api.com
 // @connect      admin.vegas.ua
@@ -32,6 +33,7 @@
 // @connect      admin.wildwinz.com
 // @connect      admin.fortunewheelz.com
 // @connect      admin.jackpotrabbit.com
+// @connect      api.easypay.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
 // @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
@@ -67,13 +69,14 @@
     const reminderDisplayKey = 'reminderDisplay';
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
+    const token = GM_getValue('authToken', null);
 
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.3";
+    const currentVersion = "6.1.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -612,7 +615,7 @@
 `;
 
     async function checkUserInFraudList() {
-        const token = localStorage.getItem('authToken');
+
         const playerId = getPlayerID();
         const url = window.location.href;
 
@@ -703,7 +706,7 @@
     };
 
     async function checkUserInChecklist() {
-        const token = localStorage.getItem('authToken');
+
         const playerId = getPlayerID();
         const url = window.location.href;
 
@@ -887,7 +890,7 @@
         settingsPopup.appendChild(
             createButton('Змінити пароль', '#FF5722', () => {
                 const newPassword = prompt('Введіть новий пароль:');
-                const token = localStorage.getItem('authToken');
+
 
                 if (newPassword) {
                     fetch('https://vps65001.hyperhost.name/api/change_password_by_user', {
@@ -1988,7 +1991,7 @@
     }
 
     async function loadUsers() {
-        const token = localStorage.getItem('authToken');
+
         const today = getCurrentDateRequest();
 
         try {
@@ -2147,7 +2150,7 @@
 
 
     async function loadFrauds() {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/frauds', {
@@ -2276,7 +2279,7 @@ ${fraud.manager === managerName ? `
 
 
     function editFraud(fraudId, currentComment) {
-        const token = localStorage.getItem('authToken');
+
 
         Swal.fire({
             title: 'Редагувати коментар',
@@ -2376,7 +2379,7 @@ ${fraud.manager === managerName ? `
 
 
     async function addFraud(playerId, url, comment) {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/add_fraud', {
@@ -2406,7 +2409,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function deleteFraud(fraudId) {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch(`https://vps65001.hyperhost.name/api/delete_fraud/${fraudId}`, {
@@ -2607,7 +2610,7 @@ ${fraud.manager === managerName ? `
 
 
     async function deleteUser(userId) {
-        const token = localStorage.getItem('authToken');
+
         try {
             const response = await fetch(`https://vps65001.hyperhost.name/api/delete_user/${userId}`, {
                 method: 'DELETE',
@@ -2628,7 +2631,7 @@ ${fraud.manager === managerName ? `
 
 
     async function changePassword(userId) {
-        const token = localStorage.getItem('authToken');
+
 
         Swal.fire({
             title: 'Ви впевнені?',
@@ -2661,14 +2664,14 @@ ${fraud.manager === managerName ? `
 
 
     async function getStatistics(userId) {
-        const token = localStorage.getItem('authToken');
+
         const today = getCurrentDateRequest();
 
         await fetchStatistics(userId, today);
     }
 
     async function fetchStatistics(userId, selectedDate) {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch(`https://vps65001.hyperhost.name/api/get_statistics/${userId}?date=${selectedDate}`, {
@@ -2769,7 +2772,7 @@ ${fraud.manager === managerName ? `
     }
 
     function createStatisticPopup() {
-        const token = localStorage.getItem('authToken');
+
         const today = new Date().toISOString().split('T')[0];
 
         const content = `
@@ -2909,7 +2912,7 @@ ${fraud.manager === managerName ? `
 
 
     async function loadStatisticData(startDate, endDate) {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch(`https://vps65001.hyperhost.name/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
@@ -3465,7 +3468,7 @@ ${fraud.manager === managerName ? `
             initials: GM_getValue('initialsKey', ''),
             comment: `Переглянутий в ${getCurrentTime()}`
         };
-        sendDataToServer(dataToInsert, localStorage.getItem('authToken'))
+        sendDataToServer(dataToInsert, token)
             .then(response => {
             Swal.fire({ icon: 'success', title: 'Успішно!', text: 'Користувач позначений як переглянутий' })
                 .then(result => result.isConfirmed && location.reload());
@@ -4118,7 +4121,7 @@ ${fraud.manager === managerName ? `
             state.totalDeposits++;
         } else if (actionType.includes('Ручное начисление баланса')) {
             const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
-            if (amount > 1 && state.manualBalanceCount < 3) { // Добавляем проверку на количество
+            if (amount > 1 && state.manualBalanceCount < 3) { 
                 showManualBalance({ dateStr, bonusInfo, index: state.manualBalanceCount++ });
             }
         } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
@@ -5018,7 +5021,7 @@ ${fraud.manager === managerName ? `
                         dataToInsert.autopayment = 0;
                     }
 
-                    const token = localStorage.getItem('authToken');
+
                     console.log(dataToInsert)
                     sendDataToServer(dataToInsert, token)
                         .then(response => {
@@ -5170,7 +5173,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function checkToken() {
-        const token = localStorage.getItem('authToken');
+
         if (!token) {
             return false;
         }
@@ -5259,10 +5262,10 @@ ${fraud.manager === managerName ? `
             const { success, token } = await authenticate(username, password);
 
             if (success) {
-                localStorage.setItem('authToken', token);
+                GM_setValue('authToken', token);
                 alert('Авторизація успішна!');
                 form.remove();
-                window.location.reload()
+                window.location.reload();
             } else {
                 document.getElementById('error-msg').textContent = 'Неправильний логін або пароль';
             }
@@ -5289,7 +5292,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function checkUserStatus() {
-        const token = localStorage.getItem('authToken');
+
 
         try {
             const response = await fetch('https://vps65001.hyperhost.name/api/user/status', {
@@ -5333,7 +5336,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function powerBIsaveHighlightedValue(cellValue) {
-        const token = localStorage.getItem('authToken');
+
         try {
             await fetch('https://vps65001.hyperhost.name/api/powerbi/add', {
                 method: 'POST',
@@ -5425,7 +5428,7 @@ ${fraud.manager === managerName ? `
 
 
     async function sendActivePageInfo() {
-        const token = localStorage.getItem('authToken');
+
         const currentUrl = window.location.href;
 
         if (token) {
@@ -5816,7 +5819,7 @@ ${fraud.manager === managerName ? `
         const checkInterval = setInterval(() => {
             const newValue = checkbox.checked;
             if (!newValue) {
-                const token = localStorage.getItem('authToken');
+
                 const initials = GM_getValue(initialsKey, '');
                 const currentDate = getCurrentDate();
                 const playerID = getPlayerID();
@@ -6208,7 +6211,7 @@ ${fraud.manager === managerName ? `
 
     class ApiService {
         static async fetchData(endpoint, options = {}) {
-            const token = localStorage.getItem('authToken');
+
             const defaultHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
             try {
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -8438,6 +8441,118 @@ ${fraud.manager === managerName ? `
     }
 
 
+    const checkCardFunction = () => {
+        const getPageId = () => GM_getValue('easyPayPageId', null);
+        const setPageId = id => GM_setValue('easyPayPageId', id);
+
+        const fetchPageId = callback => {
+            console.log('Fetching new PageId...');
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: 'https://api.easypay.ua/api/system/createPage',
+                headers: { 'PartnerKey': 'easypay-v2', 'locale': 'ua', 'AppId': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd', 'content-type': 'application/json' },
+                data: '{}',
+                onload: r => {
+                    const data = JSON.parse(r.responseText);
+                    console.log('PageId response:', data);
+                    callback(null, setPageId(data.pageId) || getPageId());
+                },
+                onerror: () => {
+                    console.error('PageId fetch failed');
+                    callback('PageId error');
+                }
+            });
+        };
+
+        const checkCard = (card, output) => {
+            const pageId = getPageId();
+            console.log('Checking card:', card, 'PageId:', pageId);
+
+            if (!pageId) {
+                console.log('No PageId, fetching new one...');
+                return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
+            }
+
+            console.log('Sending card check request...');
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: 'https://api.easypay.ua/api/payment/infoCheck',
+                headers: {
+                    'accept': 'application/json',
+                    'appid': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd',
+                    'content-type': 'application/json; charset=UTF-8',
+                    'pageid': pageId,
+                    'partnerkey': 'easypay-v2'
+                },
+                data: JSON.stringify({
+                    serviceKey: 'CARDHOLDER-INFO',
+                    data: { operation: 'GetCardholderInfo', data: { Pan: card, PanGuid: null, IsFullName: false } }
+                }),
+                onload: r => {
+                    const data = JSON.parse(r.responseText);
+                    console.log('Card check response:', data);
+
+                    if (data.error?.errorCode?.includes('PAGE')) {
+                        console.log('PageId invalid, refreshing...');
+                        return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
+                    }
+
+                    const initials = data.data?.data?.fullname;
+                    if (initials) {
+                        const date = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\./g, '');
+                        output.textContent = `${card} ${initials} ${date}`;
+                    } else {
+                        output.textContent = 'Не знайдено';
+                    }
+                    console.log('Result displayed:', output.textContent);
+                },
+                onerror: () => {
+                    console.error('Card check request failed');
+                    output.textContent = 'Помилка';
+                }
+            });
+        };
+
+        const targetDiv = document.getElementById('formatable-text-common');
+        if (targetDiv && !document.getElementById('cardInput')) {
+            const parentRow = targetDiv.closest('tr');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <th style="vertical-align: middle;">Пробив картки:</th>
+                <td>
+                    <div style="display: flex; gap: 8px; align-items: center; padding: 5px 0;">
+                        <input id="cardInput" placeholder="Номер картки" style="width: 200px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#4CAF50'" onblur="this.style.borderColor='#ccc'">
+                        <button id="checkBtn" style="padding: 6px 12px; background: linear-gradient(45deg, #4CAF50, #45a049); color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Пробити</button>
+                    </div>
+                    <div id="cardResult" style="margin-top: 5px; font-size: 14px; color: #333; cursor: pointer; user-select: all;" title="Клік для копіювання"></div>
+                </td>`;
+
+            parentRow.parentNode.insertBefore(newRow, parentRow);
+
+            const input = document.getElementById('cardInput');
+            const btn = document.getElementById('checkBtn');
+            const result = document.getElementById('cardResult');
+
+            btn.onclick = e => {
+                e.preventDefault();
+                const card = input.value.trim();
+                if (!card) return result.textContent = 'Введи номер!';
+                result.textContent = 'Перевіряю...';
+                console.log('Button clicked, starting check...');
+                checkCard(card, result);
+            };
+
+            result.onclick = () => {
+                if (result.textContent && !result.textContent.includes('Перевіряю') && !result.textContent.includes('Помилка')) {
+                    navigator.clipboard.writeText(result.textContent);
+                    result.style.color = '#4CAF50';
+                    setTimeout(() => result.style.color = '#333', 500);
+                    console.log('Result copied to clipboard');
+                }
+            };
+        }
+    };
+
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
 
@@ -8507,7 +8622,7 @@ ${fraud.manager === managerName ? `
                 goToGoogleSheet();
                 addAgeToBirthdate();
                 addPibRow();
-                activeUrlsManagers();
+                checkCardFunction();
                 setupModalHandler();
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
@@ -8516,6 +8631,7 @@ ${fraud.manager === managerName ? `
                         changeCardStatus();
                     }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
+                activeUrlsManagers();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 handlePopupWildWinz();
                 addForeignButton();
@@ -8555,7 +8671,7 @@ ${fraud.manager === managerName ? `
             }
         } else {
             console.log('User is not logged in or token is invalid');
-            localStorage.removeItem('authToken');
+            GM_deleteValue('authToken');
             createLoginForm();
         }
     });

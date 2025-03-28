@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.1
+// @version      6.1.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -73,7 +73,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.1";
+    const currentVersion = "6.1.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -5814,7 +5814,6 @@ ${fraud.manager === managerName ? `
             const newValue = checkbox.checked;
             if (!newValue) {
                 const token = localStorage.getItem('authToken');
-                console.log(token);
                 const initials = GM_getValue(initialsKey, '');
                 const currentDate = getCurrentDate();
                 const playerID = getPlayerID();
@@ -7461,6 +7460,93 @@ ${fraud.manager === managerName ? `
 
                         if (!bonusResponse) throw new Error('Помилка третього запиту');
 
+                        const initials = GM_getValue('initialsKey', '');
+                        const currentDate = getCurrentDate();
+                        const currentLanguage = GM_getValue(languageKey, 'російська');
+                        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
+                        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+
+                        if (!gatewayElement) {
+                            console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
+                        } else {
+                            let insertText = currentLanguage === 'українська'
+                            ? `Відключив всі активності, офери`
+                            : `Отключил все активности, оферы`;
+
+                            const fieldDate = getDateFromField();
+                            const today = getCurrentDate();
+
+                            if (fieldDate === today) {
+                                const lines = gatewayElement.innerHTML.trim().split('<br>');
+                                if (lines.length > 1) {
+                                    let secondLine = lines[1];
+                                    let lastPipeIndex = secondLine.lastIndexOf('|');
+                                    let foundValidIndex = false;
+
+                                    while (lastPipeIndex !== -1) {
+                                        const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
+                                        const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+
+                                        const beforeMatch = beforePipe.match(/\d{4}$/);
+                                        const afterMatch = afterPipe.match(/^\d{2}/);
+
+                                        if (!(beforeMatch && afterMatch)) {
+                                            const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                                            const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                                            const updatedSecondLine = `${validBeforePipe} ${insertText} | ${validAfterPipe}`.trim();
+                                            lines[1] = updatedSecondLine;
+
+                                            gatewayElement.innerHTML = lines.join('<br>');
+                                            gatewayElement.dispatchEvent(new Event('input'));
+
+                                            if (doneButton) {
+                                                doneButton.click();
+                                            }
+
+                                            foundValidIndex = true;
+                                            break;
+                                        }
+
+                                        lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+                                    }
+
+                                    if (!foundValidIndex) {
+                                        console.warn('Valid "|" not found in the second line.');
+                                    }
+                                } else {
+                                    console.warn('Not enough lines to process the second line.');
+                                }
+                            } else {
+                                const checkButton = document.getElementById('check-button');
+                                if (checkButton) {
+                                    checkButton.click();
+
+                                    const lines = gatewayElement.innerHTML.trim().split('<br>');
+                                    if (lines.length > 1) {
+                                        const secondLine = lines[1];
+                                        const lastPipeIndex = secondLine.lastIndexOf('|');
+                                        if (lastPipeIndex !== -1) {
+                                            const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                                            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                                            const updatedSecondLine = `${beforePipe} ${afterPipe} ${insertText} |`.trim();
+                                            lines[1] = updatedSecondLine;
+                                            gatewayElement.innerHTML = lines.join('<br>');
+                                            gatewayElement.dispatchEvent(new Event('input'));
+                                            if (doneButton) {
+                                                doneButton.click();
+                                            }
+                                        } else {
+                                            console.warn('Symbol "|" not found in the second line.');
+                                        }
+                                    } else {
+                                        console.warn('Not enough lines to process the second line.');
+                                    }
+                                } else {
+                                    console.warn('Button with id "check-button" not found.');
+                                }
+                            }
+                        }
+
                         Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
                             .then(() => location.reload());
                     } catch (error) {
@@ -7490,7 +7576,7 @@ ${fraud.manager === managerName ? `
                 const initials = GM_getValue(initialsKey);
                 const currentLanguage = GM_getValue(languageKey, 'російська');
                 const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${moneyFromOfferPercentage}% | Freemoney From Activities: ${activityMoneyPercentage.toFixed(2)}%</b> `;
+                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${moneyFromOfferPercentage}% | Freemoney From Activities: ${activityMoneyPercentage.toFixed(2)}% | </b> `;
                 if (totalPendings > 1) {
                     const balanceStyle = totalPendings > 2000 ? 'color: red;' : '';
                     textToInsert += `<b>| На выплате:</b> <b style="${balanceStyle}">${totalPendings}$</b> | `;

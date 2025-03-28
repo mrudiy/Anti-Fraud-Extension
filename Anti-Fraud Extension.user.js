@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1
+// @version      6.1.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -73,7 +73,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1";
+    const currentVersion = "6.1.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7367,7 +7367,6 @@ ${fraud.manager === managerName ? `
     }
 
     function disablePromoOffersUSA() {
-
         const project = getProject();
         const baseHeaders = {
             accept: "*/*",
@@ -7392,15 +7391,16 @@ ${fraud.manager === managerName ? `
             credentials: "include"
         };
 
-        const targetTr = Array.from(document.querySelectorAll('tr.even'))
+        const targetTr = Array.from(document.querySelectorAll('tr'))
         .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
         const targetTd = targetTr?.querySelector('td');
 
         if (!targetTd) {
             console.error('Не найден элемент <td> в строке с "Лимит промо оферов в день"');
+            // Дополнительная диагностика
+            console.log('Найденные <th>:', Array.from(document.querySelectorAll('th')).map(th => th.textContent.trim()));
             return;
         }
-
 
         const disableButton = $('<input>', {
             type: 'button',
@@ -7449,6 +7449,17 @@ ${fraud.manager === managerName ? `
                         ).then(res => res.json());
 
                         if (!featuresResponse.success) throw new Error(featuresResponse.message || 'Помилка другого запиту');
+
+                        const bonusResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/update/${userId}/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                                body: `Players[no_bonus]=1`
+                            }
+                        ).then(res => res.text());
+
+                        if (!bonusResponse) throw new Error('Помилка третього запиту');
 
                         Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
                             .then(() => location.reload());

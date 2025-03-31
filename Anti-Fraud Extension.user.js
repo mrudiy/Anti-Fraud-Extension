@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.4
+// @version      6.1.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -76,7 +76,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.4";
+    const currentVersion = "6.1.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8518,20 +8518,35 @@ ${fraud.manager === managerName ? `
             const parentRow = targetDiv.closest('tr');
             const newRow = document.createElement('tr');
             newRow.innerHTML = `
-                <th style="vertical-align: middle;">Пробив картки:</th>
-                <td>
-                    <div style="display: flex; gap: 8px; align-items: center; padding: 5px 0;">
-                        <input id="cardInput" placeholder="Номер картки" style="width: 200px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#4CAF50'" onblur="this.style.borderColor='#ccc'">
-                        <button id="checkBtn" style="padding: 6px 12px; background: linear-gradient(45deg, #4CAF50, #45a049); color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Пробити</button>
+            <th style="vertical-align: middle;">Пробив картки:</th>
+            <td>
+                <div style="display: flex; gap: 8px; align-items: center; padding: 5px 0;">
+                    <div style="position: relative; width: 250px;">
+                        <input id="cardInput" placeholder="Номер картки" style="width: 100%; padding: 6px 24px 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#4CAF50'" onblur="this.style.borderColor='#ccc'">
+                        <span id="clearInput" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 14px; color: #666; display: none;">✕</span>
                     </div>
-                    <div id="cardResult" style="margin-top: 5px; font-size: 14px; color: #333; cursor: pointer; user-select: all;" title="Клік для копіювання"></div>
-                </td>`;
+                    <button id="checkBtn" style="padding: 6px 12px; background: linear-gradient(45deg, #4CAF50, #45a049); color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Пробити</button>
+                </div>
+                <div id="cardResult" style="margin-top: 5px; font-size: 14px; color: #333; cursor: pointer; user-select: all;" title="Клік для копіювання"></div>
+            </td>`;
 
             parentRow.parentNode.insertBefore(newRow, parentRow);
 
             const input = document.getElementById('cardInput');
+            const clearBtn = document.getElementById('clearInput');
             const btn = document.getElementById('checkBtn');
             const result = document.getElementById('cardResult');
+
+            input.addEventListener('input', () => {
+                clearBtn.style.display = input.value ? 'block' : 'none';
+            });
+
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                clearBtn.style.display = 'none';
+                result.textContent = '';
+                input.focus();
+            });
 
             btn.onclick = e => {
                 e.preventDefault();
@@ -8552,6 +8567,57 @@ ${fraud.manager === managerName ? `
             };
         }
     };
+
+    function updateCardMasksFromComments() {
+        const extractCardNumbers = (text) => {
+            const cardRegex = /\b\d{16}\b/g;
+            return text.match(cardRegex) || [];
+        };
+
+        const matchMaskWithCard = (mask, card) => {
+            const [firstPart, lastPart] = mask.split('|');
+            return card.startsWith(firstPart) && card.endsWith(lastPart);
+        };
+
+        const commentDiv = document.getElementById('gateway-method-description-visible-common');
+        if (!commentDiv) return;
+
+        const commentText = commentDiv.textContent;
+        const cardNumbers = extractCardNumbers(commentText);
+
+        const masksTable = document.querySelector('#payments-cards-masks-grid tbody');
+        if (!masksTable) return;
+
+        const rows = masksTable.getElementsByTagName('tr');
+        for (let row of rows) {
+            const maskCell = row.cells[1];
+            const maskElement = maskCell.querySelector('strong');
+            if (!maskElement) continue;
+
+            const originalMask = maskElement.textContent;
+
+            for (let card of cardNumbers) {
+                if (matchMaskWithCard(originalMask, card)) {
+                    const fullCardSpan = document.createElement('span');
+                    fullCardSpan.textContent = card;
+                    fullCardSpan.style.cursor = 'pointer';
+                    fullCardSpan.style.fontWeight = 'bold';
+                    fullCardSpan.title = 'Копіювати';
+
+                    fullCardSpan.onclick = () => {
+                        navigator.clipboard.writeText(card).then(() => {
+                            fullCardSpan.style.color = '#4CAF50';
+                            setTimeout(() => fullCardSpan.style.color = '', 500);
+                        });
+                    };
+
+                    maskCell.innerHTML = '';
+                    maskCell.appendChild(fullCardSpan);
+                    break;
+                }
+            }
+        }
+    }
 
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
@@ -8624,6 +8690,7 @@ ${fraud.manager === managerName ? `
                 addPibRow();
                 checkCardFunction();
                 setupModalHandler();
+                updateCardMasksFromComments();
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
                     changeCardStatus();

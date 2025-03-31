@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.6
+// @version      6.1.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.6";
+    const currentVersion = "6.1.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8576,8 +8576,14 @@ ${fraud.manager === managerName ? `
 
     function updateCardMasksFromComments() {
         const extractCardNumbers = (text) => {
+            // Очищаем текст от HTML и лишних пробелов
+            const cleanText = text
+            .replace(/<[^>]+>/g, ' ') // Удаляем HTML-теги
+            .replace(/\s+/g, ' ')     // Заменяем множественные пробелы на один
+            .trim();                  // Удаляем пробелы в начале и конце
             const cardRegex = /\b\d{16}\b/g;
-            return text.match(cardRegex) || [];
+            const matches = cleanText.match(cardRegex) || [];
+            return matches;
         };
 
         const matchMaskWithCard = (mask, card) => {
@@ -8586,24 +8592,33 @@ ${fraud.manager === managerName ? `
         };
 
         const commentDiv = document.getElementById('gateway-method-description-visible-common');
-        if (!commentDiv) return;
+        if (!commentDiv) {
+            console.log('Comment div not found');
+            return;
+        }
 
-        const commentText = commentDiv.textContent;
+        const commentText = commentDiv.innerHTML; // Берем innerHTML вместо textContent
         const cardNumbers = extractCardNumbers(commentText);
+        console.log('Found cards in comment:', cardNumbers);
 
         const masksTable = document.querySelector('#payments-cards-masks-grid tbody');
-        if (!masksTable) return;
+        if (!masksTable) {
+            console.log('Masks table not found');
+            return;
+        }
 
         const rows = masksTable.getElementsByTagName('tr');
+        console.log('Processing', rows.length, 'rows in masks table');
+
         for (let row of rows) {
             const maskCell = row.cells[1];
             const maskElement = maskCell.querySelector('strong');
-            if (!maskElement) continue;
-
-            const originalMask = maskElement.textContent;
+            const originalMask = maskElement ? maskElement.textContent : maskCell.textContent;
+            console.log('Processing mask:', originalMask);
 
             for (let card of cardNumbers) {
                 if (matchMaskWithCard(originalMask, card)) {
+                    console.log('Match found:', originalMask, '->', card);
                     const fullCardSpan = document.createElement('span');
                     fullCardSpan.textContent = card;
                     fullCardSpan.style.cursor = 'pointer';

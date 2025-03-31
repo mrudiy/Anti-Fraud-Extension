@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.5
+// @version      6.1.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -69,6 +69,7 @@
     const reminderDisplayKey = 'reminderDisplay';
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
+    const fullNumberCardDisplayKey = 'fullNumberCardDisplay';
     const token = GM_getValue('authToken', null);
 
     const currencySymbols = new Map([
@@ -76,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.5";
+    const currentVersion = "6.1.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -849,6 +850,11 @@
         settingsPopup.appendChild(
             createCheckboxWithLabel('Швидкий покрас карток', GM_getValue(fastPaintCardsDisplayKey, true), (e) => {
                 GM_setValue(fastPaintCardsDisplayKey, e.target.checked);
+            })
+        );
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Відображати повний номер карток у масках', GM_getValue(fullNumberCardDisplayKey, true), (e) => {
+                GM_setValue(fullNumberCardDisplayKey, e.target.checked);
             })
         );
 
@@ -8690,7 +8696,10 @@ ${fraud.manager === managerName ? `
                 addPibRow();
                 checkCardFunction();
                 setupModalHandler();
-                updateCardMasksFromComments();
+                const isFullNumberCardsEnabled = GM_getValue(fullNumberCardDisplayKey, true);
+                if (isFullNumberCardsEnabled) {
+                    updateCardMasksFromComments();
+                }
                 const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
                 if (isFastPaintCardsEnabled) {
                     changeCardStatus();

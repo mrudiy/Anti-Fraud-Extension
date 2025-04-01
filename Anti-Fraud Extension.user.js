@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.1
+// @version      6.2.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.1";
+    const currentVersion = "6.2.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3794,7 +3794,7 @@ ${fraud.manager === managerName ? `
                 <b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b><br>
                 ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
                     <b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b><br>
-                    <b>Prognose PA: <span style="color: ${getBalanceColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
+                    <b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
                 ` : ''}
             </div>
             <div class="profit-section related-projects">

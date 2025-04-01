@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.1.7
+// @version      6.1.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.1.7";
+    const currentVersion = "6.1.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8640,6 +8640,93 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function jokePrank() {
+        let sound = new Audio('https://zvukogram.com/mp3/cats/2593/nenavyazchivyiy-legkiy-stuk-v-dver.mp3');
+        sound.volume = 0.5;
+
+        let screamerSound = new Audio('https://www.myinstants.com/media/sounds/scream.mp3');
+        screamerSound.volume = 0.7;
+
+        const soundChance = 0.2;
+        const gameChance = 0.05;
+
+        function showScreamer(gameDiv) {
+            if (gameDiv && document.body.contains(gameDiv)) {
+                gameDiv.remove();
+            }
+
+            let screamerDiv = document.createElement('div');
+            screamerDiv.style.position = 'fixed';
+            screamerDiv.style.top = '0';
+            screamerDiv.style.left = '0';
+            screamerDiv.style.width = '100%';
+            screamerDiv.style.height = '100%';
+            screamerDiv.style.background = 'black';
+            screamerDiv.style.zIndex = '9999';
+            screamerDiv.innerHTML = `
+                <img src="https://i.gifer.com/6RDr.gif" style="width: 100%; height: 100%; object-fit: cover;">
+            `;
+            document.body.appendChild(screamerDiv);
+            screamerSound.play();
+
+            setTimeout(() => {
+                screamerDiv.remove();
+            }, 2000);
+        }
+
+        function showGame() {
+            let gameDiv = document.createElement('div');
+            gameDiv.style.position = 'fixed';
+            gameDiv.style.top = '50%';
+            gameDiv.style.left = '50%';
+            gameDiv.style.transform = 'translate(-50%, -50%)';
+            gameDiv.style.background = 'linear-gradient(135deg, #ff6b6b, #4ecdc4)';
+            gameDiv.style.padding = '25px';
+            gameDiv.style.borderRadius = '15px';
+            gameDiv.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+            gameDiv.style.zIndex = '9998';
+            gameDiv.style.textAlign = 'center';
+            gameDiv.style.fontFamily = 'Arial, sans-serif';
+            gameDiv.style.color = '#fff';
+            gameDiv.innerHTML = `
+                <p style="margin: 0 0 15px; font-size: 18px; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);">
+                    Зіграй у гру: натисни кнопку 5 разів, щоб перемогти!
+                </p>
+                <button id="gameButton" style="padding: 10px 20px; font-size: 16px; background: #fff; color: #ff6b6b; border: none; border-radius: 10px; cursor: pointer; transition: background 0.3s;">
+                    Натисни мене (0/5)
+                </button>
+            `;
+            document.body.appendChild(gameDiv);
+
+            let clickCount = 0;
+            let gameButton = gameDiv.querySelector('#gameButton');
+            gameButton.addEventListener('click', () => {
+                clickCount++;
+                gameButton.textContent = `Натисни мене (${clickCount}/5)`;
+                if (clickCount >= 5) {
+                    showScreamer(gameDiv);
+                }
+            });
+        }
+
+        document.addEventListener('click', () => {
+            let random = Math.random();
+
+            if (random < gameChance) {
+                showGame();
+            }
+            else if (random < soundChance + gameChance) {
+                sound.play()
+                    .then(() => {
+                    console.log('Звук проигран');
+                })
+                    .catch((error) => {
+                    console.error('Ошибка воспроизведения звука:', error);
+                });
+            }
+        });
+    }
+
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
 
@@ -8711,6 +8798,7 @@ ${fraud.manager === managerName ? `
                 addPibRow();
                 checkCardFunction();
                 setupModalHandler();
+                jokePrank();
                 const isFullNumberCardsEnabled = GM_getValue(fullNumberCardDisplayKey, true);
                 if (isFullNumberCardsEnabled) {
                     updateCardMasksFromComments();

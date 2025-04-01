@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.0
+// @version      6.2.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.0";
+    const currentVersion = "6.2.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3446,12 +3446,24 @@ ${fraud.manager === managerName ? `
         const button = document.createElement('button');
         button.innerText = 'Total InOut';
         applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
+
         button.onmouseover = () => button.style.backgroundColor = '#2f76ae';
         button.onmouseout = () => button.style.backgroundColor = '#2196F3';
-        button.addEventListener('click', () => handleCombinedProfit(container, { Balance, totalPending }));
+
+        const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
+        ? handleTotalInOutClick
+        : handleCombinedProfit;
+
+        button.addEventListener('click', () => {
+            button.remove();
+            clickHandler(container, { Balance, totalPending });
+        });
+
         container.appendChild(button);
         return container;
     }
+
+
 
     function addGlobalStyles(borderColor) {
         const styleSheet = document.createElement('style');
@@ -3779,23 +3791,24 @@ ${fraud.manager === managerName ? `
             container.removeChild(loader);
             container.innerHTML = `
             <div class="profit-section main-profit">
-                <b>Total InOut: ${formatCurrency(profit, showAmount, currencySymbol)}</b><br>
+                <b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b><br>
                 ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
-                    <b>Prognose InOut: ${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</b><br>
-                    <b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
+                    <b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b><br>
+                    <b>Prognose PA: <span style="color: ${getBalanceColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
                 ` : ''}
             </div>
             <div class="profit-section related-projects">
                 <b>Related Projects:</b><br>
                 ${relatedResults.map((proj, index) => {
                 const projectName = proj.domain.split('.')[1].toUpperCase();
-                const playerId = validPlayers[index].playerId; // Берем playerId из validPlayers
+                const playerId = validPlayers[index].playerId;
+                const profit = proj.depositsTotal - proj.redeemsTotal;
                 const link = `${proj.domain}players/playersItems/search?PlayersSearchForm[number]=${playerId || 'unknown'}`;
-                return `<div><a href="${link}" target="_blank" class="project-link">${projectName}</a>: ${formatCurrency(proj.depositsTotal - proj.redeemsTotal, true, currencySymbol)}</div>`;
+                return `<div><a href="${link}" target="_blank" class="project-link">${projectName} - ${playerId}</a>: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span></div>`;
             }).join('')}
             </div>
             <div class="profit-section total-profit">
-                <div><b>Person InOut:</b> ${formatCurrency(totalProfit, true, currencySymbol)}</div>
+                <div><b>Person InOut:</b> <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, true, currencySymbol)}</span></div>
             </div>
         `;
 
@@ -3804,6 +3817,11 @@ ${fraud.manager === managerName ? `
             container.innerHTML = `<div style="color: red;">Ошибка: ${error.message}</div>`;
         }
     }
+
+    function getBalanceColor(amount) {
+        return amount >= 0 ? 'green' : 'red';
+    }
+
 
     function getPlayerInn() {
         return new Promise((resolve, reject) => {
@@ -7736,13 +7754,13 @@ ${fraud.manager === managerName ? `
         relatedProjects.forEach(proj => {
             const projectName = proj.project.charAt(0).toUpperCase() + proj.project.slice(1);
             let link = projectLinks[proj.project] || '#';
+            const playerId = link.split('/players/playersItems/index/?Players[login]=')[1];
             if (link.includes('/players/playersItems/index/?Players[login]=')) {
-                const playerId = link.split('/players/playersItems/index/?Players[login]=')[1];
                 link = `https://admin.${proj.project}.com/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
             }
             outputHTML += `
             <div>
-                <a href="${link}" target="_blank" class="project-link">${projectName}</a>: ${proj.profit.toFixed(2)}$
+                <a href="${link}" target="_blank" class="project-link">${projectName} (${playerId})</a>: ${proj.profit.toFixed(2)}$
             </div>
         `;
         });
@@ -8524,7 +8542,7 @@ ${fraud.manager === managerName ? `
             const parentRow = targetDiv.closest('tr');
             const newRow = document.createElement('tr');
             newRow.innerHTML = `
-            <th style="vertical-align: middle;">Пробив картки:</th>
+            <th style="vertical-align: middle;">Пробив картки</th>
             <td>
                 <div style="display: flex; gap: 8px; align-items: center; padding: 5px 0;">
                     <div style="position: relative; width: 250px;">

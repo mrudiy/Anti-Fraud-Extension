@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.2
+// @version      6.2.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.2";
+    const currentVersion = "6.2.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -656,7 +656,7 @@
                 <br><strong>Дата:</strong> ${formattedDate}
             `;
 
-                const table = document.querySelector('#yw1');
+                const table = document.querySelector('.detail-view.table.table-striped');
 
                 if (table) {
                     table.parentNode.insertBefore(alertDiv, table);
@@ -746,7 +746,7 @@
                 <br><strong>Менеджер:</strong> ${data.manager_name}
                 <br><strong>Дата перегляду:</strong> ${formatDateToDDMMYYYY(dataDate)} в ${data.time}`;
 
-                const table = document.querySelector('#yw1');
+                const table = document.querySelector('.detail-view.table.table-striped');
                 if (table) {
                     table.parentNode.insertBefore(alertDiv, table);
                     console.log('Alert added to DOM');
@@ -5485,10 +5485,10 @@ ${fraud.manager === managerName ? `
             if (activeUsers.length > 0) {
                 const managerNames = activeUsers.map(user => user.manager_name).join(', ');
 
-                const table = document.querySelector('#yw1');
+                const table = document.querySelector('.detail-view.table.table-striped');
                 if (!table) return;
 
-                const targetElement = table.querySelector('tr.even td span.fa');
+                const targetElement = table.querySelector('tr td span.fa');
                 if (!targetElement) return;
 
                 const rowElement = targetElement.closest('tr');

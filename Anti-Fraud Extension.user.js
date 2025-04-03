@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.3
+// @version      6.2.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.3";
+    const currentVersion = "6.2.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7676,7 +7676,7 @@ ${fraud.manager === managerName ? `
                                     if (cells.length >= 12) {
                                         const status = cells[1].querySelector('.label')?.textContent.trim();
                                         const gateway = cells[11].textContent.trim();
-                                        const amount = parseFloat(cells[5].textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                                        const amount = parseFloat(cells[6].textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
                                         if (status === 'closed' && gateway !== 'Другое') {
                                             withdrawals += amount;
                                         }

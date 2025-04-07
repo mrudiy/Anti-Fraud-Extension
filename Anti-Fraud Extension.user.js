@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.4
+// @version      6.2.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.4";
+    const currentVersion = "6.2.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3121,7 +3121,7 @@ ${fraud.manager === managerName ? `
     const POPUP_STYLES = {
         position: 'fixed',
         top: '20px',
-        width: '270px',
+        width: '280px',
         padding: '20px',
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
@@ -5467,53 +5467,62 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    function activeUrlsManagers() {
+    async function activeUrlsManagers() {
         const playerId = getPlayerID();
+        const currentManager = await getManagerName(token);
 
-        fetch('https://vps65001.hyperhost.name/api/get_active_users', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        })
-            .then(response => response.json())
-            .then(data => {
-            const activeUsers = data.filter(user =>
-                                            user.active_url.includes(playerId) || user.active_url.includes(userId)
-                                           );
+        const table = document.querySelector('.detail-view.table.table-striped');
+        let targetElement = null;
+        let rowElement = null;
 
-            if (activeUsers.length > 0) {
-                const managerNames = activeUsers.map(user => user.manager_name).join(', ');
-
-                const table = document.querySelector('.detail-view.table.table-striped');
-                if (!table) return;
-
-                const targetElement = table.querySelector('tr td span.fa');
-                if (!targetElement) return;
-
-                const rowElement = targetElement.closest('tr');
+        if (table) {
+            targetElement = table.querySelector('tr td span.fa');
+            if (targetElement) {
+                rowElement = targetElement.closest('tr');
                 rowElement.style.backgroundColor = '#f8f8d9';
 
-                if (targetElement) {
-                    let existingSpan = targetElement.parentNode.querySelector('.manager-names');
-                    if (!existingSpan) {
-                        existingSpan = document.createElement('span');
-                        existingSpan.className = 'manager-names';
-                        existingSpan.style.fontWeight = 'bold';
-                        existingSpan.style.color = '#007BFF';
-                        existingSpan.style.marginLeft = '10px';
-                        existingSpan.style.userSelect = 'none';
-                        targetElement.parentNode.appendChild(existingSpan);
-                    }
-                    existingSpan.textContent = `Переглядають: ${managerNames}`;
+                let existingSpan = targetElement.parentNode.querySelector('.manager-names');
+                if (!existingSpan) {
+                    existingSpan = document.createElement('span');
+                    existingSpan.className = 'manager-names';
+                    existingSpan.style.fontWeight = 'bold';
+                    existingSpan.style.color = '#007BFF';
+                    existingSpan.style.marginLeft = '10px';
+                    existingSpan.style.userSelect = 'none';
+                    targetElement.parentNode.appendChild(existingSpan);
                 }
+                existingSpan.textContent = `Переглядають: ${currentManager}`;
 
                 createStickyRow(rowElement, table);
             }
-        })
-            .catch(error => console.error('Ошибка запроса:', error));
-    }
+        }
 
+        try {
+            const response = await fetch('https://vps65001.hyperhost.name/api/get_active_users', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            const data = await response.json();
+
+            const activeUsers = data.filter(user =>
+                                            (user.active_url.includes(playerId) || user.active_url.includes(userId)) &&
+                                            user.manager_name !== currentManager
+                                           );
+
+            if (activeUsers.length > 0 && table && targetElement) {
+                const otherManagers = activeUsers.map(user => user.manager_name).join(', ');
+                const updatedManagerNames = `${currentManager}, ${otherManagers}`;
+                const existingSpan = targetElement.parentNode.querySelector('.manager-names');
+                if (existingSpan) {
+                    existingSpan.textContent = `Переглядають: ${updatedManagerNames}`;
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка запроса:', error);
+        }
+    }
     function createStickyRow(originalRow, table) {
         if (!originalRow) return;
 
@@ -8740,13 +8749,13 @@ ${fraud.manager === managerName ? `
                         changeCardStatus();
                     }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
-                activeUrlsManagers();
+                await activeUrlsManagers();
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 handlePopupWildWinz();
                 addForeignButton();
                 buttonToSave();
                 checkUserInFraudList();
-                activeUrlsManagers();
+                await activeUrlsManagers();
                 updateBanButton();
                 checkForUpdates();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
@@ -8755,7 +8764,7 @@ ${fraud.manager === managerName ? `
                 buttonToSave();
                 disablePromoOffersUSA();
                 checkUserInFraudList();
-                activeUrlsManagers();
+                await activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
             } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {

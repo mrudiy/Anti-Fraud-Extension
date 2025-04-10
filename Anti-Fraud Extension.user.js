@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.5
+// @version      6.2.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.5";
+    const currentVersion = "6.2.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7597,34 +7597,45 @@ ${fraud.manager === managerName ? `
         targetTd.appendChild(disableButton[0]);
     }
 
+    let previousValues = {
+        moneyFromOfferPercentage: 0,
+        activityMoneyPercentage: 0,
+        totalPendings: 0
+    };
+
     function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
-        if (formatableTextDiv) {
-            const existingButton = document.getElementById('check-button');
-            if (existingButton) {
-                existingButton.remove();
-            }
+        if (!formatableTextDiv) return;
 
-            const checkButton = document.createElement('button');
-            checkButton.id = 'check-button';
-            checkButton.type = 'button';
-            checkButton.innerText = 'Коментар';
-            checkButton.onclick = () => {
-                const date = getCurrentDate();
-                const time = getCurrentTime();
-                const initials = GM_getValue(initialsKey);
-                const currentLanguage = GM_getValue(languageKey, 'російська');
-                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${moneyFromOfferPercentage}% | Freemoney From Activities: ${activityMoneyPercentage.toFixed(2)}% | </b> `;
-                if (totalPendings > 1) {
-                    const balanceStyle = totalPendings > 2000 ? 'color: red;' : '';
-                    textToInsert += `<b>| На выплате:</b> <b style="${balanceStyle}">${totalPendings}$</b> | `;
-                }
-                insertTextIntoField(textToInsert);
-            };
+        if (moneyFromOfferPercentage !== undefined) previousValues.moneyFromOfferPercentage = moneyFromOfferPercentage;
+        if (activityMoneyPercentage !== undefined) previousValues.activityMoneyPercentage = activityMoneyPercentage;
+        if (totalPendings !== undefined) previousValues.totalPendings = totalPendings;
 
-            formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+        const existingButton = document.getElementById('check-button');
+        if (existingButton) {
+            existingButton.remove();
         }
+
+        const checkButton = document.createElement('button');
+        checkButton.id = 'check-button';
+        checkButton.type = 'button';
+        checkButton.innerText = 'Коментар';
+        checkButton.onclick = () => {
+            const date = getCurrentDate();
+            const time = getCurrentTime();
+            const initials = GM_getValue(initialsKey);
+            const currentLanguage = GM_getValue(languageKey, 'російська');
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
+
+            let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${previousValues.moneyFromOfferPercentage}% | Freemoney From Activities: ${previousValues.activityMoneyPercentage.toFixed(2)}% | </b>`;
+            if (previousValues.totalPendings > 1) {
+                const balanceStyle = previousValues.totalPendings > 2000 ? 'color: red;' : '';
+                textToInsert += `<b>| На выплате:</b> <b style="${balanceStyle}">${previousValues.totalPendings}$</b> | `;
+            }
+            insertTextIntoField(textToInsert);
+        };
+
+        formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
     }
 
     const POPUP_STYLES_USA = {
@@ -7746,7 +7757,20 @@ ${fraud.manager === managerName ? `
     function formatProfitOutput(mainResult, relatedProjects, totalProfit, projectLinks, totalPending, winnings) {
         const cleanBalance = parseFloat(winnings) || 0;
         const prognoseInOut = mainResult.deposits - (totalPending + mainResult.withdrawals + cleanBalance);
+        const TotalPA = (mainResult.withdrawals / mainResult.deposits) * 100;
         const prognosePA = mainResult.deposits ? ((mainResult.withdrawals + totalPending + cleanBalance) / mainResult.deposits * 100) : 0;
+
+        const mainText = document.querySelector('.popup-main-text');
+        if (mainText) {
+            const totalPASpan = mainText.querySelector('span:nth-child(2)');
+            if (totalPASpan) {
+                const newTotalPA = TotalPA / 100;
+                totalPASpan.textContent = newTotalPA.toFixed(2);
+                totalPASpan.style.color = getColor(newTotalPA);
+            }
+        }
+
+        addUSACheckButton((TotalPA / 100).toFixed(2));
 
         let outputHTML = `
         <div class="profit-section main-profit">

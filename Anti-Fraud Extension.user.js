@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.6
+// @version      6.2.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.6";
+    const currentVersion = "6.2.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3725,13 +3725,101 @@ ${fraud.manager === managerName ? `
         'https://admin.betking.com.ua/'
     ];
 
+    function insertTextToComment(textToInsert, shouldUpdate) {
+        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
+
+        if (!gatewayElement) {
+            console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
+            return;
+        }
+
+        const currentLanguage = GM_getValue(languageKey, 'російська');
+        const fieldDate = getDateFromField();
+        const today = getCurrentDate();
+
+        if (fieldDate === today) {
+            const lines = gatewayElement.innerHTML.trim().split('<br>');
+            if (lines.length > 1) {
+                let secondLine = lines[1];
+                let lastPipeIndex = secondLine.lastIndexOf('|');
+                let foundValidIndex = false;
+
+                while (lastPipeIndex !== -1) {
+                    const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
+                    const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+
+                    const beforeMatch = beforePipe.match(/\d{4}$/);
+                    const afterMatch = afterPipe.match(/^\d{2}/);
+
+                    if (!(beforeMatch && afterMatch)) {
+                        const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                        const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                        const updatedSecondLine = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
+                        lines[1] = updatedSecondLine;
+
+                        gatewayElement.innerHTML = lines.join('<br>');
+                        gatewayElement.dispatchEvent(new Event('input'));
+
+                        if (shouldUpdate) {
+                            if (doneButton) {
+                                doneButton.click();
+                            }
+                        }
+
+                        foundValidIndex = true;
+                        break;
+                    }
+
+                    lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+                }
+
+                if (!foundValidIndex) {
+                    console.warn('Valid "|" not found in the second line.');
+                }
+            } else {
+                console.warn('Not enough lines to process the second line.');
+            }
+        } else {
+            const checkButton = document.getElementById('check-button');
+            if (checkButton) {
+                checkButton.click();
+
+                const lines = gatewayElement.innerHTML.trim().split('<br>');
+                if (lines.length > 1) {
+                    const secondLine = lines[1];
+                    const lastPipeIndex = secondLine.lastIndexOf('|');
+                    if (lastPipeIndex !== -1) {
+                        const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                        const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                        const updatedSecondLine = `${beforePipe} ${afterPipe} ${textToInsert} |`.trim();
+                        lines[1] = updatedSecondLine;
+                        gatewayElement.innerHTML = lines.join('<br>');
+                        gatewayElement.dispatchEvent(new Event('input'));
+                        if (shouldUpdate) {
+                            if (doneButton) {
+                                doneButton.click();
+                            }
+                        }
+                    } else {
+                        console.warn('Symbol "|" not found in the second line.');
+                    }
+                } else {
+                    console.warn('Not enough lines to process the second line.');
+                }
+            } else {
+                console.warn('Button with id "check-button" not found.');
+            }
+        }
+    }
+
     async function handleCombinedProfit(container, { Balance, totalPending }) {
         const loader = createLoader();
         container.appendChild(loader);
 
         const styleElement = document.createElement('style');
-        style.textContent = COMBINED_STYLES;
-        document.head.appendChild(style);
+        styleElement.textContent = COMBINED_STYLES;
+        document.head.appendChild(styleElement);
 
         try {
             const playerID = getPlayerID();
@@ -3791,10 +3879,16 @@ ${fraud.manager === managerName ? `
             container.removeChild(loader);
             container.innerHTML = `
             <div class="profit-section main-profit">
-                <b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b><br>
+                <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b>'>
+                    Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span>
+                </b><br>
                 ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
-                    <b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b><br>
-                    <b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>
+                    <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b>'>
+                        Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span>
+                    </b><br>
+                    <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                        Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                    </b>
                 ` : ''}
             </div>
             <div class="profit-section related-projects">
@@ -3811,6 +3905,13 @@ ${fraud.manager === managerName ? `
                 <div><b>Person InOut:</b> <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, true, currencySymbol)}</span></div>
             </div>
         `;
+
+            container.querySelectorAll('.clickable').forEach(element => {
+                element.addEventListener('click', () => {
+                    const formattedText = element.getAttribute('data-text');
+                    insertTextToComment(formattedText, false);
+                });
+            });
 
         } catch (error) {
             container.removeChild(loader);
@@ -5853,100 +5954,20 @@ ${fraud.manager === managerName ? `
             const newValue = checkbox.checked;
             if (!newValue) {
 
-                const initials = GM_getValue(initialsKey, '');
-                const currentDate = getCurrentDate();
-                const playerID = getPlayerID();
-                const project = getProject();
-                const url = window.location.href;
+
                 const time = getCurrentTime();
                 const currentLanguage = GM_getValue(languageKey, 'російська');
-                const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
 
                 const fieldDate = getDateFromField();
                 const today = getCurrentDate();
 
-                const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
-                if (!gatewayElement) {
-                    console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
-                    return;
-                }
                 let insertText = '';
                 if (currentLanguage === 'українська') {
                     insertText = `Вимкнув автовиплату в ${time}`;
                 } else {
                     insertText = `Отключил автовыплату в ${time}`;
                 }
-
-                if (fieldDate === today) {
-                    const lines = gatewayElement.innerHTML.trim().split('<br>');
-
-                    if (lines.length > 1) {
-                        let secondLine = lines[1];
-                        let lastPipeIndex = secondLine.lastIndexOf('|');
-                        let foundValidIndex = false;
-
-                        while (lastPipeIndex !== -1) {
-                            const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
-                            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-
-                            const beforeMatch = beforePipe.match(/\d{4}$/);
-                            const afterMatch = afterPipe.match(/^\d{2}/);
-
-                            if (!(beforeMatch && afterMatch)) {
-                                const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
-                                const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                                const updatedSecondLine = `${validBeforePipe} ${insertText} | ${validAfterPipe}`.trim();
-                                lines[1] = updatedSecondLine;
-
-                                gatewayElement.innerHTML = lines.join('<br>');
-                                gatewayElement.dispatchEvent(new Event('input'));
-
-                                if (doneButton) {
-                                    doneButton.click();
-                                }
-
-                                foundValidIndex = true;
-                                break;
-                            }
-
-                            lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
-                        }
-
-                        if (!foundValidIndex) {
-                            console.warn('Valid "|" not found in the second line.');
-                        }
-                    } else {
-                        console.warn('Not enough lines to process the second line.');
-                    }
-                } else {
-                    const checkButton = document.getElementById('check-button');
-                    if (checkButton) {
-                        checkButton.click();
-
-                        const lines = gatewayElement.innerHTML.trim().split('<br>');
-                        if (lines.length > 1) {
-                            const secondLine = lines[1];
-                            const lastPipeIndex = secondLine.lastIndexOf('|');
-                            if (lastPipeIndex !== -1) {
-                                const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
-                                const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                                const updatedSecondLine = `${beforePipe} ${afterPipe} ${insertText} |`.trim();
-                                lines[1] = updatedSecondLine;
-                                gatewayElement.innerHTML = lines.join('<br>');
-                                gatewayElement.dispatchEvent(new Event('input'));
-                                if (doneButton) {
-                                    doneButton.click();
-                                }
-                            } else {
-                                console.warn('Symbol "|" not found in the second line.');
-                            }
-                        } else {
-                            console.warn('Not enough lines to process the second line.');
-                        }
-                    } else {
-                        console.warn('Button with id "check-button" not found.');
-                    }
-                }
+                insertTextToComment(insertText, true);
                 clearInterval(checkInterval);
             }
         }, 500);
@@ -7435,7 +7456,6 @@ ${fraud.manager === managerName ? `
 
         if (!targetTd) {
             console.error('Не найден элемент <td> в строке с "Лимит промо оферов в день"');
-            // Дополнительная диагностика
             console.log('Найденные <th>:', Array.from(document.querySelectorAll('th')).map(th => th.textContent.trim()));
             return;
         }
@@ -7498,94 +7518,11 @@ ${fraud.manager === managerName ? `
                         ).then(res => res.text());
 
                         if (!bonusResponse) throw new Error('Помилка третього запиту');
-
-                        const initials = GM_getValue('initialsKey', '');
-                        const currentDate = getCurrentDate();
                         const currentLanguage = GM_getValue(languageKey, 'російська');
-                        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
-                        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
-
-                        if (!gatewayElement) {
-                            console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
-                        } else {
-                            let insertText = currentLanguage === 'українська'
-                            ? `Відключив всі активності, офери, бонуси`
-                            : `Отключил все активности, оферы, бонусы`;
-
-                            const fieldDate = getDateFromField();
-                            const today = getCurrentDate();
-
-                            if (fieldDate === today) {
-                                const lines = gatewayElement.innerHTML.trim().split('<br>');
-                                if (lines.length > 1) {
-                                    let secondLine = lines[1];
-                                    let lastPipeIndex = secondLine.lastIndexOf('|');
-                                    let foundValidIndex = false;
-
-                                    while (lastPipeIndex !== -1) {
-                                        const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
-                                        const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-
-                                        const beforeMatch = beforePipe.match(/\d{4}$/);
-                                        const afterMatch = afterPipe.match(/^\d{2}/);
-
-                                        if (!(beforeMatch && afterMatch)) {
-                                            const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
-                                            const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                                            const updatedSecondLine = `${validBeforePipe} ${insertText} | ${validAfterPipe}`.trim();
-                                            lines[1] = updatedSecondLine;
-
-                                            gatewayElement.innerHTML = lines.join('<br>');
-                                            gatewayElement.dispatchEvent(new Event('input'));
-
-                                            if (doneButton) {
-                                                doneButton.click();
-                                            }
-
-                                            foundValidIndex = true;
-                                            break;
-                                        }
-
-                                        lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
-                                    }
-
-                                    if (!foundValidIndex) {
-                                        console.warn('Valid "|" not found in the second line.');
-                                    }
-                                } else {
-                                    console.warn('Not enough lines to process the second line.');
-                                }
-                            } else {
-                                const checkButton = document.getElementById('check-button');
-                                if (checkButton) {
-                                    checkButton.click();
-
-                                    const lines = gatewayElement.innerHTML.trim().split('<br>');
-                                    if (lines.length > 1) {
-                                        const secondLine = lines[1];
-                                        const lastPipeIndex = secondLine.lastIndexOf('|');
-                                        if (lastPipeIndex !== -1) {
-                                            const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
-                                            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                                            const updatedSecondLine = `${beforePipe} ${afterPipe} ${insertText} |`.trim();
-                                            lines[1] = updatedSecondLine;
-                                            gatewayElement.innerHTML = lines.join('<br>');
-                                            gatewayElement.dispatchEvent(new Event('input'));
-                                            if (doneButton) {
-                                                doneButton.click();
-                                            }
-                                        } else {
-                                            console.warn('Symbol "|" not found in the second line.');
-                                        }
-                                    } else {
-                                        console.warn('Not enough lines to process the second line.');
-                                    }
-                                } else {
-                                    console.warn('Button with id "check-button" not found.');
-                                }
-                            }
-                        }
-
+                        let insertText = currentLanguage === 'українська'
+                        ? `Відключив всі активності, офери, бонуси`
+                        : `Отключил все активности, оферы, бонусы`;
+                        insertTextToComment(insertText, true)
                         Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
                             .then(() => location.reload());
                     } catch (error) {
@@ -7715,7 +7652,6 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    // Функция для получения связанных аккаунтов
     async function getRelatedAccounts(currentProject, playerID) {
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -7774,10 +7710,22 @@ ${fraud.manager === managerName ? `
 
         let outputHTML = `
         <div class="profit-section main-profit">
-            <div><b>Total InOut:</b> ${mainResult.profit.toFixed(2)}$</div>
+            <div>
+                <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(mainResult.profit)}">${mainResult.profit.toFixed(2)}$</span></b>'>
+                    Total InOut: <span style="color: ${getBalanceColor(mainResult.profit)}">${mainResult.profit.toFixed(2)}$</span>
+                </b>
+            </div>
             ${(totalPending > 1 || cleanBalance > 1) ? `
-                <div><b>Prognose InOut:</b> ${prognoseInOut.toFixed(2)}$</div>
-                <div><b>Prognose PA:</b> <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></div>
+                <div>
+                    <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${prognoseInOut.toFixed(2)}$</span></b>'>
+                        Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${prognoseInOut.toFixed(2)}$</span>
+                    </b>
+                </div>
+                <div>
+                    <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                        Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                    </b>
+                </div>
             ` : ''}
         </div>
         <div class="profit-section related-projects">
@@ -7793,8 +7741,7 @@ ${fraud.manager === managerName ? `
             }
             outputHTML += `
             <div>
-                <a href="${link}" target="_blank" class="project-link">${projectName} (${playerId})</a>: ${proj.profit.toFixed(2)}$
-            </div>
+                <a href="${link}" target="_blank" class="project-link">${projectName} (${playerId})</a>: ${proj.profit.toFixed(2)}$</div>
         `;
         });
 
@@ -7858,6 +7805,13 @@ ${fraud.manager === managerName ? `
 
             container.removeChild(loader);
             container.innerHTML = formatProfitOutput(mainResult, relatedResults, totalProfit, projectLinks, totalPending, winnings);
+
+            container.querySelectorAll('.clickable').forEach(element => {
+                element.addEventListener('click', () => {
+                    const formattedText = element.getAttribute('data-text');
+                    insertTextToComment(formattedText);
+                });
+            });
         } catch (error) {
             console.error('Error in fetchProfit:', error);
             container.removeChild(loader);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.7
+// @version      6.2.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.7";
+    const currentVersion = "6.2.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3854,7 +3854,11 @@ ${fraud.manager === managerName ? `
             });
 
             const inn = await getPlayerInn();
-            if (!inn) throw new Error('ИНН игрока не найден');
+            if (!inn) {
+                handleTotalInOutClick(container, { Balance, totalPending });
+                container.removeChild(loader);
+                return
+            }
 
             const currentProject = window.location.origin + '/';
             const searchDomains = PROJECT_DOMAINS.filter(domain => domain !== currentProject);
@@ -4050,13 +4054,28 @@ ${fraud.manager === managerName ? `
                 const showAmount = GM_getValue(amountDisplayKey, true);
                 const currencySymbol = currencySymbols.get(getCurrency()) || '';
 
-                container.innerHTML += `
-                <div><b>Total InOut: ${formatCurrency(profit, showAmount, currencySymbol)}</b></div>
-                ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
-                    <div><b>Prognose InOut: ${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</b></div>
-                    <div><b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b></div>
-                ` : ''}
+                container.innerHTML = `
+                <div class="profit-section main-profit">
+                    <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b>'>
+                        Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span>
+                    </b><br>
+                    ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
+                        <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b>'>
+                            Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span>
+                        </b><br>
+                        <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                            Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                        </b>
+                    ` : ''}
+                </div>
             `;
+
+                container.querySelectorAll('.clickable').forEach(element => {
+                    element.addEventListener('click', () => {
+                        const formattedText = element.getAttribute('data-text');
+                        insertTextToComment(formattedText, false);
+                    });
+                });
             },
             onerror: error => {
                 container.removeChild(loader);
@@ -4064,6 +4083,7 @@ ${fraud.manager === managerName ? `
             }
         });
     }
+
 
     function createLoader() {
         const loader = document.createElement('div');
@@ -5974,6 +5994,38 @@ ${fraud.manager === managerName ? `
 
         window.addEventListener('beforeunload', () => clearInterval(checkInterval));
     }
+
+    function checkBonusButton() {
+        const checkbox = document.getElementById('Players_no_bonus');
+        if (!checkbox) return console.error('Checkbox element not found.');
+
+        let currentValue = checkbox.checked;
+
+        if (currentValue) return;
+
+        const checkInterval = setInterval(() => {
+            const newValue = checkbox.checked;
+            if (newValue) {
+                const time = getCurrentTime();
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+
+                const fieldDate = getDateFromField();
+                const today = getCurrentDate();
+
+                let insertText = '';
+                if (currentLanguage === 'українська') {
+                    insertText = `Відключив бонуси в ${time}`;
+                } else {
+                    insertText = `Отключил бонусы в ${time}`;
+                }
+                insertTextToComment(insertText, true);
+                clearInterval(checkInterval);
+            }
+        }, 500);
+
+        window.addEventListener('beforeunload', () => clearInterval(checkInterval));
+    }
+
 
     async function updateBanButton() {
         const updateButton = document.getElementById('yw2');
@@ -8711,6 +8763,7 @@ ${fraud.manager === managerName ? `
                 handlePopup();
                 createCheckIPButton();
                 checkAutoPayment();
+                checkBonusButton();
                 goToGoogleSheet();
                 addAgeToBirthdate();
                 addPibRow();

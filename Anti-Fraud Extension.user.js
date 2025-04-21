@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.2.8
+// @version      6.2.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.2.8";
+    const currentVersion = "6.2.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3164,7 +3164,8 @@ ${fraud.manager === managerName ? `
     }
 
     function formatCurrency(amount, showAmount, currencySymbol) {
-        return showAmount ? `${formatAmount(amount)}${currencySymbol}` : `${amount}${currencySymbol}`;
+        const formattedAmount = Number(amount).toFixed(2);
+        return showAmount ? `${formatAmount(amount)}${currencySymbol}` : `${formattedAmount}${currencySymbol}`;
     }
 
     function createContainer(styles) {
@@ -3906,14 +3907,19 @@ ${fraud.manager === managerName ? `
             }).join('')}
             </div>
             <div class="profit-section total-profit">
-                <div><b>Person InOut:</b> <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, true, currencySymbol)}</span></div>
+                <div><b>Person InOut:</b> <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, showAmount, currencySymbol)}</span></div>
             </div>
         `;
 
             container.querySelectorAll('.clickable').forEach(element => {
                 element.addEventListener('click', () => {
+                    if (element.dataset.clicked === 'true') return;
+
                     const formattedText = element.getAttribute('data-text');
-                    insertTextToComment(formattedText, false);
+                    insertTextToComment(formattedText);
+                    element.dataset.clicked = 'true';
+
+                    element.style.opacity = '0.85';
                 });
             });
 
@@ -7860,8 +7866,13 @@ ${fraud.manager === managerName ? `
 
             container.querySelectorAll('.clickable').forEach(element => {
                 element.addEventListener('click', () => {
+                    if (element.dataset.clicked === 'true') return;
+
                     const formattedText = element.getAttribute('data-text');
                     insertTextToComment(formattedText);
+                    element.dataset.clicked = 'true';
+
+                    element.style.opacity = '0.85';
                 });
             });
         } catch (error) {
@@ -8676,24 +8687,38 @@ ${fraud.manager === managerName ? `
             for (let card of cardNumbers) {
                 if (matchMaskWithCard(originalMask, card)) {
                     console.log('Match found:', originalMask, '->', card);
+
                     const fullCardSpan = document.createElement('span');
                     fullCardSpan.textContent = card;
                     fullCardSpan.style.cursor = 'pointer';
                     fullCardSpan.style.fontWeight = 'bold';
                     fullCardSpan.title = 'Копіювати';
 
+                    const copiedMessage = document.createElement('span');
+                    copiedMessage.textContent = ' Скопійовано!';
+                    copiedMessage.style.color = 'green';
+                    copiedMessage.style.marginLeft = '8px';
+                    copiedMessage.style.fontWeight = 'normal';
+                    copiedMessage.style.display = 'none';
+
                     fullCardSpan.onclick = () => {
                         navigator.clipboard.writeText(card).then(() => {
-                            fullCardSpan.style.color = '#4CAF50';
-                            setTimeout(() => fullCardSpan.style.color = '', 500);
+                            fullCardSpan.style.color = '#6699cc';
+                            copiedMessage.style.display = 'inline';
+                            setTimeout(() => {
+                                fullCardSpan.style.color = '';
+                                copiedMessage.style.display = 'none';
+                            }, 1000);
                         });
                     };
 
                     maskCell.innerHTML = '';
                     maskCell.appendChild(fullCardSpan);
+                    maskCell.appendChild(copiedMessage);
                     break;
                 }
             }
+
         }
     }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.0
+// @version      6.3.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.0";
+    const currentVersion = "6.3.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7600,7 +7600,7 @@ ${fraud.manager === managerName ? `
         totalPendings: 0
     };
 
-    function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings) {
+    function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings, entries, winnings) {
         const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
         if (!formatableTextDiv) return;
 
@@ -7621,14 +7621,32 @@ ${fraud.manager === managerName ? `
             const date = getCurrentDate();
             const time = getCurrentTime();
             const initials = GM_getValue(initialsKey);
-            const currentLanguage = GM_getValue(languageKey, 'російська');
+            const currentLanguage = GM_getValue(languageKey, 'російська').toLowerCase();
+            const isRussian = currentLanguage === 'російська';
+
             const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
 
-            let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | Freemoney From Offer: ${previousValues.moneyFromOfferPercentage}% | Freemoney From Activities: ${previousValues.activityMoneyPercentage.toFixed(2)}% | </b>`;
+            let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | FM Offer: ${previousValues.moneyFromOfferPercentage}% | FM Activities: ${previousValues.activityMoneyPercentage.toFixed(2)}% | </b>`;
+
             if (previousValues.totalPendings > 1) {
                 const balanceStyle = previousValues.totalPendings > 2000 ? 'color: red;' : '';
-                textToInsert += `<b>| На выплате:</b> <b style="${balanceStyle}">${previousValues.totalPendings}$</b> | `;
+                textToInsert += `<b> ${isRussian ? 'На выплате' : 'На виплаті'}:</b> <b style="${balanceStyle}">${previousValues.totalPendings}$</b> | `;
             }
+
+            if (entries > 10 || winnings > 10) {
+                let balanceText = `<b>${isRussian ? 'На балансе' : 'На балансі'}:</b> `;
+                const parts = [];
+
+                if (entries > 10) {
+                    parts.push(`${entries} entries`);
+                }
+                if (winnings > 10) {
+                    parts.push(`${winnings} winings`);
+                }
+
+                textToInsert += balanceText + parts.join(' | ') + ' | ';
+            }
+
             insertTextIntoField(textToInsert);
         };
 
@@ -8049,7 +8067,7 @@ ${fraud.manager === managerName ? `
                             document.head.appendChild(style);
 
                             getPendingss().then(totalPendings => {
-                                addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings);
+                                addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings, entries, winnings);
                             }).catch(error => console.error('Ошибка при получении данных:', error));
                         }
                     });
@@ -8825,7 +8843,7 @@ ${fraud.manager === managerName ? `
                 await activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
-            } else if (currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
+            } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
                 powerBImakeCellsClickable();

@@ -7449,11 +7449,11 @@ ${fraud.manager === managerName ? `
         rows.forEach(row => {
             const th = row.querySelector("th");
             if (th) {
-                if (th.textContent.trim() === "Фамилия") {
+                if (th.textContent.trim() === "Фамилия" || th.textContent.trim() === "Surname") {
                     surname = row.querySelector("td").textContent.trim();
                 } else if (th.textContent.trim() === "Middle Name") {
                     middleName = row.querySelector("td").textContent.trim();
-                } else if (th.textContent.trim() === "Имя") {
+                } else if (th.textContent.trim() === "Имя" || th.textContent.trim() === "Name") {
                     firstName = row.querySelector("td").textContent.trim();
                 }
             }
@@ -7475,7 +7475,7 @@ ${fraud.manager === managerName ? `
 
         const commentRow = Array.from(rows).find(row => {
             const th = row.querySelector("th");
-            return th && th.textContent.trim() === "Комментарий";
+            return th && (th.textContent.trim() === "Комментарий" || th.textContent.trim() === "Comment");
         });
 
         if (commentRow) {
@@ -8840,6 +8840,7 @@ ${fraud.manager === managerName ? `
                 buttonToSave();
                 disablePromoOffersUSA();
                 checkUserInFraudList();
+                addPibRow();
                 await activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()

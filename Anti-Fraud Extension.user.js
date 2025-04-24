@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.1
+// @version      6.3.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -77,7 +77,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.1";
+    const currentVersion = "6.3.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7752,9 +7752,11 @@ ${fraud.manager === managerName ? `
 
                     accounts.forEach(account => {
                         const project = account.querySelector('.person-account__project b')?.textContent.trim();
-                        const id = account.querySelector('.person-account__login a')?.textContent.trim();
-                        const link = account.querySelector('.person-account__login a')?.getAttribute('href');
-                        if (project && id) {
+                        const successLabel = account.querySelector('.person-account__login b.label-success');
+                        const id = successLabel?.querySelector('a')?.textContent.trim();
+                        const link = successLabel?.querySelector('a')?.getAttribute('href');
+
+                        if (project && id && successLabel) {
                             projectLinks[project] = link;
                             if (project !== currentProject) {
                                 relatedAccounts.push({ project, id });

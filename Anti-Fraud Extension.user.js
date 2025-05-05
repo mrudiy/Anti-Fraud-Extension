@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.3
+// @version      6.3.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.3";
+    const currentVersion = "6.3.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2108,6 +2108,7 @@
                     <table>
                         <thead>
                             <tr>
+                                <th>Проєкт</th>
                                 <th>ID Гравця</th>
                                 <th>Дата і час</th>
                             </tr>
@@ -2115,6 +2116,7 @@
                         <tbody>
                             ${data.seen_entries.map(entry => `
                                 <tr>
+                                    <td>${entry.project}</td>
                                     <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
                                     <td>${entry.date}</td>
                                 </tr>
@@ -8976,6 +8978,7 @@ ${fraud.manager === managerName ? `
                 await activeUrlsManagers();
                 updateBanButton();
                 checkForUpdates();
+                sendPlayerSeenInfo();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();
@@ -8983,6 +8986,7 @@ ${fraud.manager === managerName ? `
                 disablePromoOffersUSA();
                 checkUserInFraudList();
                 addPibRow();
+                sendPlayerSeenInfo();
                 await activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()

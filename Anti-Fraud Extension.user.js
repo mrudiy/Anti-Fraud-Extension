@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.2
+// @version      6.3.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -59,6 +59,7 @@
         'com.ua': 'https://admin.betking.com.ua/',
     }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
     const initialUrl = window.location.href;
+
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
     const ndfDisplayKey = 'ndfDisplay';
@@ -77,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.2";
+    const currentVersion = "6.3.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1151,6 +1152,7 @@
                 <th>Ім'я</th>
                 <th>Статус</th>
                 <th><i class="fa fa-user" title='Кількість опрацьованих'></i></th>
+                <th><i class="fa fa-eye" title='Кількість переглянуитих'></i></th>
                 <th><i class="fa fa-chrome" title='Остання вкладка'></i></th>
                 <th class="actions">Дії</th>
             </tr>
@@ -1997,27 +1999,35 @@
     }
 
     async function loadUsers() {
-
         const today = getCurrentDateRequest();
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/users', {
+            const usersResponse = await fetch(`${API_BASE_URL}/api/users`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (!usersResponse.ok) {
+                throw new Error(`Failed to fetch users: ${usersResponse.status}`);
+            }
+            const users = await usersResponse.json();
 
-            const users = await response.json();
-
-            const userStatsPromises = users.map(async user => {
-                const statsResponse = await fetch(`https://vps65001.hyperhost.name/api/get_statistics/${user.id}?date=${today}`, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const stats = await statsResponse.json();
-                return { ...user, processedToday: stats.total_players || 0 };
+            const statsResponse = await fetch(`${API_BASE_URL}/api/get_all_statistics?date=${today}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (!statsResponse.ok) {
+                throw new Error(`Failed to fetch statistics: ${statsResponse.status}`);
+            }
+            const stats = await statsResponse.json();
 
-            const usersWithStats = await Promise.all(userStatsPromises);
+            const usersWithStats = users.map(user => {
+                const userStats = stats.find(stat => stat.id === user.id) || {};
+                return {
+                    ...user,
+                    processedToday: userStats.total_players || 0,
+                    seenToday: userStats.seen_today || 0
+                };
+            });
 
             usersWithStats.sort((a, b) => b.processedToday - a.processedToday);
 
@@ -2030,8 +2040,9 @@
                 <td>${user.manager_name}</td>
                 <td>${user.status}</td>
                 <td>${user.processedToday}</td>
-                 <td>
-                 ${user.active_url ? `<a href="${user.active_url}" target="_blank">Link</a>` : 'Не відомо'}
+                <td><a href="#" class="seen-today-link">${user.seenToday}</a></td>
+                <td>
+                    ${user.active_url ? `<a href="${user.active_url}" target="_blank">Link</a>` : 'Не відомо'}
                 </td>
                 <td class="actions">
                     <i class="fa fa-bar-chart get-statistics" title="Статистика"></i>
@@ -2044,11 +2055,99 @@
                 row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
                 row.querySelector('.change-password').addEventListener('click', () => changePassword(user.id));
                 row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
+                row.querySelector('.seen-today-link').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    fetchSeenEntries(user.id, today);
+                });
             });
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error loading users:', error);
+            const usersList = document.getElementById('users-list');
+            usersList.innerHTML = '<tr><td colspan="6">Помилка завантаження даних</td></tr>';
         }
     }
+
+    async function fetchSeenEntries(userId, selectedDate) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/get_seen_entries/${userId}?date=${selectedDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const content = `
+                <style>
+                    #updateButton {
+                        background-color: #6a5acd;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    }
+                    #updateButton:hover {
+                        background-color: #5244a8;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                    }
+                </style>
+                <label for="datePicker">Оберіть дату:</label>
+                <input type="date" id="datePicker" value="${selectedDate}" />
+                <button id="updateButton">Оновити</button>
+                <p>Кількість переглянутих: ${data.total_seen}</p>
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID Гравця</th>
+                                <th>Дата і час</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.seen_entries.map(entry => `
+                                <tr>
+                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
+                                    <td>${entry.date}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+                const popup = document.getElementById('seen-entries-popup');
+                if (popup) {
+                    popup.querySelector('.popup-content').innerHTML = content;
+                } else {
+                    createPopup('seen-entries-popup', 'Переглянуті гравці', content, () => {
+                        document.getElementById('updateButton').addEventListener('click', () => updateSeenEntries(userId));
+                    });
+                }
+
+                document.getElementById('updateButton').addEventListener('click', () => updateSeenEntries(userId));
+            } else {
+                alert('Помилка: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Error fetching seen entries:', error);
+            alert('Помилка завантаження даних');
+        }
+    }
+
+    function updateSeenEntries(userId) {
+        const selectedDate = document.getElementById('datePicker').value;
+        fetchSeenEntries(userId, selectedDate);
+    }
+
 
     function createFraudPopup() {
         const content = `
@@ -5594,6 +5693,46 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    async function sendPlayerSeenInfo() {
+        const currentUrl = window.location.href;
+        const project = getProject();
+        const date = new Date();
+        const formattedDate = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()} ${getCurrentTime()}`;
+
+        if (!currentUrl.includes('/playersItems/update') && !currentUrl.includes('/user/')) {
+            return;
+        }
+
+        if (token) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/seen`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: currentUrl,
+                        user_id: getPlayerID(),
+                        project: project,
+                        date: formattedDate
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log('Ти молодчинка!');
+                } else {
+                    console.error('Failed to record player view:', result.message);
+                }
+            } catch (error) {
+                console.error('Error sending player seen info:', error);
+            }
+        } else {
+            console.warn('No auth token found');
+        }
+    }
+
     async function activeUrlsManagers() {
         const playerId = getPlayerID();
         const currentManager = await getManagerName(token);
@@ -8816,6 +8955,7 @@ ${fraud.manager === managerName ? `
                 addPibRow();
                 checkCardFunction();
                 setupModalHandler();
+                sendPlayerSeenInfo();
                 const isFullNumberCardsEnabled = GM_getValue(fullNumberCardDisplayKey, true);
                 if (isFullNumberCardsEnabled) {
                     updateCardMasksFromComments();

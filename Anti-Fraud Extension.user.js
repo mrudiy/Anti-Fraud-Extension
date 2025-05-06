@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.4
+// @version      6.3.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.4";
+    const currentVersion = "6.3.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8660,23 +8660,32 @@ ${fraud.manager === managerName ? `
         if (navElement) {
             const referralItem = document.createElement('li');
             referralItem.innerHTML = `
-                <a href="/referrals/referralsStatistics/report">
-                    <i class="fa fa-users"></i> Реферальна система
-                </a>
-            `;
+            <a href="/referrals/referralsStatistics/report">
+                <i class="fa fa-users"></i> Реферальна система
+            </a>
+        `;
 
             const boostersItem = document.createElement('li');
             boostersItem.innerHTML = `
-                <a href="/rankLeague/rankLeaguePlayersBoostersReport/view">
-                    <i class="fa fa-rocket"></i> Бустери
-                </a>
-            `;
+            <a href="/rankLeague/rankLeaguePlayersBoostersReport/view">
+                <i class="fa fa-rocket"></i> Бустери
+            </a>
+        `;
 
             navElement.insertBefore(boostersItem, navElement.firstChild);
             navElement.insertBefore(referralItem, navElement.firstChild);
+
+            const offersItem = document.createElement('li');
+            if (window.location.href.includes('.com') && !window.location.href.includes('betking')) {
+                offersItem.innerHTML = `
+                <a href="/cash/promoOffers/index/">
+                    <i class="fa fa-gift"></i> Офери
+                </a>
+            `;
+                navElement.insertBefore(offersItem, navElement.firstChild);
+            }
         }
     }
-
 
     const checkCardFunction = () => {
         const getPageId = () => GM_getValue('easyPayPageId', null);
@@ -8987,6 +8996,7 @@ ${fraud.manager === managerName ? `
                 checkUserInFraudList();
                 addPibRow();
                 sendPlayerSeenInfo();
+                checkForUpdates();
                 await activeUrlsManagers();
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()

@@ -7721,8 +7721,8 @@ ${fraud.manager === managerName ? `
                         if (!bonusResponse) throw new Error('Помилка третього запиту');
                         const currentLanguage = GM_getValue(languageKey, 'російська');
                         let insertText = currentLanguage === 'українська'
-                        ? `Відключив всі активності, офери, бонуси`
-                        : `Отключил все активности, оферы, бонусы`;
+                        ? `Відключив всі активності, оффери, бонуси`
+                        : `Отключил все активности, офферы, бонусы`;
                         insertTextToComment(insertText, true)
                         Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
                             .then(() => location.reload());
@@ -8679,7 +8679,7 @@ ${fraud.manager === managerName ? `
             if (window.location.href.includes('.com') && !window.location.href.includes('betking')) {
                 offersItem.innerHTML = `
                 <a href="/cash/promoOffers/index/">
-                    <i class="fa fa-gift"></i> Офери
+                    <i class="fa fa-gift"></i> Оффери
                 </a>
             `;
                 navElement.insertBefore(offersItem, navElement.firstChild);

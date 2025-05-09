@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.6
+// @version      6.3.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.6";
+    const currentVersion = "6.3.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -455,6 +455,12 @@
                 existingButton.remove();
             }
 
+            const existingGreenButton = document.getElementById('green-button');
+            if (existingGreenButton) {
+                existingGreenButton.remove();
+            }
+
+            // Кнопка "Коментар"
             const checkButton = document.createElement('button');
             checkButton.id = 'check-button';
             checkButton.type = 'button';
@@ -472,7 +478,7 @@
 
                 const safeBalance = getInnerBalanceValue();
                 const formattedSafeBalance = formatAmount(safeBalance);
-                console.log(safeBalance)
+
                 let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
 
                 if (currentLanguage === 'українська') {
@@ -510,9 +516,21 @@
                 insertTextIntoField(textToInsert);
             };
 
+            const greenButton = document.createElement('button');
+            greenButton.id = 'green-button';
+            greenButton.type = 'button';
+            greenButton.innerText = 'Green';
+            greenButton.style.marginLeft = '5px';
+            greenButton.onclick = () => {
+                document.execCommand('foreColor', false, 'green');
+            };
+
             formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+            formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
         }
     }
+
+
 
     function addFraudPageButton(isInFraudList, fraudId = null) {
         const container = document.querySelector('.form-actions');

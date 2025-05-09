@@ -460,7 +460,6 @@
                 existingGreenButton.remove();
             }
 
-            // Кнопка "Коментар"
             const checkButton = document.createElement('button');
             checkButton.id = 'check-button';
             checkButton.type = 'button';
@@ -7823,6 +7822,18 @@ ${fraud.manager === managerName ? `
 
             insertTextIntoField(textToInsert);
         };
+
+        const greenButton = document.createElement('button');
+        greenButton.id = 'green-button';
+        greenButton.type = 'button';
+        greenButton.innerText = 'Green';
+        greenButton.style.marginLeft = '5px';
+        greenButton.onclick = () => {
+            document.execCommand('foreColor', false, 'green');
+        };
+
+        formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+        formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
 
         formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
     }

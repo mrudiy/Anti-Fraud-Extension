@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.5
+// @version      6.3.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.5";
+    const currentVersion = "6.3.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7189,14 +7189,16 @@ ${fraud.manager === managerName ? `
                         const rows = Array.from(doc.querySelectorAll('table.table.table-striped.table-hover tbody tr'));
                         let manualBalance = '';
                         let refundDeposits = [];
+                        let safeBalance = [];
                         const today = new Date();
-                        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`; // "13/03/2025"
+                        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
 
                         for (const row of rows) {
                             const cells = row.querySelectorAll('td');
                             if (cells.length < 8) continue;
 
                             const operation = cells[1].textContent.trim();
+                            const amount = cells[2].textContent.trim();
                             const fullDate = cells[6].textContent.trim();
                             const dateOnly = fullDate.split(' ')[0];
                             const comment = cells[7].textContent.trim();
@@ -7206,6 +7208,12 @@ ${fraud.manager === managerName ? `
                                 manualBalance = `${fullDate} ${comment}`;
                             } else if (operation === 'Рефанд депозита' && dateOnly === todayStr) {
                                 refundDeposits.push(entry);
+                            } else if (
+                                operation === 'Ручное начисление баланса Сейфа' &&
+                                dateOnly === todayStr &&
+                                parseFloat(amount) < 0
+                            ) {
+                                safeBalance.push(entry);
                             }
                         }
 
@@ -7214,10 +7222,16 @@ ${fraud.manager === managerName ? `
                             result += manualBalance;
                         }
                         if (refundDeposits.length > 0) {
-                            if (manualBalance) result += '<br>';
+                            if (result) result += '<br>';
                             const firstRefund = refundDeposits[0];
-                            const refundNumbers = refundDeposits.map(refund => refund.comment.match(/№\s*(\d+)/)[1]);
+                            const refundNumbers = refundDeposits.map(refund => refund.comment.match(/№\s*(\d+)/)?.[1]).filter(Boolean);
                             result += `${firstRefund.date} Рефанд депозита № ${refundNumbers.join(', № ')}`;
+                        }
+                        if (safeBalance.length > 0) {
+                            if (result) result += '<br>';
+                            const firstSafe = safeBalance[0];
+                            const safeComments = safeBalance.map(safe => safe.comment).join('; ');
+                            result += `${firstSafe.date} ${safeComments}`;
                         }
 
                         resolve(result || 'Не найдено подходящих операций');
@@ -7231,6 +7245,7 @@ ${fraud.manager === managerName ? `
             });
         });
     }
+
 
     async function updateComment(userId) {
         const gatewayElement = document.getElementById('gateway-method-description-visible-common');

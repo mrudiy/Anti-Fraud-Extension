@@ -7786,6 +7786,11 @@ ${fraud.manager === managerName ? `
             existingButton.remove();
         }
 
+        const existingGreenButton = document.getElementById('green-button');
+        if (existingGreenButton) {
+            existingGreenButton.remove();
+        }
+
         const checkButton = document.createElement('button');
         checkButton.id = 'check-button';
         checkButton.type = 'button';

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.8
+// @version      6.3.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.8";
+    const currentVersion = "6.3.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2115,15 +2115,15 @@
     function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus) {
         const content = `
         <div class="user-settings-form">
-            <div class="form-group">
+            <div class="form-settings-group">
                 <label for="user-name">Ім'я користувача:</label>
                 <input type="text" id="user-name" value="${currentName || ''}" required>
             </div>
-            <div class="form-group">
+            <div class="form-settings-group">
                 <label for="user-login">Логін:</label>
                 <input type="text" id="user-login" value="${currentLogin || ''}" required>
             </div>
-            <div class="form-group">
+            <div class="form-settings-group">
                 <label for="user-status">Роль:</label>
                 <select id="user-status" required>
                     <option value="" disabled>Статус</option>
@@ -2822,25 +2822,25 @@ ${fraud.manager === managerName ? `
     padding: 20px;
 }
 
-.form-group {
+.form-settings-group {
     display: flex;
     flex-direction: column;
     gap: 5px;
 }
 
-.form-group label {
+.form-settings-group label {
     font-weight: bold;
 }
 
-.form-group input,
-.form-group select {
+.form-settings-group input,
+.form-settings-group select {
     padding: 8px;
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 14px;
 }
 
-.form-group select {
+.form-settings-group select {
     width: 100%;
 }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.9
+// @version      6.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.9";
+    const currentVersion = "6.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2894,7 +2894,7 @@ ${fraud.manager === managerName ? `
     async function deleteUser(userId) {
 
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/delete_user/${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/api/delete_user/${userId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -2944,6 +2944,252 @@ ${fraud.manager === managerName ? `
         });
     }
 
+    function openTlCommentEditor(managerId, entryId, comment) {
+        const content = `
+        <style>
+            #tl-comment-editor {
+                height: 200px;
+                margin-bottom: 10px;
+            }
+            .ql-container {
+                border-radius: 4px;
+            }
+            .save-comment-btn, .cancel-comment-btn {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                margin-right: 10px;
+            }
+            .save-comment-btn {
+                background-color: #4CAF50;
+                color: white;
+            }
+            .save-comment-btn:hover {
+                background-color: #45a049;
+            }
+            .cancel-comment-btn {
+                background-color: #ff4444;
+                color: white;
+            }
+            .cancel-comment-btn:hover {
+                background-color: #cc0000;
+            }
+        </style>
+        <div id="tl-comment-editor">${comment}</div>
+        <button class="save-comment-btn">Зберегти</button>
+        <button class="cancel-comment-btn">Скасувати</button>
+    `;
+
+        createPopup('tl-comment-popup', 'Редагувати коментар TL', content, () => {});
+
+        const quill = new Quill('#tl-comment-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    ['link'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }], // Добавляем цвета: красный, зеленый, оранжевый
+                    ['clean']
+                ]
+            }
+        });
+
+        if (comment) {
+            quill.root.innerHTML = comment;
+        }
+
+        document.querySelector('.save-comment-btn').addEventListener('click', async () => {
+            const tlComment = quill.root.innerHTML;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/working/${entryId}/tl_comment`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ tl_comment: tlComment })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    Swal.fire('Успіх', 'Коментар TL збережено', 'success');
+                    document.getElementById('tl-comment-popup').remove();
+                    fetchStatistics(managerId, document.getElementById('datePicker').value);
+                } else {
+                    Swal.fire('Помилка', data.message || 'Не вдалося зберегти коментар', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving TL comment:', error);
+                Swal.fire('Помилка', 'Виникла помилка при збереженні коментаря', 'error');
+            }
+        });
+
+        document.querySelector('.cancel-comment-btn').addEventListener('click', () => {
+            document.getElementById('tl-comment-popup').remove();
+        });
+    }
+
+    async function fetchStatistics(userId, selectedDate, unreadEntryIds = []) {
+        try {
+            if (!token) {
+                throw new Error('Authorization token is missing');
+            }
+
+            const userStatus = await checkUserStatus();
+            const isAdmin = userStatus === 'Admin';
+
+            if (!window.DOMPurify) {
+                const purifyScript = document.createElement('script');
+                purifyScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js';
+                document.head.appendChild(purifyScript);
+                await new Promise((resolve, reject) => {
+                    purifyScript.onload = resolve;
+                    purifyScript.onerror = () => reject(new Error('Failed to load DOMPurify'));
+                });
+            }
+
+            if (isAdmin) {
+                await loadQuillResources();
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/get_statistics/${userId}?date=${selectedDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+            console.log(data);
+
+            if (response.ok) {
+                const content = `
+                <style>
+                    #updateButton {
+                        background-color: #6a5acd;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    }
+                    #updateButton:hover {
+                        background-color: #5244a8;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                    }
+                    .tl-comment-placeholder {
+                        color: #888;
+                        font-size: 12px;
+                        font-style: italic;
+                        cursor: pointer;
+                    }
+                    .tl-comment-content {
+                        cursor: pointer;
+                    }
+                    .unread-comment-row {
+                        animation: pulseBorder 1.5s infinite;
+                    }
+                    @keyframes pulseBorder {
+                        0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+                        50% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); }
+                        100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+                    }
+                </style>
+                <label for="datePicker">Оберіть дату:</label>
+                <input type="date" id="datePicker" value="${selectedDate}" />
+                <button id="updateButton">Оновити</button>
+                <p>Кількість всіх гравців: ${data.total_players}</p>
+                <p>Кількість Betking: ${data.betking_count}</p>
+                <p>Кількість 777: ${data.seven_count}</p>
+                <p>Кількість Vegas: ${data.vegas_count}</p>
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID Гравця</th>
+                                <th>Проект</th>
+                                <th>Авто</th>
+                                <th>Коментар</th>
+                                <th>Коментар TL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.entries.map(entry => `
+                                <tr ${!isAdmin && unreadEntryIds.includes(entry.id) ? 'class="unread-comment-row"' : ''}>
+                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
+                                    <td>${entry.project}</td>
+                                    <td>
+                                        ${entry.autopayment === false ? '<span style="color: green;">✔</span>' : '<span style="color: red;">❌</span>'}
+                                    </td>
+                                    <td>${entry.comment || ''}</td>
+                                    <td ${!isAdmin && unreadEntryIds.includes(entry.id) ? `class="tl-comment-unread" data-entry-id="${entry.id}"` : ''}>
+                                        ${isAdmin ? `
+                                            ${entry.tl_comment ?
+                                               `<div class="tl-comment-content" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment)}">${entry.tl_comment}</div>` :
+                                               `<span class="tl-comment-placeholder" data-entry-id="${entry.id}" data-comment="">Хочете щось додати?</span>`
+                                               }
+                                        ` : `
+                                            ${entry.tl_comment ? `<div>${DOMPurify.sanitize(entry.tl_comment)}</div>` : ''}
+                                        `}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+                const popup = document.getElementById('statistics-popup');
+                if (popup) {
+                    popup.querySelector('.popup-content').innerHTML = content;
+                } else {
+                    createPopup('statistics-popup', 'Статистика менеджера', content, () => {});
+                }
+
+                document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
+
+                if (isAdmin) {
+                    document.querySelectorAll('.tl-comment-content, .tl-comment-placeholder').forEach(element => {
+                        element.addEventListener('click', () => {
+                            const entryId = element.getAttribute('data-entry-id');
+                            const comment = decodeURIComponent(element.getAttribute('data-comment') || '');
+                            openTlCommentEditor(userId, entryId, comment);
+                        });
+                    });
+                } else {
+                    document.querySelectorAll('.tl-comment-unread').forEach(element => {
+                        element.addEventListener('click', async () => {
+                            const entryId = element.getAttribute('data-entry-id');
+                            try {
+                                await fetch(`${API_BASE_URL}/api/working/${entryId}/mark_read`, {
+                                    method: 'PUT',
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                element.closest('tr').classList.remove('unread-comment-row');
+                                element.classList.remove('tl-comment-unread');
+                            } catch (error) {
+                                console.error('Error marking comment as read:', error);
+                            }
+                        });
+                    });
+                }
+            } else {
+                Swal.fire('Помилка', data.error || 'Не вдалося завантажити статистику', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire('Помилка', 'Помилка завантаження статистики', 'error');
+        }
+    }
 
     async function getStatistics(userId) {
 
@@ -2952,105 +3198,136 @@ ${fraud.manager === managerName ? `
         await fetchStatistics(userId, today);
     }
 
-    async function fetchStatistics(userId, selectedDate) {
+    function updateStatistics(userId) {
+        const selectedDate = document.getElementById('datePicker').value;
+        fetchStatistics(userId, selectedDate);
+    }
 
-
+    async function checkUnreadTlComments(userId) {
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/get_statistics/${userId}?date=${selectedDate}`, {
+            const response = await fetch(`${API_BASE_URL}/api/unread_tl_comments/${userId}`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
-
-            if (response.ok) {
-                const content = `
-                <style>
-                    #updateButton {
-                        background-color: #6a5acd; /* Зеленый цвет фона */
-                        color: white; /* Белый текст */
-                        padding: 10px 20px; /* Внутренние отступы */
-                        border: none; /* Убираем стандартную рамку */
-                        border-radius: 5px; /* Закругленные углы */
-                        cursor: pointer; /* Изменение курсора при наведении */
-                        font-size: 16px; /* Размер текста */
-                    }
-
-                    #updateButton:hover {
-                        background-color: #5244a8; /* Изменение цвета при наведении */
-                    }
-
-                    table {
-                        width: 100%;
-                        border-collapse: collapse; /* Убираем промежутки между ячейками */
-                    }
-
-                    th, td {
-                        border: 1px solid #ddd; /* Добавляем границы */
-                        padding: 8px; /* Внутренние отступы */
-                    }
-                </style>
-
-                <label for="datePicker">Оберіть дату:</label>
-                <input type="date" id="datePicker" value="${selectedDate}" />
-                <button id="updateButton">Оновити</button>
-
-                <p>Кількість всіх гравців: ${data.total_players}</p>
-                <p>Кількість Betking: ${data.betking_count}</p>
-                <p>Кількість 777: ${data.seven_count}</p>
-                <p>Кількість Vegas: ${data.vegas_count}</p>
-
-                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">  <!-- Контейнер с прокруткой -->
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID Гравця</th>
-                                <th>Проект</th>
-                                <th>Авто</th>
-                                <th>Коментар</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.entries.map(entry => `
-                                <tr>
-                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
-                                    <td>${entry.project}</td>
-                                        <td>
-        ${entry.autopayment === false ?
-                                               '<span style="color: green;">&#10004;</span>' :
-                                               '<span style="color: red;">&#10008;</span>'}
-    </td>
-                                    <td>${entry.comment || ''}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+            if (response.ok && data.count > 0) {
+                const notification = document.createElement('div');
+                notification.className = 'tl-notification';
+                notification.innerHTML = `
+                <div class="tl-notification-content">
+                    <h3>Нові коментарі від тімліда</h3>
+                    <p>У Вас є <b>${data.count}</b> ${data.count === 1 ? 'коментар' : data.count < 4 ? 'коментарі' : 'коментарів'}. Ознайомтесь!</p>
+                    <div class="tl-notification-buttons">
+                        <button class="tl-notification-confirm-btn">Переглянути</button>
+                        <button class="tl-notification-cancel-btn">Закрити</button>
+                    </div>
                 </div>
             `;
 
+                document.body.appendChild(notification);
 
-                const popup = document.getElementById('statistics-popup');
-                if (popup) {
-                    popup.querySelector('.popup-content').innerHTML = content;
-                } else {
-                    createPopup('statistics-popup', 'Статистика менеджера', content, () => {
-                        document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
-                    });
-                }
+                // Извлекаем все entry_id непрочитанных комментариев
+                const unreadEntryIds = data.comments.map(comment => comment.entry_id);
 
-                document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
-            } else {
-                alert('Помилка: ' + data.error);
+                // Обработчик для кнопки "Переглянути"
+                notification.querySelector('.tl-notification-confirm-btn').addEventListener('click', async () => {
+                    const firstComment = data.comments[0];
+                    await fetchStatistics(userId, firstComment.date, unreadEntryIds); // Передаем массив unreadEntryIds
+                    notification.remove();
+                });
+
+                // Обработчик для кнопки "Закрити"
+                notification.querySelector('.tl-notification-cancel-btn').addEventListener('click', () => {
+                    notification.classList.add('tl-notification-closing');
+                    setTimeout(() => notification.remove(), 300);
+                });
             }
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error checking unread TL comments:', error);
+        }
+        const style = document.createElement('style');
+        style.textContent = `
+    .tl-notification {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        max-width: 350px;
+        background-color: #fff;
+        border: 2px solid #ff0000;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        animation: slideIn 0.3s ease-out, pulseBorder 1.5s infinite;
+        overflow: hidden;
+    }
+    .tl-notification-content {
+        padding: 20px;
+    }
+    .tl-notification h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        color: #333;
+    }
+    .tl-notification p {
+        margin: 0 0 15px;
+        font-size: 14px;
+        color: #555;
+    }
+    .tl-notification-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    .tl-notification-confirm-btn, .tl-notification-cancel-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+    }
+    .tl-notification-confirm-btn {
+        background-color: #4CAF50;
+        color: white;
+    }
+    .tl-notification-confirm-btn:hover {
+        background-color: #45a049;
+    }
+    .tl-notification-cancel-btn {
+        background-color: #ff4444;
+        color: white;
+    }
+    .tl-notification-cancel-btn:hover {
+        background-color: #cc0000;
+    }
+    @keyframes slideIn {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
         }
     }
-
-
-    function updateStatistics(userId) {
-        const selectedDate = document.getElementById('datePicker').value;
-        fetchStatistics(userId, selectedDate);
+    .tl-notification-closing {
+        animation: fadeOut 0.3s ease-in forwards;
+    }
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
+        }
+    }
+    @keyframes pulseBorder {
+        0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+        50% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+    }
+`;
+        document.head.appendChild(style);
     }
 
     function createStatisticPopup() {
@@ -3639,6 +3916,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function addAdminIcon(popupBox) {
+        console.log(await checkUserStatus())
         if (await checkUserStatus() !== 'Admin') return;
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-users"></i>';
@@ -5369,7 +5647,7 @@ ${fraud.manager === managerName ? `
 
     async function getManagerName(token) {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/get_manager_name', {
+            const response = await fetch(`${API_BASE_URL}/api/get_manager_name`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5397,7 +5675,7 @@ ${fraud.manager === managerName ? `
 
     async function getManagerID(token) {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/get_manager_id', {
+            const response = await fetch(`${API_BASE_URL}/api/get_manager_id`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5476,7 +5754,7 @@ ${fraud.manager === managerName ? `
 
     async function sendDataToServer(data, accessToken) {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/working', {
+            const response = await fetch(`${API_BASE_URL}/api/working`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5730,7 +6008,7 @@ ${fraud.manager === managerName ? `
 
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/user/status', {
+            const response = await fetch(`${API_BASE_URL}/api/user/status`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -9194,6 +9472,7 @@ ${fraud.manager === managerName ? `
                     }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
                 await activeUrlsManagers();
+                await checkUnreadTlComments(await getManagerID(token))
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 handlePopupWildWinz();
                 addForeignButton();

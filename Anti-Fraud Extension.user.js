@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.3.7
+// @version      6.3.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.3.7";
+    const currentVersion = "6.3.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1170,7 +1170,7 @@
                 <th>Статус</th>
                 <th><i class="fa fa-user" title='Кількість опрацьованих'></i></th>
                 <th><i class="fa fa-eye" title='Кількість переглянуитих'></i></th>
-                <th><i class="fa fa-chrome" title='Остання вкладка'></i></th>
+                <th><center><i class="fa fa-chrome" title='Остання вкладка'></i></center></th>
                 <th class="actions">Дії</th>
             </tr>
         </thead>
@@ -2059,29 +2059,124 @@
                 <td>${user.processedToday}</td>
                 <td><a href="#" class="seen-today-link">${user.seenToday}</a></td>
                 <td>
-                    ${user.active_url ? `<a href="${user.active_url}" target="_blank">Link</a>` : 'Не відомо'}
+                    ${user.active_url ? `<i class="fa fa-chrome active-url-btn" title="Відкрити активну вкладку" data-user-id="${user.id}"></i>` : 'Не відомо'}
                 </td>
                 <td class="actions">
                     <i class="fa fa-bar-chart get-statistics" title="Статистика"></i>
-                    <i class="fa fa-key change-password" title="Скинути пароль"></i>
+                    <i class="fa fa-cog user-settings" title="Налаштування користувача"></i>
                     <i class="fa fa-trash delete-user" title="Видалити користувача"></i>
                 </td>
             `;
                 usersList.appendChild(row);
 
                 row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
-                row.querySelector('.change-password').addEventListener('click', () => changePassword(user.id));
+                row.querySelector('.user-settings').addEventListener('click', () =>
+                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status));
                 row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
                 row.querySelector('.seen-today-link').addEventListener('click', (e) => {
                     e.preventDefault();
                     fetchSeenEntries(user.id, today);
                 });
+                const activeUrlBtn = row.querySelector('.active-url-btn');
+                if (activeUrlBtn) {
+                    activeUrlBtn.addEventListener('click', () => openActiveUrl(user.id));
+                }
             });
         } catch (error) {
             console.error('Error loading users:', error);
             const usersList = document.getElementById('users-list');
             usersList.innerHTML = '<tr><td colspan="6">Помилка завантаження даних</td></tr>';
         }
+    }
+
+    async function openActiveUrl(userId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/user/active_url/${userId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch active URL: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.success && data.active_url) {
+                window.open(data.active_url, '_blank');
+            } else {
+                Swal.fire('Помилка', data.message || 'Активна вкладка не знайдена', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching active URL:', error);
+            Swal.fire('Помилка', 'Не вдалося отримати активну вкладку', 'error');
+        }
+    }
+
+    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus) {
+        const content = `
+        <div class="user-settings-form">
+            <div class="form-group">
+                <label for="user-name">Ім'я користувача:</label>
+                <input type="text" id="user-name" value="${currentName || ''}" required>
+            </div>
+            <div class="form-group">
+                <label for="user-login">Логін:</label>
+                <input type="text" id="user-login" value="${currentLogin || ''}" required>
+            </div>
+            <div class="form-group">
+                <label for="user-status">Роль:</label>
+                <select id="user-status" required>
+                    <option value="" disabled>Статус</option>
+                    <option value="Manager" ${currentStatus === 'Manager' ? 'selected' : ''}>Менеджер</option>
+                    <option value="Admin" ${currentStatus === 'Admin' ? 'selected' : ''}>Admin</option>
+                </select>
+            </div>
+            <button id="reset-password-btn">Скинути пароль</button>
+            <button id="save-settings-btn">Зберегти зміни</button>
+        </div>
+    `;
+
+        createPopup('user-settings-popup', 'Налаштування користувача', content, () => {});
+
+        document.getElementById('reset-password-btn').addEventListener('click', () => changePassword(userId));
+        document.getElementById('save-settings-btn').addEventListener('click', async () => {
+            const name = document.getElementById('user-name').value.trim();
+            const username = document.getElementById('user-login').value.trim(); // Изменено на username
+            const status = document.getElementById('user-status').value;
+
+            if (!name || !username || !status) {
+                Swal.fire('Помилка', 'Будь ласка, заповніть усі поля', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        manager_name: name,
+                        username: username,
+                        status: status
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    Swal.fire('Успіх', 'Налаштування користувача збережено', 'success');
+                    document.getElementById('user-settings-popup').remove();
+                    loadUsers();
+                } else {
+                    Swal.fire('Помилка', data.message || 'Не вдалося зберегти зміни', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating user:', error);
+                Swal.fire('Помилка', 'Виникла помилка при збереженні налаштувань', 'error');
+            }
+        });
     }
 
     async function fetchSeenEntries(userId, selectedDate) {
@@ -2653,7 +2748,14 @@ ${fraud.manager === managerName ? `
     color: #fff;
 }
 .get-statistics { background-color: #007bff; }
-.change-password { background-color: #ffc107; }
+.user-settings  { background-color: #ffc107; }
+.active-url-btn { background-color: #35d300;
+    cursor: pointer;
+    margin: 0 5px;
+    font-size: 18px;
+    padding: 5px;
+    border-radius: 4px;
+    color: #fff;}
 .delete-user { background-color: #dc3545; }
 #add-user-btn {
     margin-top: 20px;
@@ -2712,6 +2814,62 @@ ${fraud.manager === managerName ? `
     color: green;
     margin-top: 10px;
     text-align: center;
+}
+.user-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-weight: bold;
+}
+
+.form-group input,
+.form-group select {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group select {
+    width: 100%;
+}
+
+#reset-password-btn,
+#save-settings-btn {
+    padding: 10px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#reset-password-btn {
+    background-color: #ff4444;
+    color: white;
+}
+
+#save-settings-btn {
+    background-color: #4CAF50;
+    color: white;
+}
+
+#reset-password-btn:hover {
+    background-color: #cc0000;
+}
+
+#save-settings-btn:hover {
+    background-color: #45a049;
 }
 .popup-resize-handle {
     width: 10px;
@@ -3932,6 +4090,15 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    function getTomorrowDate() {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const year = tomorrow.getFullYear();
+        const month = String(tomorrow.getMonth() + 1).padStart(2, '0'); // Месяц (0-11) + 1, с ведущим нулем
+        const day = String(tomorrow.getDate()).padStart(2, '0'); // День с ведущим нулем
+        return `${year}.${month}.${day}`;
+    }
+
     async function handleCombinedProfit(container, { Balance, totalPending }) {
         const loader = createLoader();
         container.appendChild(loader);
@@ -3948,7 +4115,7 @@ ${fraud.manager === managerName ? `
                     method: 'POST',
                     url: baseURL,
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+                    data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
                     onload: response => {
                         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                         const table = doc.querySelector('.detail-view');
@@ -3998,7 +4165,6 @@ ${fraud.manager === managerName ? `
             const showAmount = GM_getValue(amountDisplayKey, true);
             const currencySymbol = currencySymbols.get(getCurrency()) || '';
             const totalProfit = currentPlayerData.profit + relatedResults.reduce((sum, r) => sum + (r.depositsTotal - r.redeemsTotal), 0);
-
             container.removeChild(loader);
             container.innerHTML = `
             <div class="profit-section main-profit">
@@ -4119,7 +4285,7 @@ ${fraud.manager === managerName ? `
                 method: 'POST',
                 url: baseURL,
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                data: `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+                data: `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
                 onload: response => {
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                     const table = doc.querySelector('.detail-view');
@@ -4152,7 +4318,7 @@ ${fraud.manager === managerName ? `
             method: 'POST',
             url: baseURL,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+2025.05.23+23:59:59&PlayersDetailForm[show_table]=1`,
+            data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
             onload: response => {
                 container.removeChild(loader);
                 const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -7877,7 +8043,7 @@ ${fraud.manager === managerName ? `
                 method: 'POST',
                 url: baseURL,
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+2025.05.23+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
+                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+${getTomorrowDate()}+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
                 onload: (response) => {
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                     const table = doc.querySelector('.detail-view');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4
+// @version      6.4.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4";
+    const currentVersion = "6.4.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3131,11 +3131,11 @@ ${fraud.manager === managerName ? `
                                         ${entry.autopayment === false ? '<span style="color: green;">✔</span>' : '<span style="color: red;">❌</span>'}
                                     </td>
                                     <td>${entry.comment || ''}</td>
-                                    <td ${!isAdmin && unreadEntryIds.includes(entry.id) ? `class="tl-comment-unread" data-entry-id="${entry.id}"` : ''}>
+                                     <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}"` : (!isAdmin && unreadEntryIds.includes(entry.id) ? `class="tl-comment-unread" data-entry-id="${entry.id}"` : '')}>
                                         ${isAdmin ? `
                                             ${entry.tl_comment ?
-                                               `<div class="tl-comment-content" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment)}">${entry.tl_comment}</div>` :
-                                               `<span class="tl-comment-placeholder" data-entry-id="${entry.id}" data-comment="">Хочете щось додати?</span>`
+                                               `<div>${entry.tl_comment}</div>` :
+                                               `<span class="tl-comment-placeholder">Хочете щось додати?</span>`
                                                }
                                         ` : `
                                             ${entry.tl_comment ? `<div>${DOMPurify.sanitize(entry.tl_comment)}</div>` : ''}
@@ -3158,7 +3158,7 @@ ${fraud.manager === managerName ? `
                 document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
 
                 if (isAdmin) {
-                    document.querySelectorAll('.tl-comment-content, .tl-comment-placeholder').forEach(element => {
+                    document.querySelectorAll('.tl-comment-cell-admin').forEach(element => {
                         element.addEventListener('click', () => {
                             const entryId = element.getAttribute('data-entry-id');
                             const comment = decodeURIComponent(element.getAttribute('data-comment') || '');
@@ -8556,9 +8556,15 @@ ${fraud.manager === managerName ? `
             ?.textContent.match(/url:\s*'([^']+)'/)?.[1];
             if (!urlMatch) return null;
 
+            const descriptionField = document.getElementById('gateway-method-description-visible-common');
+            const hasRefunds = descriptionField?.innerText.toLowerCase().includes('рефандами');
+
             try {
                 const response = await $.ajax({ type: 'GET', url: urlMatch });
-                return { TotalPA: response.totalInOut, MonthPA: response.monthInOut };
+                return {
+                    TotalPA: hasRefunds ? 'Refund' : response.totalInOut,
+                    MonthPA: response.monthInOut
+                };
             } catch (error) {
                 console.error('Error fetching PA:', error);
                 return null;
@@ -9482,6 +9488,7 @@ ${fraud.manager === managerName ? `
                 updateBanButton();
                 checkForUpdates();
                 sendPlayerSeenInfo();
+                await checkUnreadTlComments(await getManagerID(token))
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();
@@ -9492,6 +9499,7 @@ ${fraud.manager === managerName ? `
                 sendPlayerSeenInfo();
                 checkForUpdates();
                 await activeUrlsManagers();
+                await checkUnreadTlComments(await getManagerID(token))
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
             } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {

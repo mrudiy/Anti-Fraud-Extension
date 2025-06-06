@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.2
+// @version      6.4.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.2";
+    const currentVersion = "6.4.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8178,7 +8178,15 @@ ${fraud.manager === managerName ? `
                                     refererBlocked: true,
                                     moneyBoxBlocked: true,
                                     depositStreakBlocked: true,
-                                    scratchCardLotteryBlocked: true
+                                    scratchCardLotteryBlocked: true,
+                                    funMeterBlocked: true,
+                                    bingoBlocked: true,
+                                    prizeDropsBlocked: true,
+                                    seasonsBlocked: true,
+                                    dailyLoginBlocked: true,
+                                    questsBlocked: true,
+                                    promoOffersBlocked: true,
+                                    dailyPlaybackBlocked: true
                                 })
                             }
                         ).then(res => res.json());

@@ -8669,7 +8669,7 @@ ${fraud.manager === managerName ? `
 
             getPendings(totalPending => {
                 const pendingInfo = document.getElementById('pending-info');
-                if (totalPending) pendingInfo.textContent = `Total Pending: ${totalPending}$`;
+                if (totalPending) pendingInfo.textContent = `Total Pending: ${totalPending.toFixed(2)}$`;
                 else pendingInfo.remove();
 
                 const profitButton = document.createElement('button');

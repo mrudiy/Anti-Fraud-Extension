@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.3
+// @version      6.4.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.3";
+    const currentVersion = "6.4.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4848,26 +4848,50 @@ ${fraud.manager === managerName ? `
             }
             state.waitingForBonus = false;
         } else if (actionType.includes('Присвоение бонуса') || actionType.includes('Bonus assignment')) {
-            if (bonusInfo.match(/платеж № (\d+)/)) state.bonusWithDeposits++;
+            if (bonusInfo.match(/платеж № (\d+)/)) {
+                state.bonusWithDeposits++;
+            }
+
             const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
             if (bonusIdMatch) {
                 const bonusId = bonusIdMatch[1];
                 state.bonusAssignments[bonusId] = state.bonusAssignments[bonusId] || {};
                 state.bonusAssignments[bonusId][dateStr] = (state.bonusAssignments[bonusId][dateStr] || 0) + 1;
-                const bonusCount = state.bonusAssignments[bonusId][dateStr];
-
-                if (bonusCount >= 3 && !state.displayedMessages[`${bonusId}_${dateStr}`] && state.messageCount < 2) {
-                    showBonusViolationMessage({
-                        bonusId,
-                        dateStr,
-                        index: state.messageCount++,
-                        count: bonusCount
-                    });
-                    state.displayedMessages[`${bonusId}_${dateStr}`] = true;
-                }
             }
         }
     }
+
+    function processBonusViolations(state) {
+        const violations = [];
+
+        for (const bonusId in state.bonusAssignments) {
+            const dates = state.bonusAssignments[bonusId];
+            for (const dateStr in dates) {
+                const count = dates[dateStr];
+                const key = `${bonusId}_${dateStr}`;
+                if (count >= 3 && !state.displayedMessages[key]) {
+                    violations.push({ bonusId, dateStr, count, key });
+                }
+            }
+        }
+
+        violations.sort((a, b) => {
+            const parseDate = str => new Date(str.split('/').reverse().join('-'));
+            return parseDate(b.dateStr) - parseDate(a.dateStr);
+        });
+
+        for (const v of violations.slice(0, 2)) {
+            showBonusViolationMessage({
+                bonusId: v.bonusId,
+                dateStr: v.dateStr,
+                index: state.messageCount++,
+                count: v.count
+            });
+            state.displayedMessages[v.key] = true;
+        }
+    }
+
+
 
     function showManualBalance({ dateStr, bonusInfo, index }) {
         if (!window.popupBox) {
@@ -4915,6 +4939,8 @@ ${fraud.manager === managerName ? `
             };
 
             doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state));
+
+            processBonusViolations(state);
 
             if (state.totalDeposits > 0) {
                 const bonusDepositPercentage = (state.bonusWithDeposits / state.totalDeposits) * 100;

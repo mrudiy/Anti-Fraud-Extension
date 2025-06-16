@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.4
+// @version      6.4.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.4";
+    const currentVersion = "6.4.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8258,6 +8258,8 @@ ${fraud.manager === managerName ? `
         if (moneyFromOfferPercentage !== undefined) previousValues.moneyFromOfferPercentage = moneyFromOfferPercentage;
         if (activityMoneyPercentage !== undefined) previousValues.activityMoneyPercentage = activityMoneyPercentage;
         if (totalPendings !== undefined) previousValues.totalPendings = totalPendings;
+        if (entries !== undefined) previousValues.entries = entries;
+        if (winnings !== undefined) previousValues.winnings = winnings;
 
         const existingButton = document.getElementById('check-button');
         if (existingButton) {
@@ -8289,15 +8291,15 @@ ${fraud.manager === managerName ? `
                 textToInsert += `<b> ${isRussian ? 'На выплате' : 'На виплаті'}:</b> <b style="${balanceStyle}">${previousValues.totalPendings}$</b> | `;
             }
 
-            if (entries > 10 || winnings > 10) {
+            if (previousValues.entries > 10 || previousValues.winnings > 10) {
                 let balanceText = `<b>${isRussian ? 'На балансе' : 'На балансі'}:</b> `;
                 const parts = [];
 
-                if (entries > 10) {
-                    parts.push(`${entries} entries`);
+                if (previousValues.entries > 10) {
+                    parts.push(`${previousValues.entries} entries`);
                 }
-                if (winnings > 10) {
-                    parts.push(`${winnings} winings`);
+                if (previousValues.winnings > 10) {
+                    parts.push(`${previousValues.winnings} winings`);
                 }
 
                 textToInsert += balanceText + parts.join(' | ') + ' | ';

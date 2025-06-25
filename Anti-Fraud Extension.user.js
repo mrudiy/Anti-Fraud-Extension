@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.5
+// @version      6.4.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -78,7 +78,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.5";
+    const currentVersion = "6.4.6";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8546,7 +8546,18 @@ ${fraud.manager === managerName ? `
             console.log(`Starting for ${currentProject} with ID ${playerID}`);
 
             const mainResult = await getProjectProfit(currentProject, playerID);
-            const { relatedAccounts, projectLinks } = await getRelatedAccounts(currentProject, playerID);
+
+            let relatedAccounts = [];
+            let projectLinks = {};
+
+            try {
+                const response = await getRelatedAccounts(currentProject, playerID);
+                relatedAccounts = response.relatedAccounts;
+                projectLinks = response.projectLinks;
+            } catch (relatedError) {
+                console.warn('Could not fetch related accounts. Proceeding with main project only.', relatedError.message);
+            }
+
             const relatedPromises = relatedAccounts.map(acc => getProjectProfit(acc.project, acc.id));
             const relatedResults = await Promise.all(relatedPromises);
 

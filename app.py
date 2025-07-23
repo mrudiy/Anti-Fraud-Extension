@@ -24,9 +24,15 @@ logger = logging.getLogger(__name__)
 
 db = SQLAlchemy(app)
 
+with app.app_context():
+    db.create_all()
+    with db.engine.connect() as conn:
+        conn.exec_driver_sql('PRAGMA journal_mode=WAL;')
+        logger.info("WAL mode enabled for SQLite database")
+
 CORS(app, supports_credentials=True, resources={
     r"/*": {
-        "origins": ["https://admin.777.ua", "https://admin.betking.ua", "https://app.powerbi.com", "https://admin.funrize.com", "https://admin.nolimitcoins.com" , "https://admin.taofortune.com", "https://admin.funzcity.com", "https://admin.fortunewheelz.com", "https://admin.vegas.ua", "https://admin.wildwinz.com", "https://admin.betking.com.ua", "https://admin.jackpotrabbit.com"], 
+        "origins": ["https://admin.777.ua", "https://admin.betking.ua", "https://app.powerbi.com", "https://admin.funrize.com", "https://admin.nolimitcoins.com" , "https://admin.taofortune.com", "https://admin.funzcity.com", "https://admin.fortunewheelz.com", "https://admin.vegas.ua", "https://admin.wildwinz.com", "https://admin.betking.com.ua", "https://admin.jackpotrabbit.com", "https://admin.sweepshark.com", "https://admin.scarletsands.com"], 
         "methods": ["GET", "POST", "DELETE", "OPTIONS", "PUT"],
         "allow_headers": ["Authorization", "Content-Type"], 
         "supports_credentials": True
@@ -470,6 +476,7 @@ def get_unread_tl_comments(user_id):
     if not current_user:
         return jsonify({"error": "Unauthorized"}), 401
 
+    # Проверяем, что запрашиваем данные для текущего пользователя (менеджера)
     if current_user.id != user_id and current_user.status != 'Admin':
         return jsonify({"error": "Access denied"}), 403
 
@@ -1146,14 +1153,5 @@ def fetch_latest_version():
         print(f"Ошибка при запросе версии с GitHub: {e}")
     return None
 
-def init_db():
-    with app.app_context():
-        db.create_all()
-        with db.engine.connect() as conn:
-            conn.exec_driver_sql('PRAGMA journal_mode=WAL;')
-            logger.info("WAL mode enabled for SQLite database")
-        logger.info("Database and tables created successfully")
-
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)

@@ -35,6 +35,8 @@
 // @connect      admin.wildwinz.com
 // @connect      admin.fortunewheelz.com
 // @connect      admin.jackpotrabbit.com
+// @connect      admin.scarletsands.com
+// @connect      admin.sweepshark.com
 // @connect      api.easypay.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js

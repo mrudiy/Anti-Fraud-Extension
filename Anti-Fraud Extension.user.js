@@ -76,6 +76,7 @@
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
     const fullNumberCardDisplayKey = 'fullNumberCardDisplay';
+    const progressBarDisplayKey = 'progressBarDisplay';
     const token = GM_getValue('authToken', null);
     let managerData = null;
 
@@ -881,6 +882,14 @@
                 GM_setValue(fullNumberCardDisplayKey, e.target.checked);
             })
         );
+
+        if (managerData.status === 'Admin') {
+            settingsPopup.appendChild(
+                createCheckboxWithLabel('Відображати продуктивність', GM_getValue(progressBarDisplayKey, true), (e) => {
+                    GM_setValue(progressBarDisplayKey, e.target.checked);
+                })
+            );
+        }
 
         const createButton = (text, bgColor, onClick) => {
             const button = document.createElement('button');
@@ -6162,7 +6171,6 @@ ${fraud.manager === managerName ? `
 
     async function activeUrlsManagers() {
         const playerId = getPlayerID();
-        console.log(managerData)
 
         const currentManager = managerData.name;
 
@@ -9729,7 +9737,10 @@ ${fraud.manager === managerName ? `
         const currentHost = window.location.hostname;
         if (isUser.success) {
             managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal};
-            setupManagerStats(API_BASE_URL, token);
+            const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
+            if (isProgressBarEnabled) {
+                setupManagerStats(API_BASE_URL, token);
+            }
             sendActivePageInfo();
             if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountWildWinz();

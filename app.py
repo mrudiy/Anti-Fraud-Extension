@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from dateutil import parser
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 import random
 import string
 import re
@@ -49,6 +51,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     token = db.Column(db.String(128), unique=True, nullable=True)
     active_url = db.Column(db.Text, default=False)
+    performance_goal = db.Column(db.Integer, nullable=False, default=80)
+    work_hours = db.Column(db.Integer, nullable=False, default=7)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -67,6 +71,7 @@ class Working(db.Model):
     autopayment = db.Column(db.Boolean, default=False, nullable=True) 
     tl_comment = db.Column(db.Text, nullable=True)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
         db.UniqueConstraint('date', 'playerID', 'manager_name', name='unique_date_player_manager'),
@@ -210,13 +215,20 @@ def check_token():
     token = data.get('token')
 
     if not token:
-        return jsonify({"success": False}), 400
+        return jsonify({"success": False, "message": "Token is missing"}), 400
 
     user = User.query.filter_by(token=token).first()
     if user:
-        return jsonify({"success": True}), 200
+        return jsonify({
+            "success": True, 
+            "id": user.id, 
+            "name": user.manager_name,
+            "status": user.status,
+            "goal": user.performance_goal,
+            "work_hours": user.work_hours
+        }), 200
     else:
-        return jsonify({"success": False}), 401
+        return jsonify({"success": False, "message": "Invalid token"}), 401
     
 @app.route('/api/change_password_by_user', methods=['POST'])
 def change_password_by_user():
@@ -378,15 +390,6 @@ def add_autopayment_entry():
         db.session.commit()
         return jsonify({"success": True, "message": "New entry to autopayment created."}), 200
 
-@app.route('/api/user/status', methods=['GET'])
-def get_user_status():
-    token = request.headers.get('Authorization').replace('Bearer ', '')
-    user = User.query.filter_by(token=token).first()
-
-    if user:
-        return jsonify({"status": user.status}), 200
-    return jsonify({"status": "Unknown"}), 404
-
 @app.route('/api/users', methods=['GET'])
 def get_users():
     token = request.headers.get('Authorization').replace('Bearer ', '')
@@ -400,6 +403,8 @@ def get_users():
             'status': u.status,
             'active_url': u.active_url,
             'username': u.username,
+            'performance_goal': u.performance_goal,
+            'work_hours': u.work_hours
         } for u in users]), 200
     return jsonify({"error": "Unauthorized"}), 403
 
@@ -450,6 +455,9 @@ def update_user(user_id):
     manager_name = data.get('manager_name')
     username = data.get('username')
     status = data.get('status')
+    performance_goal = data.get('performance_goal')
+    work_hours = data.get('work_hours')
+
 
     if not manager_name or not username or not status:
         return jsonify({"success": False, "message": "Missing required fields."}), 400
@@ -464,6 +472,9 @@ def update_user(user_id):
     user_to_update.manager_name = manager_name
     user_to_update.username = username
     user_to_update.status = status
+    user_to_update.performance_goal = performance_goal
+    user_to_update.work_hours = work_hours
+
     db.session.commit()
 
     return jsonify({"success": True, "message": "User updated successfully."}), 200
@@ -476,7 +487,6 @@ def get_unread_tl_comments(user_id):
     if not current_user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    # Проверяем, что запрашиваем данные для текущего пользователя (менеджера)
     if current_user.id != user_id and current_user.status != 'Admin':
         return jsonify({"error": "Access denied"}), 403
 
@@ -623,7 +633,9 @@ def get_statistics(user_id):
             'comment': entry.comment,
             'tl_comment': entry.tl_comment,  
             'url': entry.url,
-            'autopayment': entry.autopayment 
+            'autopayment': entry.autopayment,
+            'created_at': entry.created_at.isoformat() + 'Z' if entry.created_at else None
+
         } for entry in working_entries]
 
         return jsonify({
@@ -638,7 +650,44 @@ def get_statistics(user_id):
     except Exception as e:
         logger.error(f"Error fetching statistics for user_id={user_id}, manager_name={user.manager_name}: {str(e)}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
-    
+
+@app.route('/api/get_statistics_for_period', methods=['GET'])
+def get_statistics_for_period():
+    start_utc_str = request.args.get('start_utc')
+    end_utc_str = request.args.get('end_utc')
+    user_id = request.args.get('user_id')
+
+    if not all([start_utc_str, end_utc_str, user_id]):
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        start_dt = parser.isoparse(start_utc_str)
+        end_dt = parser.isoparse(end_utc_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format"}), 400
+
+    working_entries = Working.query.filter(
+        Working.manager_name == user.manager_name,
+        Working.created_at.between(start_dt, end_dt)
+    ).order_by(Working.id.desc()).all()
+
+    entries_data = [{
+        'id': entry.id,
+        'player_id': entry.playerID,
+        'project': entry.project,
+        'created_at': entry.created_at.isoformat() + 'Z' if entry.created_at else None
+    } for entry in working_entries]
+
+    return jsonify({
+        "total_players": len(working_entries),
+        "entries": entries_data
+    }), 200
+
+
 @app.route('/api/get_all_statistics', methods=['GET', 'OPTIONS'])
 def get_all_statistics():
     if request.method == 'OPTIONS':
@@ -820,36 +869,6 @@ def get_department_statistics():
         'managers': managers_data
     }), 200
 
-@app.route('/api/get_manager_name', methods=['POST'])
-def get_manager_name():
-    data = request.json
-    token = data.get('token')
-
-    if not token:
-        return jsonify({'error': 'Token is missing'}), 400
-
-    user = User.query.filter_by(token=token).first()
-
-    if user:
-        return jsonify({'name': user.manager_name}), 200
-    else:
-        return jsonify({'error': 'Invalid token'}), 401
-    
-@app.route('/api/get_manager_id', methods=['POST'])
-def get_manager_id():
-    data = request.json
-    token = data.get('token')
-
-    if not token:
-        return jsonify({'error': 'Token is missing'}), 400
-
-    user = User.query.filter_by(token=token).first()
-
-    if user:
-        return jsonify({'id': user.id}), 200
-    else:
-        return jsonify({'error': 'Invalid token'}), 401
-    
 @app.route('/api/check_user_in_fraud', methods=['POST'])
 def check_user_in_fraud():
     data = request.get_json()
@@ -1132,6 +1151,63 @@ def update_settings():
         logger.error(f"Error in update_settings: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
     
+@app.route('/api/get_team_performance', methods=['GET'])
+def get_team_performance():
+    try:
+        year = int(request.args.get('year'))
+        month = int(request.args.get('month'))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid year or month parameters"}), 400
+
+    start_of_month = datetime(year, month, 1)
+    if month == 12:
+        end_of_month = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_of_month = datetime(year, month + 1, 1) - timedelta(days=1)
+
+    managers = User.query.filter(User.status.in_(['Manager'])).all()
+    manager_names = [m.manager_name for m in managers]
+    goals = {m.manager_name: m.performance_goal for m in managers}
+
+    all_workings = Working.query.filter(
+        Working.created_at.between(start_of_month, end_of_month + timedelta(days=1))
+    ).all()
+
+    results = {name: {} for name in manager_names}
+
+    kyiv_tz = pytz.timezone('Europe/Kyiv')
+
+    for w in all_workings:
+        if w.manager_name not in results:
+            continue
+
+        created_local = w.created_at.replace(tzinfo=pytz.utc).astimezone(kyiv_tz)
+        hour = created_local.hour
+        
+        shift_date = created_local.date()
+        shift_type = ""
+
+        if 9 <= hour < 21:
+            shift_type = "day"
+        else:
+            shift_type = "night"
+            if hour < 9:
+                shift_date -= timedelta(days=1)
+        
+        date_str = shift_date.strftime('%Y-%m-%d')
+
+        if date_str not in results[w.manager_name]:
+            results[w.manager_name][date_str] = {"day": 0, "night": 0, "total": 0}
+
+        results[w.manager_name][date_str][shift_type] += 1
+        results[w.manager_name][date_str]["total"] += 1
+        
+    return jsonify({
+            "performance": results,
+            "goals": goals
+        })
+
+
 def decode_token(token):
     user = User.query.filter_by(token=token).first()
     if user:

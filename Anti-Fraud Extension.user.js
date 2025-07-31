@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.7
+// @version      6.4.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -23,6 +23,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
+// @grant        GM_addStyle
 // @connect      admin.777.ua
 // @connect      ip-api.com
 // @connect      admin.vegas.ua
@@ -75,14 +76,16 @@
     const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
     const fullNumberCardDisplayKey = 'fullNumberCardDisplay';
+    const progressBarDisplayKey = 'progressBarDisplay';
     const token = GM_getValue('authToken', null);
+    let managerData = null;
 
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.7";
+    const currentVersion = "6.4.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -734,7 +737,7 @@
         const url = window.location.href;
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_checklsit', {
+            const response = await fetch(`${API_BASE_URL}/api/check_user_in_checklsit`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -879,6 +882,14 @@
                 GM_setValue(fullNumberCardDisplayKey, e.target.checked);
             })
         );
+
+        if (managerData.status === 'Admin') {
+            settingsPopup.appendChild(
+                createCheckboxWithLabel('Відображати продуктивність', GM_getValue(progressBarDisplayKey, true), (e) => {
+                    GM_setValue(progressBarDisplayKey, e.target.checked);
+                })
+            );
+        }
 
         const createButton = (text, bgColor, onClick) => {
             const button = document.createElement('button');
@@ -1207,7 +1218,7 @@
     }
 
     async function createReminderPopup() {
-        const status = await checkUserStatus();
+        const status = managerData.status;
 
         fetchArticles().then(articles => {
             let lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
@@ -2075,7 +2086,7 @@
 
                 row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
                 row.querySelector('.user-settings').addEventListener('click', () =>
-                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status));
+                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status, user.performance_goal, user.work_hours));
                 row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
                 row.querySelector('.seen-today-link').addEventListener('click', (e) => {
                     e.preventDefault();
@@ -2116,7 +2127,7 @@
         }
     }
 
-    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus) {
+    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal, currentWorkHours) {
         const content = `
         <div class="user-settings-form">
             <div class="form-settings-group">
@@ -2135,6 +2146,14 @@
                     <option value="Admin" ${currentStatus === 'Admin' ? 'selected' : ''}>Admin</option>
                 </select>
             </div>
+            <div class="form-settings-group">
+            <label for="user-goal">Норма (акаунтів за зміну):</label>
+            <input type="number" id="user-goal" value="${currentGoal || 80}" min="1">
+            </div>
+            <div class="form-settings-group">
+            <label for="user-workhours">Кількість робочих годин:</label>
+            <input type="number" id="user-workhours" value="${currentWorkHours || 7}" min="1">
+            </div>
             <button id="reset-password-btn">Скинути пароль</button>
             <button id="save-settings-btn">Зберегти зміни</button>
         </div>
@@ -2145,10 +2164,14 @@
         document.getElementById('reset-password-btn').addEventListener('click', () => changePassword(userId));
         document.getElementById('save-settings-btn').addEventListener('click', async () => {
             const name = document.getElementById('user-name').value.trim();
-            const username = document.getElementById('user-login').value.trim(); // Изменено на username
+            const username = document.getElementById('user-login').value.trim();
             const status = document.getElementById('user-status').value;
+            const goal = document.getElementById('user-goal').value;
+            const workHours = document.getElementById('user-workhours').value;
 
-            if (!name || !username || !status) {
+
+
+            if (!name || !username || !status || !goal || !workHours) {
                 Swal.fire('Помилка', 'Будь ласка, заповніть усі поля', 'error');
                 return;
             }
@@ -2163,7 +2186,9 @@
                     body: JSON.stringify({
                         manager_name: name,
                         username: username,
-                        status: status
+                        status: status,
+                        performance_goal: parseInt(goal, 10),
+                        work_hours: parseInt(workHours, 10),
                     })
                 });
 
@@ -2388,7 +2413,7 @@
             const frauds = await response.json();
             const myFraudsList = document.getElementById('my-frauds-list');
             const commonFraudsList = document.getElementById('common-frauds-list');
-            const managerName = await getManagerName(token);
+            const managerName = managerData.name;
 
             if (!myFraudsList || !commonFraudsList) {
                 console.error('Required elements not found in the DOM.');
@@ -2995,7 +3020,7 @@ ${fraud.manager === managerName ? `
                     ['bold', 'italic', 'underline'],
                     ['link'],
                     [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }], // Добавляем цвета: красный, зеленый, оранжевый
+                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }],
                     ['clean']
                 ]
             }
@@ -3042,7 +3067,7 @@ ${fraud.manager === managerName ? `
                 throw new Error('Authorization token is missing');
             }
 
-            const userStatus = await checkUserStatus();
+            const userStatus = managerData.status;
             const isAdmin = userStatus === 'Admin';
 
             if (!window.DOMPurify) {
@@ -3231,17 +3256,14 @@ ${fraud.manager === managerName ? `
 
                 document.body.appendChild(notification);
 
-                // Извлекаем все entry_id непрочитанных комментариев
                 const unreadEntryIds = data.comments.map(comment => comment.entry_id);
 
-                // Обработчик для кнопки "Переглянути"
                 notification.querySelector('.tl-notification-confirm-btn').addEventListener('click', async () => {
                     const firstComment = data.comments[0];
-                    await fetchStatistics(userId, firstComment.date, unreadEntryIds); // Передаем массив unreadEntryIds
+                    await fetchStatistics(userId, firstComment.date, unreadEntryIds);
                     notification.remove();
                 });
 
-                // Обработчик для кнопки "Закрити"
                 notification.querySelector('.tl-notification-cancel-btn').addEventListener('click', () => {
                     notification.classList.add('tl-notification-closing');
                     setTimeout(() => notification.remove(), 300);
@@ -3446,7 +3468,10 @@ ${fraud.manager === managerName ? `
             <tbody id="managersList"></tbody>
         </table>
 
-            <button id="detailStatisticsButton" class="detail-btn">Моя статистика</button>
+         <div class="popup-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+            <button id="detailStatisticsButton" class="detail-btn" style="width: 50%;">Моя статистика</button>
+            <button id="teamDashboardButton" class="detail-btn" style="width: 50%; background-color: #28a745;">Дашборд команди</button>
+        </div>
 
     `;
 
@@ -3462,13 +3487,15 @@ ${fraud.manager === managerName ? `
 
         document.getElementById('updateStatisticsButton').addEventListener('click', updateStatisticPopup);
         document.getElementById('detailStatisticsButton').addEventListener('click', async () => {
-            const userId = await getManagerID(token);
+            const userId = managerData.id;
             if (userId !== null) {
                 getStatistics(userId);
             } else {
                 console.error('Не удалось получить ID менеджера');
             }
         });
+        document.getElementById('teamDashboardButton').addEventListener('click', showTeamDashboardPopup);
+
 
         loadStatisticData(today, today);
     }
@@ -3920,8 +3947,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function addAdminIcon(popupBox) {
-        console.log(await checkUserStatus())
-        if (await checkUserStatus() !== 'Admin') return;
+        if (managerData.status !== 'Admin') return;
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-users"></i>';
         applyStyles(icon, { ...ICON_STYLES, top: '70px', right: '10px', fontSize: '18px' });
@@ -5675,62 +5701,6 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    async function getManagerName(token) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/get_manager_name`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ token })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data && data.name) {
-                return data.name;
-            } else {
-                throw new Error('Name not found in response');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            return null;
-        }
-    }
-
-    async function getManagerID(token) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/get_manager_id`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ token })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data && typeof data.id === 'number') {
-                return data.id;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            return null;
-        }
-    }
-
     function buttonToSave() {
         const button = document.querySelector('.btn-update-comment-antifraud_manager');
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
@@ -5814,7 +5784,6 @@ ${fraud.manager === managerName ? `
         return null;
     }
 
-    // Утилита для выполнения fetch-запроса с обработкой 404
     async function fetchData(url, options = {}) {
         try {
             const response = await fetch(url, {
@@ -5916,24 +5885,25 @@ ${fraud.manager === managerName ? `
     }
 
     async function checkToken() {
-
         if (!token) {
-            return false;
+            return { success: false };
         }
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/check_token', {
+            const response = await fetch(`${API_BASE_URL}/api/check_token`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token })
             });
 
+            if (!response.ok) {
+                return { success: false };
+            }
+
             const data = await response.json();
-            return data.success;
+            return data;
         } catch (error) {
-            console.error('Error:', error);
-            return false;
+            console.error('Помилка перевірки токену:', error);
+            return { success: false };
         }
     }
 
@@ -6031,29 +6001,6 @@ ${fraud.manager === managerName ? `
         } catch (error) {
             console.error('Error:', error);
             return { success: false };
-        }
-    }
-
-    async function checkUserStatus() {
-
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/user/status`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
-            const data = await response.json();
-            return data.status;
-        } catch (error) {
-            console.error('Error:', error);
-            return 'Unknown';
         }
     }
 
@@ -6175,7 +6122,7 @@ ${fraud.manager === managerName ? `
         const currentUrl = window.location.href;
 
         if (token) {
-            await fetch('https://vps65001.hyperhost.name/api/update_active_page', {
+            await fetch(`${API_BASE_URL}/api/update_active_page`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -6228,7 +6175,8 @@ ${fraud.manager === managerName ? `
 
     async function activeUrlsManagers() {
         const playerId = getPlayerID();
-        const currentManager = await getManagerName(token);
+
+        const currentManager = managerData.name;
 
         const table = document.querySelector('.detail-view.table.table-striped');
         let targetElement = null;
@@ -6282,6 +6230,7 @@ ${fraud.manager === managerName ? `
             console.error('Ошибка запроса:', error);
         }
     }
+
     function createStickyRow(originalRow, table) {
         if (!originalRow) return;
 
@@ -6669,20 +6618,21 @@ ${fraud.manager === managerName ? `
         const updateButton = document.getElementById('yw2');
         if (!updateButton) return;
 
+        updateButton.addEventListener('click', (event) => handleBanButtonClick(event, updateButton));
+    }
+
+    async function handleBanButtonClick(event, updateButton) {
+        event.preventDefault();
+
         let verificationSheets;
+
         try {
             const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
             verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
         } catch (error) {
             console.error('Ошибка загрузки настроек верификации:', error);
-            verificationSheets = { Betking: '', '777': '', Vegas: '' }; // Fallback
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
         }
-
-        updateButton.addEventListener('click', (event) => handleBanButtonClick(event, updateButton, verificationSheets));
-    }
-
-    async function handleBanButtonClick(event, updateButton, verificationSheets) {
-        event.preventDefault();
 
         const { status, inactiveReason, playerID } = getBanStatus();
         if (!shouldSendToVerification(status, inactiveReason)) {
@@ -9366,83 +9316,385 @@ ${fraud.manager === managerName ? `
 
     function updateCardMasksFromComments() {
         const extractCardNumbers = (text) => {
-            // Очищаем текст от HTML и лишних пробелов
-            const cleanText = text
-            .replace(/<[^>]+>/g, ' ') // Удаляем HTML-теги
-            .replace(/\s+/g, ' ')     // Заменяем множественные пробелы на один
-            .trim();                  // Удаляем пробелы в начале и конце
-            const cardRegex = /\b\d{16}\b/g;
-            const matches = cleanText.match(cardRegex) || [];
-            return matches;
+            if (!text) return [];
+            return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().match(/\b\d{16}\b/g) || [];
         };
 
         const matchMaskWithCard = (mask, card) => {
+            if (!mask || !card) return false;
             const [firstPart, lastPart] = mask.split('|');
             return card.startsWith(firstPart) && card.endsWith(lastPart);
         };
 
-        const commentDiv = document.getElementById('gateway-method-description-visible-common');
-        if (!commentDiv) {
-            console.log('Comment div not found');
-            return;
-        }
+        const createCardElement = (card) => {
+            const fullCardSpan = document.createElement('span');
+            fullCardSpan.textContent = card;
+            fullCardSpan.style.cursor = 'pointer';
+            fullCardSpan.style.fontWeight = 'bold';
+            fullCardSpan.title = 'Копіювати';
 
-        const commentText = commentDiv.innerHTML; // Берем innerHTML вместо textContent
-        const cardNumbers = extractCardNumbers(commentText);
-        console.log('Found cards in comment:', cardNumbers);
+            const copiedMessage = document.createElement('span');
+            copiedMessage.textContent = ' Скопійовано!';
+            copiedMessage.style.color = 'green';
+            copiedMessage.style.marginLeft = '8px';
+            copiedMessage.style.fontWeight = 'normal';
+            copiedMessage.style.display = 'none';
+
+            fullCardSpan.onclick = () => {
+                navigator.clipboard.writeText(card).then(() => {
+                    fullCardSpan.style.color = '#6699cc';
+                    copiedMessage.style.display = 'inline';
+                    setTimeout(() => {
+                        fullCardSpan.style.color = '';
+                        copiedMessage.style.display = 'none';
+                    }, 1000);
+                });
+            };
+
+            return { fullCardSpan, copiedMessage };
+        };
+
+        const commentDiv = document.getElementById('gateway-method-description-visible-common');
+        if (!commentDiv) return;
+
+        const cardNumbers = extractCardNumbers(commentDiv.innerHTML);
+        if (!cardNumbers.length) return;
 
         const masksTable = document.querySelector('#payments-cards-masks-grid tbody');
-        if (!masksTable) {
-            console.log('Masks table not found');
-            return;
-        }
+        if (!masksTable) return;
 
         const rows = masksTable.getElementsByTagName('tr');
-        console.log('Processing', rows.length, 'rows in masks table');
+        if (!rows.length) return;
 
-        for (let row of rows) {
+        for (const row of rows) {
             const maskCell = row.cells[1];
+            if (!maskCell) continue;
+
             const maskElement = maskCell.querySelector('strong');
             const originalMask = maskElement ? maskElement.textContent : maskCell.textContent;
-            console.log('Processing mask:', originalMask);
+            if (!originalMask) continue;
 
-            for (let card of cardNumbers) {
+            for (const card of cardNumbers) {
                 if (matchMaskWithCard(originalMask, card)) {
-                    console.log('Match found:', originalMask, '->', card);
-
-                    const fullCardSpan = document.createElement('span');
-                    fullCardSpan.textContent = card;
-                    fullCardSpan.style.cursor = 'pointer';
-                    fullCardSpan.style.fontWeight = 'bold';
-                    fullCardSpan.title = 'Копіювати';
-
-                    const copiedMessage = document.createElement('span');
-                    copiedMessage.textContent = ' Скопійовано!';
-                    copiedMessage.style.color = 'green';
-                    copiedMessage.style.marginLeft = '8px';
-                    copiedMessage.style.fontWeight = 'normal';
-                    copiedMessage.style.display = 'none';
-
-                    fullCardSpan.onclick = () => {
-                        navigator.clipboard.writeText(card).then(() => {
-                            fullCardSpan.style.color = '#6699cc';
-                            copiedMessage.style.display = 'inline';
-                            setTimeout(() => {
-                                fullCardSpan.style.color = '';
-                                copiedMessage.style.display = 'none';
-                            }, 1000);
-                        });
-                    };
-
+                    const { fullCardSpan, copiedMessage } = createCardElement(card);
                     maskCell.innerHTML = '';
                     maskCell.appendChild(fullCardSpan);
                     maskCell.appendChild(copiedMessage);
                     break;
                 }
             }
-
         }
     }
+
+    //============== ПОПАП СТАТИСТИКИ ==================
+
+    function setupManagerStats(API_BASE_URL, token) {
+        let statsUserId = managerData.id;
+        let managerGoal = managerData.goal || 80;
+
+        async function createAndDragPopup() {
+            if (document.getElementById('manager-stats-popup')) return;
+            const popup = document.createElement('div');
+            popup.id = 'manager-stats-popup';
+            popup.innerHTML = `
+            <div id="stats-header">Продуктивність за зміну</div>
+            <div class="stat-item"><strong>Оброблено:</strong> <span id="processed-per-shift">...</span> з <span id="shift-goal">${managerGoal}</span> (<span id="percent-complete" style="font-weight: bold;">...</span>)</div>
+            <div class="stat-item"><strong>Прогноз на зміну:</strong> <span id="projected-total" style="font-weight: bold;">...</span> акаунтів</div>
+            <div class="stat-item"><strong>Поточний темп:</strong> <span id="current-pace">...</span> ак/год</div>
+            <div id="feedback-message">...</div>`;
+            document.body.appendChild(popup);
+
+            const savedPosition = await GM_getValue('stats_popup_position', { top: '15px', left: '15px' });
+            popup.style.top = savedPosition.top;
+            popup.style.left = savedPosition.left;
+
+            const header = popup.querySelector('#stats-header');
+            let isDragging = false, offsetX, offsetY;
+
+            header.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                offsetX = e.clientX - popup.offsetLeft;
+                offsetY = e.clientY - popup.offsetTop;
+                popup.style.transition = 'none';
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    let newLeft = e.clientX - offsetX;
+                    let newTop = e.clientY - offsetY;
+
+                    const maxLeft = window.innerWidth - popup.offsetWidth;
+                    const maxTop = window.innerHeight - popup.offsetHeight;
+
+                    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                    newTop = Math.max(0, Math.min(newTop, maxTop));
+
+                    popup.style.left = `${newLeft}px`;
+                    popup.style.top = `${newTop}px`;
+                }
+            });
+            document.addEventListener('mouseup', async () => {
+                if (isDragging) {
+                    isDragging = false;
+                    popup.style.transition = '';
+                    await GM_setValue('stats_popup_position', { top: popup.style.top, left: popup.style.left });
+                }
+            });
+
+            GM_addStyle(`
+            #manager-stats-popup { position: fixed; background-color: rgba(255, 255, 255, 0.85); color: #333; border: 1px solid #ddd; border-radius: 8px; padding: 12px 18px; font-family: sans-serif; font-size: 14px; z-index: 9999; box-shadow: 0 4px 10px rgba(0,0,0,0.1); backdrop-filter: blur(5px); min-width: 260px; }
+            #stats-header { font-size: 16px; font-weight: 600; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee; color: #111; text-align: center; cursor: move; user-select: none; }
+            .stat-item { margin-bottom: 8px; line-height: 1.4; }
+            .stat-item strong { font-weight: 600; color: #555; }
+            #feedback-message { text-align: center; margin-top: 12px; font-weight: bold; font-size: 15px; padding: 5px; border-radius: 5px; }
+        `);
+        }
+
+        function renderStats(shiftStats) {
+            const processedPerShift = shiftStats.total_players || 0;
+            document.getElementById('processed-per-shift').textContent = processedPerShift;
+            document.getElementById('shift-goal').textContent = managerGoal;
+
+            const SHIFT_HOURS = managerData.work_hours;
+            const SUPER_PACE = managerGoal / SHIFT_HOURS;
+            const STANDARD_PACE = (managerGoal * 0.875) / SHIFT_HOURS;
+
+            let percentText = '0%', projectedText = '0', paceText = '0.00',
+                feedbackText = 'Починаємо зміну!', feedbackColor = '#555', feedbackBg = 'transparent';
+
+            if (processedPerShift > 0 && shiftStats.entries?.length > 0) {
+                const timestamps = shiftStats.entries.map(e => new Date(e.created_at).getTime()).filter(ts => !isNaN(ts));
+                if (timestamps.length > 0) {
+                    const startTimeOfWork = new Date(Math.min(...timestamps));
+                    const hoursWorked = (new Date() - startTimeOfWork) / 3600000;
+                    if (hoursWorked > 0) {
+                        const currentPace = processedPerShift / hoursWorked;
+                        projectedText = (currentPace * SHIFT_HOURS).toFixed(0);
+                        percentText = ((processedPerShift / managerGoal) * 100).toFixed(1) + '%';
+                        paceText = currentPace.toFixed(2);
+
+                        if (currentPace >= SUPER_PACE) {
+                            feedbackText = "Красунчик! Так тримати!"; feedbackColor = "#27ae60"; feedbackBg = 'rgba(46, 204, 113, 0.1)';
+                        } else if (currentPace >= STANDARD_PACE) {
+                            feedbackText = "Впевнений експерт, гарний темп!"; feedbackColor = "#f39c12"; feedbackBg = 'rgba(241, 196, 15, 0.1)';
+                        } else {
+                            feedbackText = "Треба піднажати!"; feedbackColor = "#e74c3c"; feedbackBg = 'rgba(231, 76, 60, 0.1)';
+                        }
+                    }
+                }
+            }
+            const percentEl = document.getElementById('percent-complete'),
+                  projectedEl = document.getElementById('projected-total'),
+                  feedbackEl = document.getElementById('feedback-message');
+            document.getElementById('current-pace').textContent = paceText;
+            if(percentEl) { percentEl.textContent = percentText; percentEl.style.color = feedbackColor; }
+            if(projectedEl) { projectedEl.textContent = projectedText; projectedEl.style.color = feedbackColor; }
+            if(feedbackEl) { feedbackEl.textContent = feedbackText; feedbackEl.style.color = feedbackColor; feedbackEl.style.backgroundColor = feedbackBg; }
+        }
+
+        async function updateStats(forceRefresh = false) {
+            if (!managerData.id) return;
+            try {
+                const shiftWindow = getCurrentShiftWindow();
+                const cacheKey = `stats_cache_${shiftWindow.start.toISOString()}`;
+                const cachedData = await GM_getValue(cacheKey, null);
+                let shiftStats;
+                if (!forceRefresh && cachedData) {
+                    shiftStats = cachedData;
+                } else {
+                    const startUTC = shiftWindow.start.toISOString();
+                    const endUTC = shiftWindow.end.toISOString();
+                    shiftStats = await fetchApi(`/api/get_statistics_for_period?user_id=${statsUserId}&start_utc=${startUTC}&end_utc=${endUTC}`);
+                    await GM_setValue(cacheKey, shiftStats);
+                }
+                renderStats(shiftStats);
+            } catch (error) { console.error('Статистика: Помилка при оновленні даних:', error); }
+        }
+
+        function interceptFetch() {
+            const originalFetch = window.fetch;
+            if (originalFetch.isStatsInterceptor) return;
+            window.fetch = async function(resource, config) {
+                const url = resource instanceof Request ? resource.url : resource;
+                const response = await originalFetch(resource, config);
+                if (url.includes('/api/working') && response.ok) {
+                    setTimeout(() => updateStats(true), 500);
+                }
+                return response;
+            };
+            window.fetch.isStatsInterceptor = true;
+        }
+        function getCurrentShiftWindow() {
+            const now = new Date(); const currentHour = now.getHours();
+            let shiftStart = new Date(now), shiftEnd = new Date(now);
+            if (currentHour >= 9 && currentHour < 21) {
+                shiftStart.setHours(9, 0, 0, 0); shiftEnd.setHours(21, 0, 0, 0);
+            } else {
+                if (currentHour >= 21) {
+                    shiftStart.setHours(21, 0, 0, 0); shiftEnd.setHours(9, 0, 0, 0); shiftEnd.setDate(shiftEnd.getDate() + 1);
+                } else {
+                    shiftStart.setHours(21, 0, 0, 0); shiftStart.setDate(shiftStart.getDate() - 1); shiftEnd.setHours(9, 0, 0, 0);
+                }
+            }
+            return { start: shiftStart, end: shiftEnd };
+        }
+        async function fetchApi(endpoint, options = {}) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers };
+            const response = await fetch(url, { ...options, headers });
+            if (!response.ok) {
+                console.error(`HTTP error! status: ${response.status} for URL: ${url}`);
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function initializeStats() {
+            if (!token || !statsUserId) return;
+            await createAndDragPopup();
+            interceptFetch();
+            await updateStats(false);
+            setInterval(() => updateStats(false), 5 * 60 * 1000);
+        }
+
+        initializeStats();
+    }
+    //================= КІНЕЦЬ БЛОКУ СТАТИСТИКИ =================
+
+    //============== ДАШБОРД ПРОДУКТИВНОСТІ КОМАНДИ==================
+    async function showTeamDashboardPopup() {
+        const tooltip = document.createElement('div');
+        tooltip.id = 'dash-tooltip';
+        document.body.appendChild(tooltip);
+
+        const modal = document.createElement('div');
+        modal.innerHTML = `
+        <div id="dash-modal-backdrop"></div>
+        <div id="dash-modal-content">
+            <div id="dash-header">
+                <button id="dash-prev-month"><</button>
+                <h2 id="dash-month-name"></h2>
+                <button id="dash-next-month">></button>
+            </div>
+            <div id="dash-grid-container">Завантаження...</div>
+        </div>
+    `;
+        document.body.appendChild(modal);
+
+        const closeModal = () => { modal.remove(); tooltip.remove(); };
+        modal.querySelector('#dash-modal-backdrop').onclick = closeModal;
+
+        let currentDate = new Date();
+        const gridContainer = modal.querySelector('#dash-grid-container');
+        const monthNameEl = modal.querySelector('#dash-month-name');
+
+        async function loadAndRender() {
+            gridContainer.innerHTML = 'Завантаження...';
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' });
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/get_team_performance?year=${year}&month=${month}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                renderGrid(data, year, month);
+            } catch (error) {
+                gridContainer.textContent = 'Помилка завантаження даних.';
+                console.error("Dashboard Error:", error);
+            }
+        }
+
+        function renderGrid(data, year, month) {
+            gridContainer.innerHTML = '';
+            const performanceData = data.performance;
+            const goalsData = data.goals;
+            if (!performanceData || Object.keys(performanceData).length === 0) {
+                gridContainer.textContent = 'За цей період немає даних.';
+                return;
+            }
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const managers = Object.keys(performanceData).sort();
+            const headerRow = document.createElement('div');
+            headerRow.className = 'dash-grid-row';
+            headerRow.appendChild(document.createElement('div'));
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'dash-day-header';
+                dayHeader.textContent = i;
+                headerRow.appendChild(dayHeader);
+            }
+            gridContainer.appendChild(headerRow);
+            managers.forEach(managerName => {
+                const managerRow = document.createElement('div');
+                managerRow.className = 'dash-grid-row';
+                const nameCell = document.createElement('div');
+                nameCell.className = 'dash-manager-name';
+                nameCell.textContent = managerName;
+                managerRow.appendChild(nameCell);
+                const managerGoal = goalsData[managerName] || 80;
+                const standardGoal = managerGoal * 0.875;
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const dayCell = document.createElement('div');
+                    dayCell.className = 'dash-day-cell';
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    const dayData = performanceData[managerName] ? performanceData[managerName][dateStr] : null;
+                    if (dayData && dayData.total > 0) {
+                        const bar = document.createElement('div');
+                        bar.className = 'dash-bar';
+                        bar.textContent = dayData.total;
+                        const percentage = (dayData.total / managerGoal) * 100;
+                        bar.style.width = Math.min(percentage, 100) + '%';
+                        if (dayData.total >= managerGoal) bar.style.backgroundColor = '#27ae60';
+                        else if (dayData.total >= standardGoal) bar.style.backgroundColor = '#f39c12';
+                        else bar.style.backgroundColor = '#e74c3c';
+                        let tooltipText = '';
+                        if (dayData.day > 0 && dayData.night > 0) tooltipText = `Денна: ${dayData.day}, Нічна: ${dayData.night}`;
+                        else if (dayData.day > 0) tooltipText = `Денна: ${dayData.day}`;
+                        else if (dayData.night > 0) tooltipText = `Нічна: ${dayData.night}`;
+                        bar.dataset.tooltip = tooltipText;
+                        dayCell.appendChild(bar);
+                    }
+                    managerRow.appendChild(dayCell);
+                }
+                gridContainer.appendChild(managerRow);
+            });
+        }
+
+        modal.querySelector('#dash-prev-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() - 1); loadAndRender(); };
+        modal.querySelector('#dash-next-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() + 1); loadAndRender(); };
+
+        gridContainer.addEventListener('mouseover', (e) => {
+            const bar = e.target.closest('.dash-bar');
+            if (bar && bar.dataset.tooltip) {
+                const rect = bar.getBoundingClientRect();
+                tooltip.textContent = bar.dataset.tooltip;
+                tooltip.style.display = 'block';
+                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.top = `${rect.bottom + 5}px`;
+            }
+        });
+        gridContainer.addEventListener('mouseout', (e) => {
+            const bar = e.target.closest('.dash-bar');
+            if (bar) { tooltip.style.display = 'none'; }
+        });
+
+        loadAndRender();
+
+        GM_addStyle(`
+        #dash-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; }
+        #dash-modal-content { display: flex; flex-direction: column; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 10001; width: 95%; max-width: 1400px; height: 90vh; }
+        #dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        #dash-grid-container { flex-grow: 1; overflow: auto; font-size: 12px; }
+        .dash-grid-row { display: grid; grid-template-columns: 150px repeat(${new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()}, 1fr); border-bottom: 1px solid #f0f0f0; }
+        .dash-day-header, .dash-manager-name { padding: 8px 4px; font-weight: bold; text-align: center; }
+        .dash-manager-name { text-align: left; position: sticky; left: 0; background: white; z-index: 1; }
+        .dash-day-cell { padding: 4px; display: flex; align-items: center; min-width: 30px; }
+        .dash-bar { height: 20px; border-radius: 3px; color: white; line-height: 20px; font-weight: bold; text-align: center; font-size: 11px; white-space: nowrap; cursor: pointer; }
+        #dash-tooltip { display: none; position: fixed; background: #222; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 10002; pointer-events: none; transform: translateX(-50%); }
+    `);
+    }
+    //================= КІНЕЦЬ ДАШБОРДУ =================
 
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
@@ -9474,7 +9726,7 @@ ${fraud.manager === managerName ? `
                             const domain = href.split('/players/')[0];
                             const newHref = `${domain}/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
                             link.setAttribute('href', newHref);
-                            console.log(`Ссылка изменена: ${href} -> ${newHref}`); // Для отладки
+                            console.log(`Ссылка изменена: ${href} -> ${newHref}`);
                         }
                     });
                 }
@@ -9485,9 +9737,14 @@ ${fraud.manager === managerName ? `
     window.addEventListener('load', async function() {
         addLocationButton();
         addMainMenuButtons();
-        const tokenIsValid = await checkToken();
+        const isUser = await checkToken();
         const currentHost = window.location.hostname;
-        if (tokenIsValid) {
+        if (isUser.success) {
+            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours};
+            const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
+            if (isProgressBarEnabled) {
+                setupManagerStats(API_BASE_URL, token);
+            }
             sendActivePageInfo();
             if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountWildWinz();
@@ -9529,7 +9786,7 @@ ${fraud.manager === managerName ? `
                     }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
                 await activeUrlsManagers();
-                await checkUnreadTlComments(await getManagerID(token))
+                await checkUnreadTlComments(managerData.id)
             } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 handlePopupWildWinz();
                 addForeignButton();
@@ -9539,7 +9796,7 @@ ${fraud.manager === managerName ? `
                 updateBanButton();
                 checkForUpdates();
                 sendPlayerSeenInfo();
-                await checkUnreadTlComments(await getManagerID(token))
+                await checkUnreadTlComments(managerData.id)
             } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();
@@ -9550,7 +9807,7 @@ ${fraud.manager === managerName ? `
                 sendPlayerSeenInfo();
                 checkForUpdates();
                 await activeUrlsManagers();
-                await checkUnreadTlComments(await getManagerID(token))
+                await checkUnreadTlComments(managerData.id)
             } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
             } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {

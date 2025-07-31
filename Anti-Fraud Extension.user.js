@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.8
+// @version      6.4.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.8";
+    const currentVersion = "6.4.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -2086,7 +2086,7 @@
 
                 row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
                 row.querySelector('.user-settings').addEventListener('click', () =>
-                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status, user.performance_goal));
+                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status, user.performance_goal, user.work_hours));
                 row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
                 row.querySelector('.seen-today-link').addEventListener('click', (e) => {
                     e.preventDefault();
@@ -2127,7 +2127,7 @@
         }
     }
 
-    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal) {
+    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal, currentWorkHours) {
         const content = `
         <div class="user-settings-form">
             <div class="form-settings-group">
@@ -2150,6 +2150,10 @@
             <label for="user-goal">Норма (акаунтів за зміну):</label>
             <input type="number" id="user-goal" value="${currentGoal || 80}" min="1">
             </div>
+            <div class="form-settings-group">
+            <label for="user-workhours">Кількість робочих годин:</label>
+            <input type="number" id="user-workhours" value="${currentWorkHours || 7}" min="1">
+            </div>
             <button id="reset-password-btn">Скинути пароль</button>
             <button id="save-settings-btn">Зберегти зміни</button>
         </div>
@@ -2163,9 +2167,11 @@
             const username = document.getElementById('user-login').value.trim();
             const status = document.getElementById('user-status').value;
             const goal = document.getElementById('user-goal').value;
+            const workHours = document.getElementById('user-workhours').value;
 
 
-            if (!name || !username || !status || !goal) {
+
+            if (!name || !username || !status || !goal || !workHours) {
                 Swal.fire('Помилка', 'Будь ласка, заповніть усі поля', 'error');
                 return;
             }
@@ -2181,7 +2187,8 @@
                         manager_name: name,
                         username: username,
                         status: status,
-                        performance_goal: parseInt(goal, 10)
+                        performance_goal: parseInt(goal, 10),
+                        work_hours: parseInt(workHours, 10),
                     })
                 });
 
@@ -3013,7 +3020,7 @@ ${fraud.manager === managerName ? `
                     ['bold', 'italic', 'underline'],
                     ['link'],
                     [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }], // Добавляем цвета: красный, зеленый, оранжевый
+                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }],
                     ['clean']
                 ]
             }
@@ -3249,17 +3256,14 @@ ${fraud.manager === managerName ? `
 
                 document.body.appendChild(notification);
 
-                // Извлекаем все entry_id непрочитанных комментариев
                 const unreadEntryIds = data.comments.map(comment => comment.entry_id);
 
-                // Обработчик для кнопки "Переглянути"
                 notification.querySelector('.tl-notification-confirm-btn').addEventListener('click', async () => {
                     const firstComment = data.comments[0];
-                    await fetchStatistics(userId, firstComment.date, unreadEntryIds); // Передаем массив unreadEntryIds
+                    await fetchStatistics(userId, firstComment.date, unreadEntryIds);
                     notification.remove();
                 });
 
-                // Обработчик для кнопки "Закрити"
                 notification.querySelector('.tl-notification-cancel-btn').addEventListener('click', () => {
                     notification.classList.add('tl-notification-closing');
                     setTimeout(() => notification.remove(), 300);
@@ -9382,7 +9386,7 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    //============== ПОПАП СТАТИСТИКИ (ФІНАЛЬНА ВЕРСІЯ) ==================
+    //============== ПОПАП СТАТИСТИКИ ==================
 
     function setupManagerStats(API_BASE_URL, token) {
         let statsUserId = managerData.id;
@@ -9450,7 +9454,7 @@ ${fraud.manager === managerName ? `
             document.getElementById('processed-per-shift').textContent = processedPerShift;
             document.getElementById('shift-goal').textContent = managerGoal;
 
-            const SHIFT_HOURS = 11;
+            const SHIFT_HOURS = managerData.work_hours;
             const SUPER_PACE = managerGoal / SHIFT_HOURS;
             const STANDARD_PACE = (managerGoal * 0.875) / SHIFT_HOURS;
 
@@ -9736,7 +9740,7 @@ ${fraud.manager === managerName ? `
         const isUser = await checkToken();
         const currentHost = window.location.hostname;
         if (isUser.success) {
-            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal};
+            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours};
             const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
             if (isProgressBarEnabled) {
                 setupManagerStats(API_BASE_URL, token);

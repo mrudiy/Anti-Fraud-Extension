@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.4.9
+// @version      6.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.4.9";
+    const currentVersion = "6.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3505,7 +3505,7 @@ ${fraud.manager === managerName ? `
 
 
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
+            const response = await fetch(`${API_BASE_URL}/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -9396,38 +9396,77 @@ ${fraud.manager === managerName ? `
             if (document.getElementById('manager-stats-popup')) return;
             const popup = document.createElement('div');
             popup.id = 'manager-stats-popup';
+
             popup.innerHTML = `
-            <div id="stats-header">Продуктивність за зміну</div>
+        <div id="stats-header">
+            <span>Продуктивність за зміну</span>
+            <span id="stats-toggle-btn" title="Згорнути/Розгорнути"></span>
+        </div>
+        <div id="stats-content-wrapper">
             <div class="stat-item"><strong>Оброблено:</strong> <span id="processed-per-shift">...</span> з <span id="shift-goal">${managerGoal}</span> (<span id="percent-complete" style="font-weight: bold;">...</span>)</div>
             <div class="stat-item"><strong>Прогноз на зміну:</strong> <span id="projected-total" style="font-weight: bold;">...</span> акаунтів</div>
             <div class="stat-item"><strong>Поточний темп:</strong> <span id="current-pace">...</span> ак/год</div>
-            <div id="feedback-message">...</div>`;
+            <div id="feedback-message">...</div>
+        </div>
+        <div id="stats-minimal-view" style="display: none;">
+            <div class="stat-item"><strong>Оброблено:</strong> <span id="processed-per-shift-minimal">...</span> з <span>${managerGoal}</span> (<span id="percent-complete-minimal" style="font-weight: bold;">...</span>)</div>
+            <span id="stats-expand-btn" title="Розгорнути"></span>
+        </div>
+    `;
             document.body.appendChild(popup);
 
-            const savedPosition = await GM_getValue('stats_popup_position', { top: '15px', left: '15px' });
-            popup.style.top = savedPosition.top;
-            popup.style.left = savedPosition.left;
-
+            const toggleBtn = popup.querySelector('#stats-toggle-btn');
+            const expandBtn = popup.querySelector('#stats-expand-btn');
+            const contentWrapper = popup.querySelector('#stats-content-wrapper');
             const header = popup.querySelector('#stats-header');
-            let isDragging = false, offsetX, offsetY;
+            const minimalView = popup.querySelector('#stats-minimal-view');
 
-            header.addEventListener('mousedown', (e) => {
+            const applyCollapseState = (isCollapsed) => {
+                if (isCollapsed) {
+                    header.style.display = 'none';
+                    contentWrapper.style.display = 'none';
+                    minimalView.style.display = 'flex';
+                    popup.classList.add('collapsed');
+                } else {
+                    header.style.display = 'flex';
+                    contentWrapper.style.display = 'block';
+                    minimalView.style.display = 'none';
+                    popup.classList.remove('collapsed');
+                }
+            };
+
+            const handleToggle = async (e) => {
+                e.stopPropagation();
+                const isCurrentlyCollapsed = !popup.classList.contains('collapsed');
+                applyCollapseState(isCurrentlyCollapsed);
+                await GM_setValue('stats_popup_collapsed', isCurrentlyCollapsed);
+            };
+
+            toggleBtn.addEventListener('click', handleToggle);
+            expandBtn.addEventListener('click', handleToggle);
+
+            const isInitiallyCollapsed = await GM_getValue('stats_popup_collapsed', false);
+            applyCollapseState(isInitiallyCollapsed);
+
+            let isDragging = false, offsetX, offsetY;
+            const startDrag = (e) => {
+                if (e.target.id === 'stats-toggle-btn' || e.target.id === 'stats-expand-btn') return;
                 isDragging = true;
                 offsetX = e.clientX - popup.offsetLeft;
                 offsetY = e.clientY - popup.offsetTop;
                 popup.style.transition = 'none';
-            });
+            };
+            header.addEventListener('mousedown', startDrag);
+            minimalView.addEventListener('mousedown', startDrag);
+
             document.addEventListener('mousemove', (e) => {
                 if (isDragging) {
                     let newLeft = e.clientX - offsetX;
                     let newTop = e.clientY - offsetY;
-
                     const maxLeft = window.innerWidth - popup.offsetWidth;
                     const maxTop = window.innerHeight - popup.offsetHeight;
-
                     newLeft = Math.max(0, Math.min(newLeft, maxLeft));
                     newTop = Math.max(0, Math.min(newTop, maxTop));
-
                     popup.style.left = `${newLeft}px`;
                     popup.style.top = `${newTop}px`;
                 }
@@ -9440,26 +9479,47 @@ ${fraud.manager === managerName ? `
                 }
             });
 
+            const savedPosition = await GM_getValue('stats_popup_position', { top: '15px', left: '15px' });
+            popup.style.top = savedPosition.top;
+            popup.style.left = savedPosition.left;
+
             GM_addStyle(`
-            #manager-stats-popup { position: fixed; background-color: rgba(255, 255, 255, 0.85); color: #333; border: 1px solid #ddd; border-radius: 8px; padding: 12px 18px; font-family: sans-serif; font-size: 14px; z-index: 9999; box-shadow: 0 4px 10px rgba(0,0,0,0.1); backdrop-filter: blur(5px); min-width: 260px; }
-            #stats-header { font-size: 16px; font-weight: 600; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee; color: #111; text-align: center; cursor: move; user-select: none; }
-            .stat-item { margin-bottom: 8px; line-height: 1.4; }
-            .stat-item strong { font-weight: 600; color: #555; }
-            #feedback-message { text-align: center; margin-top: 12px; font-weight: bold; font-size: 15px; padding: 5px; border-radius: 5px; }
-        `);
+        #manager-stats-popup { position: fixed; background-color: rgba(255, 255, 255, 0.9); color: #333; border: 1px solid #ddd; border-radius: 8px; padding: 12px 18px; font-family: sans-serif; font-size: 14px; z-index: 9999; box-shadow: 0 4px 10px rgba(0,0,0,0.1); backdrop-filter: blur(5px); min-width: 260px; transition: padding 0.2s ease, min-width 0.2s ease; }
+        #manager-stats-popup.collapsed { min-width: auto; padding: 8px 12px; }
+        #stats-header { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 600; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee; color: #111; cursor: move; user-select: none; }
+        #stats-toggle-btn, #stats-expand-btn { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+        #stats-toggle-btn:after { content: '−'; font-size: 18px; }
+        #stats-expand-btn:after { content: '+'; font-size: 18px; }
+        #stats-toggle-btn:hover, #stats-expand-btn:hover { background-color: #e9e9e9; }
+        #stats-minimal-view { display: flex; justify-content: space-between; align-items: center; user-select: none; cursor: move; }
+        .stat-item { margin-bottom: 8px; line-height: 1.4; }
+        #stats-minimal-view .stat-item { margin-bottom: 0; margin-right: 10px; }
+        .stat-item strong { font-weight: 600; color: #555; }
+        #feedback-message { text-align: center; margin-top: 12px; font-weight: bold; font-size: 15px; padding: 5px; border-radius: 5px; }
+    `);
         }
 
         function renderStats(shiftStats) {
             const processedPerShift = shiftStats.total_players || 0;
+            const percentComplete = ((processedPerShift / managerGoal) * 100).toFixed(1) + '%';
+
             document.getElementById('processed-per-shift').textContent = processedPerShift;
             document.getElementById('shift-goal').textContent = managerGoal;
+            const percentEl = document.getElementById('percent-complete');
+            if (percentEl) percentEl.textContent = percentComplete;
 
-            const SHIFT_HOURS = managerData.work_hours;
+            document.getElementById('processed-per-shift-minimal').textContent = processedPerShift;
+            const percentElMinimal = document.getElementById('percent-complete-minimal');
+            if (percentElMinimal) percentElMinimal.textContent = percentComplete;
+
+            const SHIFT_HOURS = 11;
             const SUPER_PACE = managerGoal / SHIFT_HOURS;
             const STANDARD_PACE = (managerGoal * 0.875) / SHIFT_HOURS;
-
-            let percentText = '0%', projectedText = '0', paceText = '0.00',
-                feedbackText = 'Починаємо зміну!', feedbackColor = '#555', feedbackBg = 'transparent';
+            let projectedText = '0',
+                paceText = '0.00',
+                feedbackText = 'Починаємо зміну!',
+                feedbackColor = '#555',
+                feedbackBg = 'transparent';
 
             if (processedPerShift > 0 && shiftStats.entries?.length > 0) {
                 const timestamps = shiftStats.entries.map(e => new Date(e.created_at).getTime()).filter(ts => !isNaN(ts));
@@ -9469,26 +9529,40 @@ ${fraud.manager === managerName ? `
                     if (hoursWorked > 0) {
                         const currentPace = processedPerShift / hoursWorked;
                         projectedText = (currentPace * SHIFT_HOURS).toFixed(0);
-                        percentText = ((processedPerShift / managerGoal) * 100).toFixed(1) + '%';
                         paceText = currentPace.toFixed(2);
-
                         if (currentPace >= SUPER_PACE) {
-                            feedbackText = "Красунчик! Так тримати!"; feedbackColor = "#27ae60"; feedbackBg = 'rgba(46, 204, 113, 0.1)';
+                            feedbackText = "Красунчик! Так тримати!";
+                            feedbackColor = "#27ae60";
+                            feedbackBg = 'rgba(46, 204, 113, 0.1)';
                         } else if (currentPace >= STANDARD_PACE) {
-                            feedbackText = "Впевнений експерт, гарний темп!"; feedbackColor = "#f39c12"; feedbackBg = 'rgba(241, 196, 15, 0.1)';
+                            feedbackText = "Впевнений експерт, гарний темп!";
+                            feedbackColor = "#f39c12";
+                            feedbackBg = 'rgba(241, 196, 15, 0.1)';
                         } else {
-                            feedbackText = "Треба піднажати!"; feedbackColor = "#e74c3c"; feedbackBg = 'rgba(231, 76, 60, 0.1)';
+                            feedbackText = "Треба піднажати!";
+                            feedbackColor = "#e74c3c";
+                            feedbackBg = 'rgba(231, 76, 60, 0.1)';
                         }
                     }
                 }
             }
-            const percentEl = document.getElementById('percent-complete'),
-                  projectedEl = document.getElementById('projected-total'),
-                  feedbackEl = document.getElementById('feedback-message');
+
+            const projectedEl = document.getElementById('projected-total');
+            const feedbackEl = document.getElementById('feedback-message');
             document.getElementById('current-pace').textContent = paceText;
-            if(percentEl) { percentEl.textContent = percentText; percentEl.style.color = feedbackColor; }
-            if(projectedEl) { projectedEl.textContent = projectedText; projectedEl.style.color = feedbackColor; }
-            if(feedbackEl) { feedbackEl.textContent = feedbackText; feedbackEl.style.color = feedbackColor; feedbackEl.style.backgroundColor = feedbackBg; }
+
+            if (percentEl) percentEl.style.color = feedbackColor;
+            if (percentElMinimal) percentElMinimal.style.color = feedbackColor;
+
+            if (projectedEl) {
+                projectedEl.textContent = projectedText;
+                projectedEl.style.color = feedbackColor;
+            }
+            if (feedbackEl) {
+                feedbackEl.textContent = feedbackText;
+                feedbackEl.style.color = feedbackColor;
+                feedbackEl.style.backgroundColor = feedbackBg;
+            }
         }
 
         async function updateStats(forceRefresh = false) {
@@ -9742,7 +9816,7 @@ ${fraud.manager === managerName ? `
         if (isUser.success) {
             managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours};
             const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
-            if (isProgressBarEnabled) {
+            if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents/')) {
                 setupManagerStats(API_BASE_URL, token);
             }
             sendActivePageInfo();

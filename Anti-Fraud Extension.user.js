@@ -8166,7 +8166,8 @@ ${fraud.manager === managerName ? `
                                     dailyLoginBlocked: true,
                                     questsBlocked: true,
                                     promoOffersBlocked: true,
-                                    dailyPlaybackBlocked: true
+                                    dailyPlaybackBlocked: true,
+                                    redeemLimitBlocked: true
                                 })
                             }
                         ).then(res => res.json());
@@ -9816,7 +9817,7 @@ ${fraud.manager === managerName ? `
         if (isUser.success) {
             managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours};
             const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
-            if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents/')) {
+            if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents')) {
                 setupManagerStats(API_BASE_URL, token);
             }
             sendActivePageInfo();

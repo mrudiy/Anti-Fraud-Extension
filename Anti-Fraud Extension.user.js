@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5
+// @version      6.5.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5";
+    const currentVersion = "6.5.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -646,7 +646,7 @@
         const url = window.location.href;
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/check_user_in_fraud', {
+            const response = await fetch(`${API_BASE_URL}/api/check_user_in_fraud`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -777,7 +777,7 @@
                     console.log('Alert added to DOM');
                 } else {
                     console.error('Таблиця не знайдена.');
-                    document.body.insertBefore(alertDiv, document.body.firstChild); // Добавляем в body, если таблицы нет
+                    document.body.insertBefore(alertDiv, document.body.firstChild);
                 }
             }
 
@@ -932,7 +932,7 @@
 
 
                 if (newPassword) {
-                    fetch('https://vps65001.hyperhost.name/api/change_password_by_user', {
+                    fetch(`${API_BASE_URL}/api/change_password_by_user`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1080,7 +1080,7 @@
                 const amountCode = row.querySelector('td:nth-child(5) code');
                 if (amountCode) {
                     const amountText = amountCode.textContent.trim();
-                    const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, '')); // Очистка от валюты и посторонних символов
+                    const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, ''));
                     if (!isNaN(amount)) {
                         if (amountText.includes('CAD')) {
                             totalPendingCAD += amount;
@@ -1135,7 +1135,7 @@
         <div class="popup-content">
             ${content}
         </div>
-        <div class="popup-resize-handle"></div> <!-- Ручка для изменения размера -->
+        <div class="popup-resize-handle"></div>
     `;
         document.body.appendChild(popup);
 
@@ -1237,9 +1237,8 @@
             .highlight-orange { color: orange; }
             ul { list-style-type: disc; margin-left: 20px; }
 
-            /* Стилизация кнопок */
             .add-article-btn {
-                background-color: #4CAF50; /* Зеленый */
+                background-color: #4CAF50;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -1254,7 +1253,7 @@
             }
 
             .save-article-btn {
-                background-color: #2196F3; /* Синий */
+                background-color: #2196F3;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -1269,7 +1268,7 @@
             }
 
             .edit-article-btn {
-                background-color: #FF9800; /* Оранжевый */
+                background-color: #FF9800;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -1284,7 +1283,7 @@
             }
 
             .delete-article-btn {
-                background-color: #F44336; /* Красный */
+                background-color: #F44336;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -1298,7 +1297,6 @@
                 background-color: #E53935;
             }
 
-            /* Стилизация поля заголовка */
             input[type="text"] {
                 width: 100%;
                 padding: 10px;
@@ -1310,18 +1308,16 @@
                 font-size: 16px;
             }
 
-            /* Стилизация для контейнера редактора */
             #quill-editor {
-                height: 300px; /* Увеличен размер редактора */
+                height: 300px;
                 margin-bottom: 20px;
             }
 
-            /* Стилизация контейнеров статей */
             .article-container {
                 margin-bottom: 20px;
-                max-width: 1650px; /* Ограничение ширины контейнера */
-                word-wrap: break-word; /* Перенос длинных слов */
-                overflow-wrap: break-word; /* Поддержка переноса слов */
+                max-width: 1650px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
             }
         </style>
         `;
@@ -1376,7 +1372,7 @@
         let content = '';
 
         if (articleId) {
-            fetch(`https://vps65001.hyperhost.name/get_article/${articleId}`)
+            fetch(`${API_BASE_URL}/get_article/${articleId}`)
                 .then(response => response.json())
                 .then(article => {
                 title = article.title;
@@ -1440,13 +1436,13 @@
 
     // Получение всех статей
     async function fetchArticles() {
-        const response = await fetch('https://vps65001.hyperhost.name/get_articles');
+        const response = await fetch(`${API_BASE_URL}/get_articles`);
         const data = await response.json();
         return data;
     }
 
     async function saveArticle(title, content) {
-        const response = await fetch('https://vps65001.hyperhost.name/save_article', {
+        const response = await fetch(`${API_BASE_URL}/save_article`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1461,7 +1457,7 @@
     }
 
     async function updateArticle(articleId, title, content) {
-        const response = await fetch(`https://vps65001.hyperhost.name/update_article/${articleId}`, {
+        const response = await fetch(`${API_BASE_URL}/update_article/${articleId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1476,7 +1472,7 @@
     }
 
     async function deleteArticle(articleId) {
-        const response = await fetch(`https://vps65001.hyperhost.name/delete_article/${articleId}`, {
+        const response = await fetch(`${API_BASE_URL}/delete_article/${articleId}`, {
             method: 'DELETE'
         });
         const data = await response.json();
@@ -1785,7 +1781,6 @@
                                 const parser = new DOMParser();
                                 const profileDoc = parser.parseFromString(profileHtml, 'text/html');
 
-                                // Извлекаем данные из таблицы профиля
                                 const rows = profileDoc.querySelectorAll('table tr');
                                 let profileData = {};
 
@@ -1799,7 +1794,6 @@
                                     }
                                 });
 
-                                // Подготовка введенных данных для сравнения
                                 const terms = surnameTerm ? surnameTerm.split(' ').filter(Boolean).map(t => t.toLowerCase()) : [];
                                 const inputData = {
                                     surname: terms[0] || '',
@@ -1807,7 +1801,6 @@
                                     patronymic: terms.length === 3 ? terms[2] : ''
                                 };
 
-                                // Проверка совпадения данных
                                 let dataMatches = true;
 
                                 if (surnameTerm) {
@@ -2401,7 +2394,7 @@
 
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/frauds', {
+            const response = await fetch(`${API_BASE_URL}/api/frauds`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -2425,7 +2418,6 @@
 
             const style = document.createElement('style');
             style.textContent = `
-        /* Стилі для таблиць у попапі */
         #my-frauds-table-popup, #common-frauds-table-popup {
             width: 100%;
             border-collapse: collapse;
@@ -2450,7 +2442,7 @@
 .delete-fraud, .edit-fraud {
     cursor: pointer;
     margin-right: 10px;
-    font-size: 18px; /* Можно скорректировать размер иконок */
+    font-size: 18px;
 }
 
 .delete-fraud {
@@ -2536,7 +2528,7 @@ ${fraud.manager === managerName ? `
             showCancelButton: true,
             confirmButtonText: 'Зберегти',
             preConfirm: (newComment) => {
-                return fetch(`https://vps65001.hyperhost.name/api/edit_fraud/${fraudId}`, {
+                return fetch(`${API_BASE_URL}/api/edit_fraud/${fraudId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2630,7 +2622,7 @@ ${fraud.manager === managerName ? `
 
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/add_fraud', {
+            const response = await fetch(`${API_BASE_URL}/api/add_fraud`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2660,7 +2652,7 @@ ${fraud.manager === managerName ? `
 
 
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/delete_fraud/${fraudId}`, {
+            const response = await fetch(`${API_BASE_URL}/api/delete_fraud/${fraudId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -2704,7 +2696,7 @@ ${fraud.manager === managerName ? `
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%); /* Центрирует попап */
+    transform: translate(-50%, -50%);
     padding: 20px;
     background: #fff;
     border: 1px solid #ccc;
@@ -2712,12 +2704,12 @@ ${fraud.manager === managerName ? `
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     z-index: 10000;
     cursor: move;
-    resize: both; /* Возможность изменения размера */
-    overflow: auto; /* Прокрутка при переполнении */
-    max-width: 90vw; /* Ограничение по ширине экрана */
-    max-height: 90vh; /* Ограничение по высоте экрана */
-    min-width: 150px; /* Минимальная ширина, чтобы избежать слишком узкого попапа */
-    min-height: 100px; /* Минимальная высота */
+    resize: both;
+    overflow: auto;
+    max-width: 90vw;
+    max-height: 90vh;
+    min-width: 150px;
+    min-height: 100px;
 }
 
 .popup-header {
@@ -2760,10 +2752,10 @@ ${fraud.manager === managerName ? `
     background-color: #f4f4f4;
 }
 #admin-popup-table tr:nth-child(even) {
-    background-color: #f2f2f2; /* Чередование цвета строк */
+    background-color: #f2f2f2;
 }
 #admin-popup-table tr:hover {
-    background-color: #ddd; /* Изменение цвета строки при наведении */
+    background-color: #ddd;
 }
 #admin-popup-table .actions {
     text-align: center;
@@ -2907,13 +2899,13 @@ ${fraud.manager === managerName ? `
     position: absolute;
     bottom: 0;
     right: 0;
-    cursor: nwse-resize; /* Индикатор изменения размера */
+    cursor: nwse-resize;
 }
         .daterangepicker {
-            z-index: 10001 !important; /* Обеспечиваем, чтобы календарь отображался поверх всплывающего окна */
+            z-index: 10001 !important;
         }
         .swal2-container {
-  z-index: 10002; /* Установить более высокий z-index для оповещения */
+  z-index: 10002;
 }
 `;
     document.head.appendChild(stylePopUps);
@@ -2954,7 +2946,7 @@ ${fraud.manager === managerName ? `
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    const response = await fetch(`https://vps65001.hyperhost.name/api/change_password/${userId}`, {
+                    const response = await fetch(`${API_BASE_URL}/api/change_password/${userId}`, {
                         method: 'PUT',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -4402,8 +4394,8 @@ ${fraud.manager === managerName ? `
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const year = tomorrow.getFullYear();
-        const month = String(tomorrow.getMonth() + 1).padStart(2, '0'); // Месяц (0-11) + 1, с ведущим нулем
-        const day = String(tomorrow.getDate()).padStart(2, '0'); // День с ведущим нулем
+        const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+        const day = String(tomorrow.getDate()).padStart(2, '0');
         return `${year}.${month}.${day}`;
     }
 
@@ -4606,7 +4598,7 @@ ${fraud.manager === managerName ? `
                             if (key === 'Redeems Total') redeemsTotal = value;
                         });
                     }
-                    resolve({ domain, depositsTotal, redeemsTotal, playerId }); // Добавляем playerId в результат
+                    resolve({ domain, depositsTotal, redeemsTotal, playerId });
                 },
                 onerror: () => resolve({ domain, depositsTotal: 0, redeemsTotal: 0, playerId })
             });
@@ -4752,10 +4744,10 @@ ${fraud.manager === managerName ? `
             console.error('Попап не существует');
             return;
         }
-        console.log('popupBox exists:', window.popupBox); // Проверяем, что попап есть
+        console.log('popupBox exists:', window.popupBox);
 
         const textElement = window.popupBox.querySelector('.popup-text');
-        console.log('textElement:', textElement); // Проверяем, найден ли .popup-text
+        console.log('textElement:', textElement);
 
         if (!textElement) {
             console.warn('Элемент .popup-text не найден в попапе');
@@ -4774,7 +4766,7 @@ ${fraud.manager === managerName ? `
         const message = createClickableMessage(`popup-clickable-text-${index}`, content, onClick);
         console.log('Message created:', message);
         textElement.appendChild(message);
-        console.log('Message appended to textElement:', textElement.innerHTML); // Проверяем, добавлено ли
+        console.log('Message appended to textElement:', textElement.innerHTML);
     }
 
     function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
@@ -4864,7 +4856,7 @@ ${fraud.manager === managerName ? `
             state.totalDeposits++;
         } else if (actionType.includes('Ручное начисление баланса')) {
             const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
-            if (amount > 1 && state.manualBalanceCount < 3) { 
+            if (amount > 1 && state.manualBalanceCount < 3) {
                 showManualBalance({ dateStr, bonusInfo, index: state.manualBalanceCount++ });
             }
         } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
@@ -5987,7 +5979,7 @@ ${fraud.manager === managerName ? `
 
     async function authenticate(username, password) {
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/auth', {
+            const response = await fetch(`${API_BASE_URL}/api/auth`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -6015,7 +6007,7 @@ ${fraud.manager === managerName ? `
     async function powerBIfetchHighlightedValues() {
         const sheetName = powerBIgetSheetName(), today = new Date().toISOString().split('T')[0];
         try {
-            const response = await fetch(`https://vps65001.hyperhost.name/api/powerbi/get?sheet_name=${encodeURIComponent(sheetName)}`);
+            const response = await fetch(`${API_BASE_URL}/api/powerbi/get?sheet_name=${encodeURIComponent(sheetName)}`);
             if (response.ok) {
                 const data = await response.json();
                 highlightedValues = data.filter(item => item.date === today).map(item => item.player_id);
@@ -6028,7 +6020,7 @@ ${fraud.manager === managerName ? `
     async function powerBIsaveHighlightedValue(cellValue) {
 
         try {
-            await fetch('https://vps65001.hyperhost.name/api/powerbi/add', {
+            await fetch(`${API_BASE_URL}/api/powerbi/add`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ player_id: cellValue, date: new Date().toISOString().split('T')[0], sheet_name: powerBIgetSheetName() })
@@ -6038,7 +6030,7 @@ ${fraud.manager === managerName ? `
 
     async function powerBIdeleteHighlightedValue(cellValue) {
         try {
-            await fetch('https://vps65001.hyperhost.name/api/powerbi/delete', {
+            await fetch(`${API_BASE_URL}/api/powerbi/delete`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ player_id: cellValue, sheet_name: powerBIgetSheetName() })
@@ -6205,7 +6197,7 @@ ${fraud.manager === managerName ? `
         }
 
         try {
-            const response = await fetch('https://vps65001.hyperhost.name/api/get_active_users', {
+            const response = await fetch(`${API_BASE_URL}/api/get_active_users`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -6247,7 +6239,7 @@ ${fraud.manager === managerName ? `
         stickyRow.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
         stickyRow.style.zIndex = '1000';
         stickyRow.style.display = 'none';
-        stickyRow.style.whiteSpace = 'nowrap'; // Предотвращаем перенос текста
+        stickyRow.style.whiteSpace = 'nowrap';
 
 
         [...originalRow.children].forEach(cell => {
@@ -6793,7 +6785,7 @@ ${fraud.manager === managerName ? `
                     height: 250px;
                     z-index: 1000;
                     cursor: pointer;
-                    transition: top 0.3s ease, left 0.3s ease; /* Плавное перемещение */
+                    transition: top 0.3s ease, left 0.3s ease;
                 }
             `;
                 document.head.appendChild(style);
@@ -6974,7 +6966,6 @@ ${fraud.manager === managerName ? `
                     });
                 } else if (field.type === 'text') {
                     const element = byId(field.selector);
-                    // Исправление: маппим 'amount' из ответа сервера в 'total_amount' для UI
                     if (key === 'total_amount') {
                         element.value = data.amount !== undefined ? data.amount : '';
                     } else if (key === 'inefficient_transaction_percent') {
@@ -7071,7 +7062,6 @@ ${fraud.manager === managerName ? `
     function createAlertSettingsPopup() {
         const style = document.createElement('style');
         style.textContent = `
-    /* Общий стиль для попапа */
     #alert-settings-popup {
         font-family: Arial, sans-serif;
         padding: 20px;
@@ -7081,7 +7071,6 @@ ${fraud.manager === managerName ? `
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
 
-    /* Стили для выпадающих списков */
     #project-select,
     #alert-type-select,
     #deposits-manager-select,
@@ -7120,7 +7109,6 @@ ${fraud.manager === managerName ? `
         box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
     }
 
-    /* Стиль для множественного выбора */
     #pendings-priority-select option,
     #payout-priority-select option {
         padding-left: 25px; /* Отступ для галочки */
@@ -7136,7 +7124,6 @@ ${fraud.manager === managerName ? `
         font-weight: bold;
     }
 
-    /* Стили для кнопок */
     #pendings-update-btn,
     #payout-update-btn {
         display: block;
@@ -7157,7 +7144,6 @@ ${fraud.manager === managerName ? `
         background-color: #218838;
     }
 
-    /* Стили для сообщений об ошибках и успехах */
     .error {
         color: #dc3545;
         font-size: 14px;
@@ -7170,7 +7156,6 @@ ${fraud.manager === managerName ? `
         margin-top: 10px;
     }
 
-    /* Стили для полей ввода */
     #pendings-total-amount,
     #payout-total-amount {
         width: 100%;
@@ -7190,7 +7175,6 @@ ${fraud.manager === managerName ? `
         box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
     }
 
-    /* Стиль для контейнера с приоритетом и суммой */
     .priority-amount-container {
         display: flex;
         flex-direction: column;
@@ -7202,10 +7186,9 @@ ${fraud.manager === managerName ? `
     /* Стили для чекбокса автоотключения */
     #payout-auto-disable {
         margin-right: 10px;
-        transform: scale(1.2); /* Увеличим чекбокс для лучшей видимости */
+        transform: scale(1.2);
     }
 
-    /* Стиль для контейнера чекбокса и подписи */
     .checkbox-container {
         display: flex;
         align-items: center;
@@ -7237,7 +7220,6 @@ ${fraud.manager === managerName ? `
         background-color: #218838;
     }
 
-    /* Стили для контейнера "Deposits" */
     .deposit-priority-container {
         display: flex;
         flex-direction: column;
@@ -7417,13 +7399,12 @@ ${fraud.manager === managerName ? `
 
             if (selectedValue === 'Verification') {
                 showSection(SETTINGS_SECTIONS.Verification);
-                byId('alert-type-section').style.display = 'none'; // Скрываем выбор типа алерта
+                byId('alert-type-section').style.display = 'none';
                 const manager = new SettingsManager('Verification');
-                await manager.loadSettings(null); // Загружаем настройки без проекта
+                await manager.loadSettings(null);
             } else {
-                // Для остальных проектов показываем выбор типа алерта
                 byId('alert-type-section').style.display = 'block';
-                byId('alert-type-select').selectedIndex = 0; // Сбрасываем выбор типа алерта
+                byId('alert-type-select').selectedIndex = 0;
             }
         });
 
@@ -7589,7 +7570,7 @@ ${fraud.manager === managerName ? `
             verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
         } catch (error) {
             console.error('Ошибка загрузки настроек верификации:', error);
-            verificationSheets = { Betking: '', '777': '', Vegas: '' }; // Fallback
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
         }
 
         button.addEventListener('click', (event) => handleVerificationClick(event, verificationSheets));
@@ -7845,7 +7826,7 @@ ${fraud.manager === managerName ? `
 
     const BONUS_PATTERNS = {
         regular: /бонус(а)? №\s*(\d+)/i,
-        sport: /Присвоение бонуса \(ставки на спорт\) №\s*(\d+)/i
+        sport: /Назначение бонуса \(ставки на спорт\) №\s*(\d+)/i
     };
 
     const STYLES = `
@@ -7864,24 +7845,30 @@ ${fraud.manager === managerName ? `
     ul.p-rich_text_list__bullet { padding-left: 0; list-style: disc outside; }
 `;
 
-    const makeBonusClickable = () => document.querySelectorAll('td').forEach(td => {
-        const [type, match] = Object.entries(BONUS_PATTERNS).find(([_, pattern]) => pattern.test(td.textContent)) || [];
-        if (!match) return;
+const makeBonusClickable = () => document.querySelectorAll('td').forEach(td => {
+    const text = td.textContent;
 
-        const bonusNumber = match.exec(td.textContent)[type === 'sport' ? 1 : 2];
-        const isSportBonus = type === 'sport';
-        const replaceText = match.exec(td.textContent)[0];
+    const bonusPattern = /\[бонус(а)?\s*№\s*(\d+)\]/i;
+    const bonusMatch = text.match(bonusPattern);
 
-        td.innerHTML = td.innerHTML.replace(replaceText,
-                                            `${isSportBonus ? 'Присвоение бонуса (ставки на спорт)' : 'бонуса'} ` +
-                                            `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">№ ${bonusNumber}</a>`
-                                           );
+    if (!bonusMatch) {
+        return;
+    }
 
-        td.querySelector('.bonus-link').addEventListener('click', e => {
-            e.preventDefault();
-            fetchBonusInfo(bonusNumber, isSportBonus);
-        });
+    const textToReplace = bonusMatch[0];
+    const bonusNumber = bonusMatch[2];
+
+    const isSportBonus = /Назначение бонуса \(ставки на спорт\)/i.test(text);
+
+    const linkHtml = `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">${textToReplace}</a>`;
+
+    td.innerHTML = td.innerHTML.replace(textToReplace, linkHtml);
+
+    td.querySelector('.bonus-link').addEventListener('click', e => {
+        e.preventDefault();
+        fetchBonusInfo(bonusNumber, isSportBonus);
     });
+});
 
     const fetchBonusInfo = (bonusNumber, isSportBonus = false) => fetch(
         `${ProjectUrl}${isSportBonus ? 'sportBetting/sportBettingBonus' : 'bonuses/bonusesItems'}/preview/${bonusNumber}/`,
@@ -7897,7 +7884,6 @@ ${fraud.manager === managerName ? `
         } else {
             const modalContent = doc.querySelector('.modal-content');
             if (modalContent) {
-                // Прибираємо кнопку закриття з HTML
                 const closeButton = modalContent.querySelector('.close');
                 if (closeButton) closeButton.remove();
                 content = modalContent.innerHTML;

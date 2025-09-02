@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.1
+// @version      6.5.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.1";
+    const currentVersion = "6.5.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7824,11 +7824,6 @@ ${fraud.manager === managerName ? `
         return sheetName;
     }
 
-    const BONUS_PATTERNS = {
-        regular: /бонус(а)? №\s*(\d+)/i,
-        sport: /Назначение бонуса \(ставки на спорт\) №\s*(\d+)/i
-    };
-
     const STYLES = `
     .well { min-height: 20px; padding: 19px; margin-bottom: 20px; background-color: #f5f5f5; border: 1px solid #e3e3e3; border-radius: 4px; }
     .well-sm { padding: 9px; border-radius: 3px; }
@@ -7845,30 +7840,82 @@ ${fraud.manager === managerName ? `
     ul.p-rich_text_list__bullet { padding-left: 0; list-style: disc outside; }
 `;
 
-const makeBonusClickable = () => document.querySelectorAll('td').forEach(td => {
-    const text = td.textContent;
+    const makeBonusClickable = () => {
+        const patterns = [
+            {
+                regex: /\[#(\d+)\]/i,
+                numberIndex: 1,
+                sportOnly: true
+            },
+            {
+                regex: /\[бонус(?:а)?\s*№\s*(\d+)\]/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Назначение бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Присвоение бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Активация бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Ассайн бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Отыгрывание бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            }
+        ];
 
-    const bonusPattern = /\[бонус(а)?\s*№\s*(\d+)\]/i;
-    const bonusMatch = text.match(bonusPattern);
+        document.querySelectorAll('td').forEach(td => {
+            const text = td.textContent;
+            let originalTextChunk = '';
+            let bonusNumber = '';
+            let matchFound = false;
 
-    if (!bonusMatch) {
-        return;
-    }
+            const isSportBonus = /Назначение бонуса \(ставки на спорт\)/i.test(text);
 
-    const textToReplace = bonusMatch[0];
-    const bonusNumber = bonusMatch[2];
+            for (const pattern of patterns) {
+                const match = text.match(pattern.regex);
+                if (match) {
+                    if (pattern.sportOnly && !isSportBonus) {
+                        continue;
+                    }
+                    originalTextChunk = match[0];
+                    bonusNumber = match[pattern.numberIndex];
+                    matchFound = true;
+                    break;
+                }
+            }
 
-    const isSportBonus = /Назначение бонуса \(ставки на спорт\)/i.test(text);
+            if (!matchFound) {
+                return;
+            }
 
-    const linkHtml = `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">${textToReplace}</a>`;
+            const linkHtml = `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">${bonusNumber}</a>`;
 
-    td.innerHTML = td.innerHTML.replace(textToReplace, linkHtml);
+            const newTextChunk = originalTextChunk.replace(bonusNumber, linkHtml);
 
-    td.querySelector('.bonus-link').addEventListener('click', e => {
-        e.preventDefault();
-        fetchBonusInfo(bonusNumber, isSportBonus);
-    });
-});
+            if (td.innerHTML.includes(originalTextChunk)) {
+                td.innerHTML = td.innerHTML.replace(originalTextChunk, newTextChunk);
+            }
+
+            const linkElement = td.querySelector('.bonus-link');
+            if (linkElement) {
+                linkElement.addEventListener('click', e => {
+                    e.preventDefault();
+                    fetchBonusInfo(bonusNumber, isSportBonus);
+                });
+            }
+        });
+    };
+
 
     const fetchBonusInfo = (bonusNumber, isSportBonus = false) => fetch(
         `${ProjectUrl}${isSportBonus ? 'sportBetting/sportBettingBonus' : 'bonuses/bonusesItems'}/preview/${bonusNumber}/`,

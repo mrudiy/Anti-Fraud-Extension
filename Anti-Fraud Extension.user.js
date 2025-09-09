@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.2
+// @version      6.5.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.2";
+    const currentVersion = "6.5.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -7843,7 +7843,7 @@ ${fraud.manager === managerName ? `
     const makeBonusClickable = () => {
         const patterns = [
             {
-                regex: /\[#(\d+)\]/i,
+                regex: /\[#(\d{1,4})\]/i,
                 numberIndex: 1,
                 sportOnly: true
             },
@@ -7879,7 +7879,7 @@ ${fraud.manager === managerName ? `
             let bonusNumber = '';
             let matchFound = false;
 
-            const isSportBonus = /Назначение бонуса \(ставки на спорт\)/i.test(text);
+            const isSportBonus = /ставки на спорт/i.test(text);
 
             for (const pattern of patterns) {
                 const match = text.match(pattern.regex);

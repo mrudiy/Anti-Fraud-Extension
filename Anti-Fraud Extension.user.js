@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.3
+// @version      6.5.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.3";
+    const currentVersion = "6.5.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -113,6 +113,7 @@
         { text: 'Отыгрывание бонуса', color: '#ff69b4' },
         { text: 'Начисление cashback', color: '#ff69b4' },
         { text: 'Присвоение бонуса', color: '#1e90ff' },
+        { text: 'Активация бонуса', color: '#1e90ff' },
         { text: 'Отмена', color: '#ff4500' }
     ];
 
@@ -4869,7 +4870,7 @@ ${fraud.manager === managerName ? `
                 updatePopupBox({ ...state, index: state.messageCount++ });
             }
             state.waitingForBonus = false;
-        } else if (actionType.includes('Присвоение бонуса') || actionType.includes('Bonus assignment')) {
+        } else if (['Bonus assignment', 'Присвоение бонуса', 'Активация бонуса'].some(t => actionType.includes(t))) {
             if (bonusInfo.match(/платеж № (\d+)/)) {
                 state.bonusWithDeposits++;
             }

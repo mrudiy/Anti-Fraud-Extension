@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.4
+// @version      6.5.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -50,7 +50,7 @@
 (function() {
     'use strict';
 
-    const API_BASE_URL = 'https://vps65001.hyperhost.name';
+    const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -85,7 +85,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.4";
+    const currentVersion = "6.5.5";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';

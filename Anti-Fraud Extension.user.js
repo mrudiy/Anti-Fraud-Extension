@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.6
+// @version      6.5.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -87,7 +87,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.6";
+    const currentVersion = "6.5.7";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8177,34 +8177,22 @@ ${fraud.manager === managerName ? `
 
                         if (!limitResponse.success) throw new Error(limitResponse.message || 'Помилка першого запиту');
 
+                        const featuresToBlock = { playerId: userId };
+
+                        const allCheckboxes = document.querySelectorAll('.toggle-restricted-features-info-container input[type="checkbox"]');
+
+                        allCheckboxes.forEach(checkbox => {
+                            if (checkbox.name) {
+                                featuresToBlock[checkbox.name] = true;
+                            }
+                        });
+
                         const featuresResponse = await fetch(
                             `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
                             {
                                 ...baseConfig,
                                 headers: { ...baseHeaders, "content-type": "application/json" },
-                                body: JSON.stringify({
-                                    playerId: userId,
-                                    racesBlocked: true,
-                                    tournamentsBlocked: true,
-                                    jackpotsBlocked: true,
-                                    lotteriesBlocked: true,
-                                    rankLeagueBlocked: true,
-                                    wheelsBlocked: true,
-                                    cashbackBlocked: true,
-                                    refererBlocked: true,
-                                    moneyBoxBlocked: true,
-                                    depositStreakBlocked: true,
-                                    scratchCardLotteryBlocked: true,
-                                    funMeterBlocked: true,
-                                    bingoBlocked: true,
-                                    prizeDropsBlocked: true,
-                                    seasonsBlocked: true,
-                                    dailyLoginBlocked: true,
-                                    questsBlocked: true,
-                                    promoOffersBlocked: true,
-                                    dailyPlaybackBlocked: true,
-                                    redeemLimitBlocked: true
-                                })
+                                body: JSON.stringify(featuresToBlock)
                             }
                         ).then(res => res.json());
 
@@ -8220,6 +8208,7 @@ ${fraud.manager === managerName ? `
                         ).then(res => res.text());
 
                         if (!bonusResponse) throw new Error('Помилка третього запиту');
+
                         const currentLanguage = GM_getValue(languageKey, 'російська');
                         let insertText = currentLanguage === 'українська'
                         ? `Відключив всі активності, оффери, бонуси`

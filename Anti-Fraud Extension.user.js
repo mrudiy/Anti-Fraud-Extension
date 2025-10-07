@@ -6636,7 +6636,10 @@ ${fraud.manager === managerName ? `
         }
 
         const shouldProceed = await confirmLawyerVerification();
-        if (!shouldProceed) return;
+        if (!shouldProceed) {
+            updateButton.form.submit();
+            return;
+        };
 
         const reason = await selectVerificationReason();
         if (!reason) return;

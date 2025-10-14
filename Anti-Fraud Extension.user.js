@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.7
+// @version      6.5.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -87,7 +87,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.7";
+    const currentVersion = "6.5.8";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -8186,7 +8186,11 @@ ${fraud.manager === managerName ? `
 
                         allCheckboxes.forEach(checkbox => {
                             if (checkbox.name) {
-                                featuresToBlock[checkbox.name] = true;
+                                if (checkbox.name === 'redeemLimitBlocked') {
+                                    featuresToBlock[checkbox.name] = false;
+                                } else {
+                                    featuresToBlock[checkbox.name] = true;
+                                }
                             }
                         });
 

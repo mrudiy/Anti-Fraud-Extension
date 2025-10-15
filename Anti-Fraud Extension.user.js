@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.8
+// @version      6.5.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -87,7 +87,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.8";
+    const currentVersion = "6.5.9";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4175,15 +4175,23 @@ ${fraud.manager === managerName ? `
 
     function searchUser(query, fieldType, projectUrl, container) {
         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
+
+        if (!query || query === 'Не задан' || query === 'Не заданий') {
+            container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+            return;
+        }
+
         GM_xmlhttpRequest({
             method: 'POST',
             url: projectUrl,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
             onload: response => {
-                response.finalUrl.includes('/update/')
-                    ? getUserInfo(response.finalUrl, fieldType, container)
-                : container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+                if (response.finalUrl.includes('/update/')) {
+                    getUserInfo(response.finalUrl, fieldType, container);
+                } else {
+                    handleMultipleUsersFound(response.responseText, projectUrl, container, searchTypeLabel);
+                }
             },
             onerror: () => container.innerHTML += `<div><b>${searchTypeLabel}:</b> Помилка при пошуку</div>`
         });
@@ -4203,6 +4211,42 @@ ${fraud.manager === managerName ? `
             },
             onerror: () => container.innerHTML += '<div>Помилка при отриманні даних користувача.</div>'
         });
+    }
+
+    function handleMultipleUsersFound(responseText, projectUrl, container, searchTypeLabel) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = responseText;
+        const playerCards = tempDiv.querySelectorAll('.player_card');
+
+        if (playerCards.length > 0) {
+            const resultsContainer = document.createElement('div');
+            resultsContainer.innerHTML = `<b>${searchTypeLabel}:</b> `;
+            const domain = new URL(projectUrl).origin;
+
+            playerCards.forEach(card => {
+                const link = card.querySelector('a');
+                if (!link) return;
+
+                if (link.getAttribute('href').startsWith('/')) {
+                    link.href = domain + link.getAttribute('href');
+                    link.target = '_blank';
+                }
+
+                const icon = link.querySelector('i');
+                if (icon) {
+                    icon.remove();
+                }
+
+                link.className = '';
+                link.classList.add('label', 'label-primary');
+
+                resultsContainer.appendChild(link);
+                resultsContainer.appendChild(document.createTextNode(' '));
+            });
+            container.appendChild(resultsContainer);
+        } else {
+            container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+        }
     }
 
     function determineUserStatus(tempDiv) {

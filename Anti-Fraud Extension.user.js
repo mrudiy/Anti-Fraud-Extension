@@ -4156,14 +4156,22 @@ ${fraud.manager === managerName ? `
                 const email = getFirstValueByLabel('E-mail');
                 const phone = getFirstValueByLabel('Телефон');
 
+                const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+                const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+                const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+                const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+                const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+                //const native_document_id = idCard || passportFull || otherDocument || null;
+                const native_document_id = 1;
+
                 otherProjects.forEach(project => {
                     const projectUrl = projectUrls[project];
                     const projectContainer = createProjectContainer(project, projectUrl);
                     container.appendChild(projectContainer);
 
-                    searchUser(inn, 'inn', projectUrl, projectContainer);
-                    searchUser(email, 'email', projectUrl, projectContainer);
-                    searchUser(phone, 'phone', projectUrl, projectContainer);
+                    searchUser(inn, 'inn', projectUrl, projectContainer, native_document_id);
+                    searchUser(email, 'email', projectUrl, projectContainer, native_document_id);
+                    searchUser(phone, 'phone', projectUrl, projectContainer, native_document_id);
                     processProjectCards(project, projectUrl, projectContainer);
                 });
 
@@ -4173,11 +4181,27 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    function searchUser(query, fieldType, projectUrl, container) {
+    function searchUser(query, fieldType, projectUrl, container, native_document_id) {
         const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
+        const addMessage = (html) => {
+            const div = document.createElement('div');
+            div.innerHTML = html;
+
+            if (fieldType === 'inn') {
+                const img = container.querySelector('img');
+                if (img) {
+                    img.after(div);
+                } else {
+                    container.prepend(div);
+                }
+            } else {
+                container.appendChild(div);
+            }
+        };
+
         if (!query || query === 'Не задан' || query === 'Не заданий') {
-            container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+            addMessage(`<b>${searchTypeLabel}:</b> не знайдено`);
             return;
         }
 
@@ -4188,16 +4212,34 @@ ${fraud.manager === managerName ? `
             data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
             onload: response => {
                 if (response.finalUrl.includes('/update/')) {
-                    getUserInfo(response.finalUrl, fieldType, container);
+                    getUserInfo(response.finalUrl, fieldType, container, native_document_id);
                 } else {
                     handleMultipleUsersFound(response.responseText, projectUrl, container, searchTypeLabel);
                 }
             },
-            onerror: () => container.innerHTML += `<div><b>${searchTypeLabel}:</b> Помилка при пошуку</div>`
+            onerror: () => addMessage(`<b>${searchTypeLabel}:</b> Помилка при пошуку`)
         });
     }
 
-    function getUserInfo(url, fieldType, container) {
+    function getUserInfo(url, fieldType, container, native_document_id) {
+        console.log(`[getUserInfo] Запуск. Родной док: ${native_document_id}`);
+
+        const addResult = (html) => {
+            const div = document.createElement('div');
+            div.innerHTML = html;
+
+            if (fieldType === 'inn') {
+                const img = container.querySelector('img');
+                if (img) {
+                    img.after(div);
+                } else {
+                    container.prepend(div);
+                }
+            } else {
+                container.appendChild(div);
+            }
+        };
+
         GM_xmlhttpRequest({
             method: 'GET',
             url,
@@ -4207,9 +4249,60 @@ ${fraud.manager === managerName ? `
                 const playerId = getValueByLabel(tempDiv, 'Номер игрока');
                 let status = determineUserStatus(tempDiv);
                 const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
-                container.innerHTML += `<div><b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a></div>`;
+
+                if (fieldType !== 'inn') {
+                    addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
+                    return;
+                }
+
+                const scripts = tempDiv.querySelectorAll('script');
+                let credentialsUrl = null;
+                for (const script of scripts) {
+                    if (script.textContent.includes('#credentials-info')) {
+                        const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                        if (urlMatch) {
+                            credentialsUrl = urlMatch[1];
+                            break;
+                        }
+                    }
+                }
+
+                if (credentialsUrl) {
+                    const absoluteCredentialsUrl = new URL(credentialsUrl, url).href;
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: absoluteCredentialsUrl,
+                        onload: credentialsResponse => {
+                            const credentialsDiv = document.createElement('div');
+                            credentialsDiv.innerHTML = credentialsResponse.responseText;
+
+                            const idCard = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+                            const passportSeries = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+                            const passportNumber = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+                            const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+                            const otherDocument = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+                            const found_document_id = idCard || passportFull || otherDocument || null;
+
+                            let documentHtml = '';
+                            if (found_document_id && found_document_id !== native_document_id) {
+                                documentHtml = ` <span style="color: #E6A23C; font-weight: bold; margin-left: 5px;"><big>⚠️</big> ${found_document_id}</span>`;
+                            } else if (found_document_id) {
+                            }
+
+                            addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>${documentHtml}`);
+                        },
+                        onerror: () => {
+                            addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
+                        }
+                    });
+                } else {
+                    addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
+                }
             },
-            onerror: () => container.innerHTML += '<div>Помилка при отриманні даних користувача.</div>'
+            onerror: () => {
+                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
+                addResult(`<b>${searchTypeLabel}:</b> Помилка при отриманні даних користувача.`);
+            }
         });
     }
 
@@ -4217,6 +4310,20 @@ ${fraud.manager === managerName ? `
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = responseText;
         const playerCards = tempDiv.querySelectorAll('.player_card');
+        const isInn = searchTypeLabel === 'ІПН';
+
+        const addFinalDiv = (div) => {
+            if (isInn) {
+                const img = container.querySelector('img');
+                if (img) {
+                    img.after(div);
+                } else {
+                    container.prepend(div);
+                }
+            } else {
+                container.appendChild(div);
+            }
+        };
 
         if (playerCards.length > 0) {
             const resultsContainer = document.createElement('div');
@@ -4243,9 +4350,12 @@ ${fraud.manager === managerName ? `
                 resultsContainer.appendChild(link);
                 resultsContainer.appendChild(document.createTextNode(' '));
             });
-            container.appendChild(resultsContainer);
+
+            addFinalDiv(resultsContainer);
         } else {
-            container.innerHTML += `<div><b>${searchTypeLabel}:</b> не знайдено</div>`;
+            const notFoundDiv = document.createElement('div');
+            notFoundDiv.innerHTML = `<b>${searchTypeLabel}:</b> не знайдено`;
+            addFinalDiv(notFoundDiv);
         }
     }
 
@@ -7605,7 +7715,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function goToGoogleSheet() {
-        const attentionHeader = document.querySelector('.attention-header');
+        const attentionHeader = document.querySelector('.attention-header') || document.querySelector('.attention-header-content');
         if (!attentionHeader?.textContent.includes('Не подтвержден!')) return;
 
         const targetDiv = document.querySelector('.form-actions');

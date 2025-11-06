@@ -1342,7 +1342,7 @@
             `;
             });
 
-            createPopup('reminder', 'Дошка', content, () => {});
+            createPopup('reminder', 'Новини', content, () => {});
 
             if (status === 'Admin') {
                 document.getElementById('add-article-btn').addEventListener('click', () => {
@@ -3696,12 +3696,12 @@ ${fraud.manager === managerName ? `
         }
     }
 
-    // Константы стилей
     const POPUP_STYLES = {
         position: 'fixed',
         top: '20px',
-        width: '280px',
-        padding: '20px',
+        width: '350px',
+        maxHeight: '90vh',
+        padding: '5px',
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
         zIndex: '10000',
@@ -3709,9 +3709,9 @@ ${fraud.manager === managerName ? `
         fontSize: '16px',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        borderRadius: '10px',
-        resize: 'both',
+        alignItems: 'stretch',
+        borderRadius: '30px',
+        resize: 'horizontal',
         overflow: 'auto'
     };
 
@@ -3733,7 +3733,21 @@ ${fraud.manager === managerName ? `
         fontSize: '20px'
     };
 
-    // Утилиты
+    const NAV_ICON_STYLES = {
+        cursor: 'pointer',
+        fontSize: '26px'
+    };
+
+    const MESSAGE_STYLES = {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        marginTop: '5px',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        textAlign: 'center',
+        cursor: 'default'
+    };
+
     function applyStyles(element, styles) {
         Object.assign(element.style, styles);
     }
@@ -3753,7 +3767,7 @@ ${fraud.manager === managerName ? `
         return container;
     }
 
-    async function createPopupBox({ MonthPA, TotalPA, Balance, NDFL, totalPending, cards = [], displayCards = [], isCheckedToday }) {
+    async function createPopupBox({ MonthPA, TotalPA, Balance, SafeBalance, NDFL, totalPending, cards = [], displayCards = [], isCheckedToday }) {
         if (window.popupBox) {
             console.log('Popup already exists, skipping creation');
             return;
@@ -3762,6 +3776,7 @@ ${fraud.manager === managerName ? `
         const popupBox = document.createElement('div');
         window.popupBox = popupBox;
         const popupWidth = parseInt(POPUP_STYLES.width.replace('px', ''), 10);
+
         applyStyles(popupBox, {
             ...POPUP_STYLES,
             left: `calc(100% - ${popupWidth + 20}px)`,
@@ -3771,24 +3786,102 @@ ${fraud.manager === managerName ? `
 
         try {
             popupBox.appendChild(createDragHandle(popupBox));
-            popupBox.appendChild(await createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards: displayCards }));
-            popupBox.appendChild(createSettingsIcon());
-            popupBox.appendChild(createSearchIcon());
-            popupBox.appendChild(createStatisticIcon());
-            popupBox.appendChild(createStatusIcon());
-            popupBox.appendChild(createFraudIcon());
-            const reminderIcon = await createReminderIcon();
-            popupBox.appendChild(reminderIcon);
-            await addAdminIcon(popupBox);
+
+            const headerContainer = document.createElement('div');
+            applyStyles(headerContainer, {
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+                borderBottom: '2px dashed #ccc',
+                paddingBottom: '10px',
+                marginBottom: '10px'
+            });
+
+            const iconRow = document.createElement('div');
+            applyStyles(iconRow, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                width: '100%',
+                padding: '0 10px',
+                boxSizing: 'border-box',
+                marginBottom: '10px'
+            });
+
+            const fraudIcon = createFraudIcon();
+            const searchIcon = createSearchIcon();
+            const adminIcon = await createAdminIcon();
+
+            iconRow.appendChild(fraudIcon);
+            iconRow.appendChild(searchIcon);
+
+            if (adminIcon) {
+                iconRow.appendChild(adminIcon);
+                addExcludeButton();
+            } else {
+                const placeholder = document.createElement('div');
+                applyStyles(placeholder, { width: '20px' });
+                iconRow.appendChild(placeholder);
+            }
+
+            headerContainer.appendChild(iconRow);
+
+            const checkedButton = createCleanButton(isCheckedToday);
+            headerContainer.appendChild(checkedButton);
+
+            popupBox.appendChild(headerContainer);
+
+            popupBox.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA, cards: displayCards }));
+
             const buttonRows = createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday });
             popupBox.appendChild(buttonRows);
-            const textElement = document.createElement('div');
-            textElement.className = 'popup-text';
-            popupBox.appendChild(textElement);
-            const projectContainer = await createProjectButtonContainer();
-            popupBox.appendChild(projectContainer);
-            popupBox.appendChild(createTotalInOutRow({ Balance, totalPending }));
 
+            const messagesContainer = document.createElement('div');
+            messagesContainer.className = 'popup-text';
+            applyStyles(messagesContainer, {
+                width: '100%',
+                marginTop: '15px',
+            });
+            popupBox.appendChild(messagesContainer);
+
+            const projectSearchContainer = document.createElement('div');
+            projectSearchContainer.className = 'project-search-results';
+            applyStyles(projectSearchContainer, { width: '100%' });
+            popupBox.appendChild(projectSearchContainer);
+
+            const allButton = popupBox.querySelector('#all-button-trigger');
+            if (allButton) {
+                const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
+                ? handleTotalInOutClick
+                : handleCombinedProfit;
+
+                allButton.addEventListener('click', () => {
+                    handleProjectSearchClick(projectSearchContainer, allButton);
+                    clickHandler(messagesContainer, { Balance, totalPending });
+                });
+            }
+
+            const footerContainer = document.createElement('div');
+            applyStyles(footerContainer, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                width: '100%',
+                marginTop: 'auto',
+                borderTop: '2px dashed #ccc',
+                paddingTop: '10px',
+                paddingLeft: '10px',
+                paddingRight: '10px',
+                boxSizing: 'border-box'
+            });
+
+            const reminderIcon = await createReminderIcon();
+            footerContainer.appendChild(createStatisticIcon());
+            footerContainer.appendChild(reminderIcon);
+            footerContainer.appendChild(createSettingsIcon());
+
+            popupBox.appendChild(footerContainer);
             document.body.appendChild(popupBox);
             addGlobalStyles(getColor(TotalPA));
             console.log('Popup creation completed');
@@ -3832,35 +3925,82 @@ ${fraud.manager === managerName ? `
         return dragHandle;
     }
 
-    async function createMainText({ Balance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
-        const showNDFL = GM_getValue(ndfDisplayKey, true);
+    async function createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
         const showAmount = GM_getValue(amountDisplayKey, true);
         const currencySymbol = currencySymbols.get(getCurrency()) || '';
-        const provider = await verificationProvider();
+
+        const BalanceNum = parseFloat(Balance) || 0;
+        const pendingNum = parseFloat(totalPending) || 0;
+        const safeNum = parseFloat(SafeBalance) || 0;
+        const sum = BalanceNum + pendingNum + safeNum;
+        const totalBalance = Number(sum.toFixed(2));
+        const payOutPercent = (TotalPA * 100).toFixed(0);
 
         const mainText = document.createElement('div');
         mainText.className = 'popup-main-text';
+
+        applyStyles(mainText, {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gridTemplateRows: 'auto auto auto',
+            gap: '10px',
+            alignItems: 'center',
+            textAlign: 'center',
+            width: '100%'
+        });
+
         mainText.innerHTML = `
-        <center><b>Баланс: ${formatCurrency(Balance, showAmount, currencySymbol)}</b></center>
-        ${showNDFL && NDFL !== 0 ? `<center><b>НДФЛ: ${formatCurrency(NDFL, showAmount, currencySymbol)}</b></center>` : ''}
-        <center><b>Month: <span style="color: ${getColor(MonthPA)}">${MonthPA}</span> | Total: <span style="color: ${getColor(TotalPA)}">${TotalPA}</span></b></center>
-        ${totalPending > 0 ? `<center><b>На виплаті: ${formatCurrency(totalPending, showAmount, currencySymbol)}</b></center>` : ''}
-        ${cards && Array.isArray(cards) && cards.length > 0 ? `<center><b>Картки для верифікації:</b><br>${cards.map(card => `
-            <div style="display: inline-block; margin-top: 5px;">
-                ${card}
-                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')" style="border: none; background: none; cursor: pointer; margin-left: 5px;">
-                    <span class="fa fa-files-o"></span>
+            <div style="font-size: 12px;">
+                <strong>BRP</strong><br>
+                <span id="brp-value-target" style="font-size: 16px;">---</span>
+            </div>
+            <div style="font-size: 12px;">
+                <strong>PayOut</strong><br>
+                <span style="font-size: 16px; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
+            </div>
+            <div style="font-size: 12px;">
+                <strong>Balanсe</strong><br>
+                <span style="font-size: 16px;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+            </div>
+
+            <div style="font-size: 12px;">
+                <strong>Total</strong><br>
+                <span id="total-inout-target" style="font-size: 16px;">---</span>
+            </div>
+            <div>
+                <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
+                    All
                 </button>
-            </div>`).join('<br>')}</center>` : ''}
-        ${['Kycaid', 'SumSub'].includes(provider) ? `<center><span style="color: red; font-weight: bold;">Верифікація: ${provider}</span></center>` : ''}
-    `;
+            </div>
+            <div style="font-size: 12px;">
+                <strong>Prognose</strong><br>
+                <span id="prognos-inout-target" style="font-size: 16px;">---</span>
+            </div>
+
+            <div style="font-size: 12px;">
+                <strong>Verification</strong><br>
+                <span id="verification-provider-target" style="font-size: 16px;">---</span>
+            </div>
+
+            <div>
+                <span id="current-document-target" style="font-size: 12px; font-weight: bold; color: #333;">
+                    </span>
+            </div>
+            <div style="font-size: 12px;">
+                <strong>AVG</strong><br>
+                <span id="avg-value-target" style="font-size: 16px;">---</span>
+            </div>
+        `;
+
         return mainText;
     }
 
     function createSettingsIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-cog"></i>';
-        applyStyles(icon, { ...ICON_STYLES, top: '10px', right: '10px' });
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
         icon.title = 'Налаштування';
         icon.onclick = createSettingsPopup;
         return icon;
@@ -3869,10 +4009,11 @@ ${fraud.manager === managerName ? `
     function createSearchIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-search"></i>';
-        applyStyles(icon, { ...ICON_STYLES,
-                           top: '10px',
-                           right: '40px'
-                          });
+        icon.innerHTML += '<i class="fa fa-search"></i>';
+        icon.innerHTML += '<i class="fa fa-search"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
         icon.title = 'Швидкий пошук';
         icon.onclick = () => {
             createFindPopUp();
@@ -3883,40 +4024,18 @@ ${fraud.manager === managerName ? `
     function createStatisticIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-signal"></i>';
-        applyStyles(icon, { ...ICON_STYLES, top: '35px', right: '10px' });
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
         icon.title = 'Статистика';
         icon.onclick = createStatisticPopup;
-        return icon;
-    }
-
-    function createStatusIcon() {
-        const checkbox = document.getElementById('Players_enabled_autopayouts');
-        const showAutopayments = GM_getValue('autoPaymentsDisplayKey', true);
-        const icon = document.createElement('div');
-        icon.innerHTML = checkbox?.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
-        applyStyles(icon, { ...ICON_STYLES, top: '10px', left: '10px' });
-        icon.title = 'Автовиплата';
-
-        if (showAutopayments) {
-            icon.onclick = () => {
-                checkbox.click();
-                setTimeout(() => {
-                    document.querySelector('.swal2-confirm')?.click();
-                    setTimeout(() => {
-                        icon.innerHTML = checkbox.checked ? '<i class="fa fa-check-circle" style="color: green;"></i>' : '<i class="fa fa-times-circle" style="color: red;"></i>';
-                    }, 200);
-                }, 200);
-            };
-        } else {
-            icon.style.pointerEvents = 'none';
-        }
         return icon;
     }
 
     function createFraudIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-eye"></i>';
-        applyStyles(icon, { ...ICON_STYLES, top: '40px', left: '10px' });
+        applyStyles(icon, { ...NAV_ICON_STYLES });
         icon.title = 'Нагляд';
         icon.onclick = createFraudPopup;
         return icon;
@@ -3929,9 +4048,11 @@ ${fraud.manager === managerName ? `
         const hasNewArticles = await checkForNewArticles();
         const shouldBlink = GM_getValue('reminderBlinkKey', true);
         const icon = document.createElement('div');
-        icon.innerHTML = '<i class="fa fa-book"></i>';
-        applyStyles(icon, { ...ICON_STYLES, top: '70px', left: '10px' });
-        icon.title = 'Памятка';
+        icon.innerHTML = '<i class="fa fa-newspaper-o"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
+        icon.title = 'Новини';
         if (hasNewArticles || shouldBlink) icon.classList.add('blinking');
         icon.onclick = () => {
             createReminderPopup();
@@ -3952,18 +4073,37 @@ ${fraud.manager === managerName ? `
         addExcludeButton();
     }
 
-    function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
-        const firstRow = createContainer({ marginTop: '10px', display: 'block', gap: '10px', textAlign: 'center' });
-        firstRow.appendChild(createCleanButton(isCheckedToday));
+    async function createAdminIcon() {
+        if (managerData.status !== 'Admin') return null;
 
-        const secondRow = createContainer({ marginTop: '10px', display: 'flex', gap: '10px' });
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-users"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES, fontSize: '18px' });
+
+        icon.title = 'Користувачі';
+        icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
+
+        return icon;
+    }
+
+    function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
+
+        const secondRow = createContainer({
+            marginTop: '10px',
+            display: 'flex',
+            gap: '10px',
+            justifyContent: 'center'
+        });
+
         if (GM_getValue(pendingButtonsDisplayKey, true)) {
             secondRow.appendChild(createPendingPlusButton(TotalPA));
             secondRow.appendChild(createPendingMinusButton(TotalPA));
+        } else {
+            return document.createElement('div');
         }
 
         const container = document.createElement('div');
-        container.appendChild(firstRow);
         container.appendChild(secondRow);
         return container;
     }
@@ -3974,11 +4114,21 @@ ${fraud.manager === managerName ? `
 
         const baseStyles = { ...BUTTON_STYLES };
 
+        delete baseStyles.padding;
+        delete baseStyles.borderRadius;
+
         const stateStyles = isCheckedToday
         ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true, cursor: 'default' }
         : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
 
-        const finalStyles = { ...baseStyles, ...stateStyles };
+        const finalStyles = {
+            ...baseStyles,
+            ...stateStyles,
+            padding: '8px 20px',
+            borderRadius: '25px',
+            fontSize: '16px'
+        };
+
         Object.assign(button, finalStyles);
         applyStyles(button, finalStyles);
 
@@ -4020,30 +4170,6 @@ ${fraud.manager === managerName ? `
         container.appendChild(searchImage);
         return container;
     }
-
-    function createTotalInOutRow({ Balance, totalPending }) {
-        const container = createContainer({ marginTop: '10px', display: 'block', textAlign: 'center' });
-        const button = document.createElement('button');
-        button.innerText = 'Total InOut';
-        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
-
-        button.onmouseover = () => button.style.backgroundColor = '#2f76ae';
-        button.onmouseout = () => button.style.backgroundColor = '#2196F3';
-
-        const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
-        ? handleTotalInOutClick
-        : handleCombinedProfit;
-
-        button.addEventListener('click', () => {
-            button.remove();
-            clickHandler(container, { Balance, totalPending });
-        });
-
-        container.appendChild(button);
-        return container;
-    }
-
-
 
     function addGlobalStyles(borderColor) {
         const styleSheet = document.createElement('style');
@@ -4100,8 +4226,13 @@ ${fraud.manager === managerName ? `
     }
 
     function createProjectContainer(project, projectUrl) {
-        const container = createContainer({ marginBottom: '20px' });
-        const image = document.createElement('img');
+        const container = createContainer({
+            flex: 1,
+            padding: '4px 5px 0 5px',
+            boxSizing: 'border-box',
+            borderTop: '2px dashed #ccc',
+            textAlign: 'center'
+        });
 
         if (!projectUrl) {
             console.error(`projectUrl is undefined for project: ${project}`);
@@ -4116,27 +4247,147 @@ ${fraud.manager === managerName ? `
             return container;
         }
 
+        const imageWrapper = document.createElement('div');
+        applyStyles(imageWrapper, {
+            height: '50px',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+        });
+
+        const image = document.createElement('img');
         const domain = domainMatch[0];
         image.src = `${domain}/img/${project}.png`;
 
         applyStyles(image, {
-            display: 'block',
-            margin: '0 auto 10px',
-            width: project === 'betking' ? '47px' : '75px',
-            height: project === 'betking' ? '47px' : 'auto'
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain'
         });
-        container.appendChild(image);
+
+        imageWrapper.appendChild(image);
+        container.appendChild(imageWrapper);
+
         return container;
     }
 
+    function getSearchIcon(fieldType) {
+        if (fieldType === 'inn') {
+            return '<i class="fa fa-id-badge" aria-hidden="true"></i>';
+        }
+        if (fieldType === 'email') {
+            return '<i class="fa fa-envelope-o" aria-hidden="true"></i>';
+        }
+        if (fieldType === 'phone') {
+            return '<i class="fa fa-phone" aria-hidden="true"></i>';
+        }
+        return '';
+    }
+
+    let CURRENT_PLAYER_CARDS = {};
+
+    function getCard(statusValue) {
+        if (statusValue === 'Верифицирована') {
+            return 'own';
+        }
+        if (statusValue === 'Чужая' || statusValue === 'other_person_card' || statusValue === 'other_person_approved_card') {
+            return 'foreign';
+        }
+        return 'unknown';
+    }
+
+    function getCardNumber(td) {
+        const span = td.querySelector('span[title="Копіювати"]');
+        if (span) {
+            return span.textContent.trim();
+        }
+        const strong = td.querySelector('strong');
+        if (strong) {
+            return strong.textContent.trim();
+        }
+        return null;
+    }
+
+    function initializeCurrentPlayerCards() {
+        const grid = document.getElementById('payments-cards-masks-grid');
+        if (!grid) {
+            console.warn('Card grid #payments-cards-masks-grid not found in DOM for parsing.');
+            return;
+        }
+
+        CURRENT_PLAYER_CARDS = {};
+        const rows = grid.querySelectorAll('tbody tr');
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 5) return;
+
+            const card = getCardNumber(cells[1]);
+            const statusInput = cells[4].querySelector('input.payment-cards-masks-change-status');
+
+            if (card && statusInput) {
+                const statusValue = statusInput.value;
+                CURRENT_PLAYER_CARDS[card] = getCard(statusValue);
+            }
+        });
+
+        console.log('Карты текущего игрока:', CURRENT_PLAYER_CARDS);
+    }
+
+    function appendProjectResult({ container, fieldType, html }) {
+        const div = document.createElement('div');
+
+        applyStyles(div, {
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textAlign: 'left',
+            marginTop: '4px',
+            fontSize: '14px'
+        });
+
+        div.innerHTML = html;
+
+        if (fieldType === 'inn') {
+            div.id = `inn-result-${container.id}`;
+        }
+
+        if (fieldType === 'inn') {
+            const img = container.querySelector('img');
+            if (img) {
+                img.parentElement.after(div);
+            } else {
+                container.prepend(div);
+            }
+        } else {
+            container.appendChild(div);
+        }
+    }
+
+    function appendCardResult({ container, html }) {
+        const div = document.createElement('div');
+        applyStyles(div, {
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textAlign: 'left',
+            marginTop: '4px',
+            fontSize: '14px'
+        });
+        div.innerHTML = html;
+        container.appendChild(div);
+    }
+
     function handleProjectSearchClick(container, searchImage) {
-        searchImage.remove();
+        container.innerHTML = '';
+
         const projectUrls = {
             'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
             '777': 'https://admin.777.ua/players/playersItems/search/',
             'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
         };
-
+        initializeCurrentPlayerCards();
         const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
         const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
 
@@ -4152,56 +4403,49 @@ ${fraud.manager === managerName ? `
             onload: response => {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
+
                 const inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
                 const email = getFirstValueByLabel('E-mail');
                 const phone = getFirstValueByLabel('Телефон');
 
-                const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
-                const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
-                const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
-                const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
-                const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
-                //const native_document_id = idCard || passportFull || otherDocument || null;
-                const native_document_id = 1;
+
+                const projectsRow = document.createElement('div');
+                applyStyles(projectsRow, {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: 'space-around',
+                    width: '100%',
+                    marginTop: '10px'
+                });
 
                 otherProjects.forEach(project => {
                     const projectUrl = projectUrls[project];
                     const projectContainer = createProjectContainer(project, projectUrl);
-                    container.appendChild(projectContainer);
+                    projectContainer.id = `project-container-${project}`;
 
-                    searchUser(inn, 'inn', projectUrl, projectContainer, native_document_id);
-                    searchUser(email, 'email', projectUrl, projectContainer, native_document_id);
-                    searchUser(phone, 'phone', projectUrl, projectContainer, native_document_id);
+                    projectsRow.appendChild(projectContainer);
+
+                    searchUser(inn, 'inn', projectUrl, projectContainer);
+                    searchUser(email, 'email', projectUrl, projectContainer);
+                    searchUser(phone, 'phone', projectUrl, projectContainer);
                     processProjectCards(project, projectUrl, projectContainer);
                 });
 
-                processCurrentProjectCards(currentProject, projectUrls[currentProject], container);
+                container.appendChild(projectsRow);
             },
             onerror: () => container.innerHTML += '<div>Ошибка при получении данных ИНН.</div>'
         });
     }
 
     function searchUser(query, fieldType, projectUrl, container, native_document_id) {
-        const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
-
-        const addMessage = (html) => {
-            const div = document.createElement('div');
-            div.innerHTML = html;
-
-            if (fieldType === 'inn') {
-                const img = container.querySelector('img');
-                if (img) {
-                    img.after(div);
-                } else {
-                    container.prepend(div);
-                }
-            } else {
-                container.appendChild(div);
-            }
-        };
+        const searchTypeLabel = getSearchIcon(fieldType);
 
         if (!query || query === 'Не задан' || query === 'Не заданий') {
-            addMessage(`<b>${searchTypeLabel}:</b> не знайдено`);
+            appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> не знайдено`
+            });
             return;
         }
 
@@ -4214,31 +4458,19 @@ ${fraud.manager === managerName ? `
                 if (response.finalUrl.includes('/update/')) {
                     getUserInfo(response.finalUrl, fieldType, container, native_document_id);
                 } else {
-                    handleMultipleUsersFound(response.responseText, projectUrl, container, searchTypeLabel);
+                    handleMultipleUsersFound(response.responseText, projectUrl, container, fieldType);
                 }
             },
-            onerror: () => addMessage(`<b>${searchTypeLabel}:</b> Помилка при пошуку`)
+            onerror: () => appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> Помилка при пошуку`
+            })
         });
     }
 
-    function getUserInfo(url, fieldType, container, native_document_id) {
-        console.log(`[getUserInfo] Запуск. Родной док: ${native_document_id}`);
-
-        const addResult = (html) => {
-            const div = document.createElement('div');
-            div.innerHTML = html;
-
-            if (fieldType === 'inn') {
-                const img = container.querySelector('img');
-                if (img) {
-                    img.after(div);
-                } else {
-                    container.prepend(div);
-                }
-            } else {
-                container.appendChild(div);
-            }
-        };
+    function getUserInfo(url, fieldType, container,) {
+        const searchTypeLabel = getSearchIcon(fieldType);
 
         GM_xmlhttpRequest({
             method: 'GET',
@@ -4248,10 +4480,13 @@ ${fraud.manager === managerName ? `
                 tempDiv.innerHTML = response.responseText;
                 const playerId = getValueByLabel(tempDiv, 'Номер игрока');
                 let status = determineUserStatus(tempDiv);
-                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
 
                 if (fieldType !== 'inn') {
-                    addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
+                    appendProjectResult({
+                        container,
+                        fieldType,
+                        html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                    });
                     return;
                 }
 
@@ -4283,47 +4518,84 @@ ${fraud.manager === managerName ? `
                             const otherDocument = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
                             const found_document_id = idCard || passportFull || otherDocument || null;
 
-                            let documentHtml = '';
-                            if (found_document_id && found_document_id !== native_document_id) {
-                                documentHtml = ` <span style="color: #E6A23C; font-weight: bold; margin-left: 5px;"><big>⚠️</big> ${found_document_id}</span>`;
-                            } else if (found_document_id) {
+                            const currentDocTarget = document.getElementById('current-document-target');
+                            if (currentDocTarget && found_document_id) {
+                                const currentDocValue = currentDocTarget.dataset.document;
+                                if (currentDocValue && currentDocValue !== found_document_id) {
+                                    currentDocTarget.style.color = 'red';
+                                }
                             }
 
-                            addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>${documentHtml}`);
+                            let documentHtml = '';
+                            if (found_document_id) {
+                                documentHtml = `<br> <i class="fa fa-id-card-o" aria-hidden="true"></i>  ${found_document_id}`;
+                            }
+                            const relatedGrid = tempDiv.querySelector('#payments-cards-masks-grid');
+
+                            if (!relatedGrid) {
+                                console.warn(`Не найден #payments-cards-masks-grid на ${url}`);
+                                return;
+                            }
+
+                            const relatedRows = relatedGrid.querySelectorAll('tbody tr');
+                            relatedRows.forEach(row => {
+                                const cells = row.querySelectorAll('td');
+                                if (cells.length < 5) return;
+
+                                const card = getCardNumber(cells[1]);
+                                const statusInput = cells[4].querySelector('input.payment-cards-masks-change-status');
+
+                                if (card && statusInput) {
+                                    const relatedStatusValue = statusInput.value;
+                                    const relatedStatus = getCard(relatedStatusValue);
+
+                                    const currentStatus = CURRENT_PLAYER_CARDS[card];
+                                    console.log(currentStatus);
+                                    if (currentStatus && currentStatus !== relatedStatus) {
+                                        let color = 'grey';
+                                        if (relatedStatus === 'own') color = 'green';
+                                        if (relatedStatus === 'foreign') color = 'red';
+
+                                        appendCardResult({
+                                            container: container,
+                                            html: `<i class="fa fa-credit-card" style="color:${color};"></i> ${card}`
+                                        });
+                                    }
+                                }
+                            });
+                            appendProjectResult({
+                                container,
+                                fieldType,
+                                html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>${documentHtml}`
+                            });
                         },
-                        onerror: () => {
-                            addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
-                        }
+                        onerror: () => appendProjectResult({
+                            container,
+                            fieldType,
+                            html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                        })
                     });
                 } else {
-                    addResult(`<b>${searchTypeLabel}:</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`);
+                    appendProjectResult({
+                        container,
+                        fieldType,
+                        html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                    });
                 }
             },
-            onerror: () => {
-                const searchTypeLabel = fieldType === 'inn' ? 'ІПН' : (fieldType === 'email' ? 'E-mail' : 'Телефон');
-                addResult(`<b>${searchTypeLabel}:</b> Помилка при отриманні даних користувача.`);
-            }
+            onerror: () => appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> Помилка при отриманні даних користувача.`
+            })
         });
     }
 
-    function handleMultipleUsersFound(responseText, projectUrl, container, searchTypeLabel) {
+    function handleMultipleUsersFound(responseText, projectUrl, container, fieldType) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = responseText;
         const playerCards = tempDiv.querySelectorAll('.player_card');
-        const isInn = searchTypeLabel === 'ІПН';
-
-        const addFinalDiv = (div) => {
-            if (isInn) {
-                const img = container.querySelector('img');
-                if (img) {
-                    img.after(div);
-                } else {
-                    container.prepend(div);
-                }
-            } else {
-                container.appendChild(div);
-            }
-        };
+        const searchTypeLabel = getSearchIcon(fieldType);
 
         if (playerCards.length > 0) {
             const resultsContainer = document.createElement('div');
@@ -4351,11 +4623,9 @@ ${fraud.manager === managerName ? `
                 resultsContainer.appendChild(document.createTextNode(' '));
             });
 
-            addFinalDiv(resultsContainer);
+            appendProjectResult({ container, fieldType, html: resultsContainer.innerHTML });
         } else {
-            const notFoundDiv = document.createElement('div');
-            notFoundDiv.innerHTML = `<b>${searchTypeLabel}:</b> не знайдено`;
-            addFinalDiv(notFoundDiv);
+            appendProjectResult({ container, fieldType, html: `<b>${searchTypeLabel}</b> не знайдено` });
         }
     }
 
@@ -4375,47 +4645,9 @@ ${fraud.manager === managerName ? `
     function processProjectCards(project, projectUrl, container) {
         fetchAllCards().then(data => {
             const cards = data.cards;
-            console.log(cards)
             const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
             const openUrl = projectUrl.replace('/players/playersItems/search/', '');
             cards.forEach(card => processCard(card, searchUrl, openUrl, container));
-        });
-    }
-
-    function processCurrentProjectCards(project, projectUrl, parentContainer) {
-        fetchAllCards().then(data => {
-            const cards = data.cards;
-            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
-            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
-            let projectContainer;
-            let foundPlayers = false;
-
-            cards.forEach(card => {
-                GM_xmlhttpRequest({
-                    method: 'POST',
-                    url: searchUrl,
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
-                    onload: response => {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = response.responseText;
-                        const table = tempDiv.querySelector('table.items tbody');
-                        if (!table) return;
-
-                        table.querySelectorAll('tr').forEach(row => {
-                            const playerCard = row.querySelector('td span.player_card');
-                            if (playerCard && !playerCard.outerHTML.includes(userId)) {
-                                if (!projectContainer) {
-                                    projectContainer = createProjectContainer(project, projectUrl);
-                                }
-                                projectContainer.innerHTML += `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`;
-                                foundPlayers = true;
-                            }
-                        });
-                    },
-                    onloadend: () => foundPlayers && projectContainer && !projectContainer.parentElement && parentContainer.appendChild(projectContainer)
-                });
-            });
         });
     }
 
@@ -4434,10 +4666,47 @@ ${fraud.manager === managerName ? `
                 table.querySelectorAll('tr').forEach(row => {
                     const playerCard = row.querySelector('td span.player_card');
                     if (playerCard) {
-                        container.innerHTML += `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`;
+                        appendCardResult({
+                            container: container,
+                            html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                        });
                     }
                 });
             }
+        });
+    }
+
+    function processCurrentProjectCards(project, projectUrl, container) {
+        fetchAllCards().then(data => {
+            const cards = data.cards;
+            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+
+            cards.forEach(card => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: searchUrl,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                    onload: response => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+                        const table = tempDiv.querySelector('table.items tbody');
+                        if (!table) return;
+
+                        table.querySelectorAll('tr').forEach(row => {
+                            const playerCard = row.querySelector('td span.player_card');
+                            if (playerCard && !playerCard.outerHTML.includes(userId)) {
+                                // ‼️ БЫЛО: container.innerHTML += ...
+                                appendCardResult({
+                                    container: container,
+                                    html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                                });
+                            }
+                        });
+                    }
+                });
+            });
         });
     }
 
@@ -4557,12 +4826,12 @@ ${fraud.manager === managerName ? `
     }
 
     async function handleCombinedProfit(container, { Balance, totalPending }) {
-        const loader = createLoader();
-        container.appendChild(loader);
+        const totalTarget = document.getElementById('total-inout-target');
+        const prognosTarget = document.getElementById('prognos-inout-target');
+        const projectSearchWrapper = document.querySelector('.project-search-results');
 
-        const styleElement = document.createElement('style');
-        styleElement.textContent = COMBINED_STYLES;
-        document.head.appendChild(styleElement);
+        if (totalTarget) totalTarget.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+        if (prognosTarget) prognosTarget.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
 
         try {
             const playerID = getPlayerID();
@@ -4599,8 +4868,9 @@ ${fraud.manager === managerName ? `
             const inn = await getPlayerInn();
             if (!inn) {
                 handleTotalInOutClick(container, { Balance, totalPending });
-                container.removeChild(loader);
-                return
+                if (totalTarget) totalTarget.innerHTML = '---';
+                if (prognosTarget) prognosTarget.innerHTML = '---';
+                return;
             }
 
             const currentProject = window.location.origin + '/';
@@ -4622,52 +4892,129 @@ ${fraud.manager === managerName ? `
             const showAmount = GM_getValue(amountDisplayKey, true);
             const currencySymbol = currencySymbols.get(getCurrency()) || '';
             const totalProfit = currentPlayerData.profit + relatedResults.reduce((sum, r) => sum + (r.depositsTotal - r.redeemsTotal), 0);
-            container.removeChild(loader);
-            container.innerHTML = `
-            <div class="profit-section main-profit">
-                <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b>'>
-                    Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span>
-                </b><br>
-                ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
-                    <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b>'>
-                        Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span>
-                    </b><br>
-                    <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
-                        Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
-                    </b>
-                ` : ''}
-            </div>
-            <div class="profit-section related-projects">
-                <b>Related Projects:</b><br>
-                ${relatedResults.map((proj, index) => {
-                const projectName = proj.domain.split('.')[1].toUpperCase();
-                const playerId = validPlayers[index].playerId;
+
+            if (totalTarget) {
+                const formattedValue = formatCurrency(profit, showAmount, currencySymbol);
+                const dataText = `<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formattedValue}</span></b>`;
+
+                totalTarget.innerHTML = formattedValue;
+                totalTarget.style.color = getBalanceColor(profit);
+                totalTarget.classList.add('clickable');
+                totalTarget.dataset.text = dataText;
+
+                totalTarget.addEventListener('click', () => {
+                    if (totalTarget.dataset.clicked === 'true') return;
+                    insertTextToComment(totalTarget.dataset.text);
+                    totalTarget.dataset.clicked = 'true';
+                    totalTarget.style.opacity = '0.85';
+                }, { once: false });
+            }
+
+            if (prognosTarget) {
+                const formattedValue = formatCurrency(prognoseInOut, showAmount, currencySymbol);
+                const dataText = `<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formattedValue}</span></b>`;
+
+                prognosTarget.innerHTML = formattedValue;
+                prognosTarget.style.color = getBalanceColor(prognoseInOut);
+                prognosTarget.classList.add('clickable');
+                prognosTarget.dataset.text = dataText;
+
+                prognosTarget.addEventListener('click', () => {
+                    if (prognosTarget.dataset.clicked === 'true') return;
+                    insertTextToComment(prognosTarget.dataset.text);
+                    prognosTarget.dataset.clicked = 'true';
+                    prognosTarget.style.opacity = '0.85';
+                }, { once: false });
+
+                if (totalPending > 1 || cleanBalance > 1 || safeBalance > 1) {
+                    const prognosePaDiv = document.createElement('div');
+                    const paDataText = `<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>`;
+
+                    applyStyles(prognosePaDiv, { fontSize: '14px', color: getColor(prognosePA / 100) });
+                    prognosePaDiv.innerHTML = `(${prognosePA.toFixed(2)}%)`;
+                    prognosePaDiv.classList.add('clickable');
+                    prognosePaDiv.dataset.text = paDataText;
+
+                    prognosePaDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (prognosePaDiv.dataset.clicked === 'true') return;
+                        insertTextToComment(prognosePaDiv.dataset.text);
+                        prognosePaDiv.dataset.clicked = 'true';
+                        prognosePaDiv.style.opacity = '0.85';
+                    }, { once: false });
+
+                    prognosTarget.appendChild(prognosePaDiv);
+                }
+            }
+
+            await Promise.all(relatedResults.map(async (proj, index) => {
+                const projectName = proj.domain.split('.')[1];
                 const profit = proj.depositsTotal - proj.redeemsTotal;
-                const link = `${proj.domain}players/playersItems/search?PlayersSearchForm[number]=${playerId || 'unknown'}`;
-                return `<div><a href="${link}" target="_blank" class="project-link">${projectName} - ${playerId}</a>: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span></div>`;
-            }).join('')}
-            </div>
-            <div class="profit-section total-profit">
-                <div><b>Person InOut:</b> <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, showAmount, currencySymbol)}</span></div>
-            </div>
-        `;
+                const targetDivId = `inn-result-project-container-${projectName}`;
 
-            container.querySelectorAll('.clickable').forEach(element => {
-                element.addEventListener('click', () => {
-                    if (element.dataset.clicked === 'true') return;
+                try {
+                    const targetDiv = await waitForElement(targetDivId, 5000);
 
-                    const formattedText = element.getAttribute('data-text');
-                    insertTextToComment(formattedText);
-                    element.dataset.clicked = 'true';
+                    const profitHtml = ` <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span>`;
+                    const closingTagIndex = targetDiv.innerHTML.indexOf('</a>');
+                    if (closingTagIndex !== -1) {
+                        const newHtml = targetDiv.innerHTML.slice(0, closingTagIndex + 4) +
+                              profitHtml +
+                              targetDiv.innerHTML.slice(closingTagIndex + 4);
+                        targetDiv.innerHTML = newHtml;
+                    } else {
+                        targetDiv.innerHTML += profitHtml;
+                    }
+                } catch (error) {
+                    console.warn(`[handleCombinedProfit] ${error.message}. Using fallback.`);
+                    const relatedContainer = document.getElementById(`project-container-${projectName}`);
+                    if (relatedContainer) {
+                        const profitDiv = document.createElement('div');
+                        profitDiv.innerHTML = `<b>InOut:</b> <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span>`;
+                        relatedContainer.appendChild(profitDiv);
+                    }
+                }
+            }));
 
-                    element.style.opacity = '0.85';
-                });
-            });
+            if (projectSearchWrapper) {
+                let personInOutDiv = projectSearchWrapper.querySelector('.person-inout-total');
+                if (!personInOutDiv) {
+                    personInOutDiv = document.createElement('div');
+                    personInOutDiv.className = 'person-inout-total';
+                    applyStyles(personInOutDiv, {
+                        textAlign: 'center',
+                        marginTop: '15px',
+                        paddingTop: '10px',
+                        fontWeight: 'bold',
+                        fontSize: '16px',
+                        width: '100%'
+                    });
+                    projectSearchWrapper.appendChild(personInOutDiv);
+                }
+                personInOutDiv.innerHTML = `Person InOut: <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, showAmount, currencySymbol)}</span>`;
+            }
 
         } catch (error) {
-            container.removeChild(loader);
+            if (totalTarget) totalTarget.innerHTML = 'Error';
+            if (prognosTarget) prognosTarget.innerHTML = 'Error';
             container.innerHTML = `<div style="color: red;">Ошибка: ${error.message}</div>`;
         }
+    }
+
+    function waitForElement(id, timeout = 5000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            const interval = setInterval(() => {
+                const element = document.getElementById(id);
+                if (element) {
+                    clearInterval(interval);
+                    resolve(element);
+                } else if (Date.now() - startTime > timeout) {
+                    clearInterval(interval);
+                    reject(new Error(`Element "#${id}" not found within ${timeout}ms`));
+                }
+            }, 100);
+        });
     }
 
     function getBalanceColor(amount) {
@@ -4876,38 +5223,43 @@ ${fraud.manager === managerName ? `
         return null;
     }
 
-    const MESSAGE_STYLES = {
-        color: 'red',
-        fontWeight: 'bold',
-        marginTop: '10px'
-    };
+    function addMessageToContainer(messageElement) {
+        const container = window.popupBox?.querySelector('.popup-text');
 
-    function createClickableMessage(id, content, onClick) {
-        const message = document.createElement('div');
-        applyStyles(message, MESSAGE_STYLES);
-        message.innerHTML = `<center><span id="${id}">${content}</span></center>`;
-
-        const clickableText = message.querySelector(`#${id}`);
-        if (clickableText) {
-            clickableText.addEventListener('click', onClick);
+        if (!container) {
+            console.warn('addMessageToContainer: .popup-text container not found.');
+            return;
         }
+
+        if (!container.dataset.hasBorder) {
+            applyStyles(container, {
+                paddingTop: '4px',
+                borderTop: '2px dashed #ccc'
+            });
+            container.dataset.hasBorder = 'true';
+        }
+
+        container.appendChild(messageElement);
+    }
+
+    function createClickableMessage(id, content, onClick, customStyles = {}) {
+        const message = document.createElement('div');
+        if (id) message.id = id;
+
+        applyStyles(message, {
+            ...MESSAGE_STYLES,
+            cursor: 'pointer',
+            ...customStyles
+        });
+
+        message.innerHTML = content;
+        message.onclick = onClick;
         return message;
     }
 
     async function updatePopupBox({ balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index }) {
-        console.log('Starting updatePopupBox with params:', { balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index });
-
         if (!window.popupBox) {
             console.error('Попап не существует');
-            return;
-        }
-        console.log('popupBox exists:', window.popupBox);
-
-        const textElement = window.popupBox.querySelector('.popup-text');
-        console.log('textElement:', textElement);
-
-        if (!textElement) {
-            console.warn('Элемент .popup-text не найден в попапе');
             return;
         }
 
@@ -4920,10 +5272,13 @@ ${fraud.manager === managerName ? `
             insertTextIntoField(textToInsert);
         };
 
-        const message = createClickableMessage(`popup-clickable-text-${index}`, content, onClick);
-        console.log('Message created:', message);
-        textElement.appendChild(message);
-        console.log('Message appended to textElement:', textElement.innerHTML);
+        const message = createClickableMessage(
+            `popup-clickable-text-${index}`,
+            content,
+            onClick,
+            { color: 'red' }
+        );
+        addMessageToContainer(message);
     }
 
     function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
@@ -4943,27 +5298,116 @@ ${fraud.manager === managerName ? `
         const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
         const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
-        textElement.appendChild(createClickableMessage(`popup-bonus-violation-${index}`, content, onClick));
+        // --- Вот изменение ---
+        textElement.appendChild(createClickableMessage(
+            `popup-bonus-violation-${index}`,
+            content,
+            onClick,
+            { color: 'orange' } // Передаем кастомный стиль
+        ));
+        // --- Конец изменения ---
     }
 
     function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
-        const popupText = document.querySelector('.popup-main-text');
-        if (!popupText) {
-            console.warn('Елемент з класом .popup-main-text не знайдено');
+        const brpTarget = document.getElementById('brp-value-target');
+
+        if (!brpTarget) {
+            console.warn('Елемент #brp-value-target не знайдено');
             return;
         }
 
         const textColor = bonusDepositPercentage > 50 ? 'maroon' : 'black';
-        const newLine = document.createElement('div');
-        newLine.innerHTML = `
-        <center>
-            <b title="Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}" style="color: ${textColor};">
-                BRP: ${bonusDepositPercentage.toFixed(2)}%
-            </b>
-        </center>`;
-        popupText.appendChild(newLine);
+
+        brpTarget.innerHTML = `${bonusDepositPercentage.toFixed(2)}%`;
+        brpTarget.style.color = textColor;
+        brpTarget.title = `Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}`;
     }
 
+    function showAVG({ formattedAvg, depositCount, formattedTotal }) {
+        const avgTarget = document.getElementById('avg-value-target');
+        if (!avgTarget) {
+            console.warn('Елемент #avg-value-target не знайдено');
+            return;
+        }
+
+        avgTarget.innerHTML = formattedAvg;
+        if (depositCount > 0) {
+            avgTarget.title = `Всього ${depositCount} депозитів на суму ${formattedTotal} за 30 днів`;
+        }
+    }
+
+    function showVerificationProvider(provider) {
+        const kycTarget = document.getElementById('verification-provider-target');
+        if (!kycTarget) {
+            console.warn('Елемент #verification-provider-target не знайдено');
+            return;
+        }
+
+        if (!provider) {
+            kycTarget.innerHTML = '---';
+            kycTarget.style.color = '#888';
+            return;
+        }
+
+        const firstWord = provider.split(' ')[0];
+
+        let color;
+        if (firstWord === 'Kycaid' || firstWord === 'SumSub') {
+            color = 'red';
+        } else {
+            color = 'green';
+        }
+
+        kycTarget.innerHTML = firstWord;
+        kycTarget.style.color = color;
+        kycTarget.style.fontWeight = 'bold';
+    }
+
+    async function fetchAndShowCurrentDocument() {
+        const docTarget = document.getElementById('current-document-target');
+        if (!docTarget) {
+            console.warn('fetchAndShowCurrentDocument: target not found');
+            return;
+        }
+
+        const url = getAjaxUrl();
+        if (!url) {
+            docTarget.innerHTML = 'Error: No Ajax URL';
+            return;
+        }
+
+        try {
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    onload: resolve,
+                    onerror: reject
+                });
+            });
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = response.responseText;
+
+            const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+            const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+            const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+            const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+            const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+            const currentDocument = idCard || passportFull || otherDocument || null;
+
+            if (currentDocument) {
+                docTarget.innerHTML = `<i class="fa fa-id-card-o"></i> ${currentDocument}`;
+                docTarget.dataset.document = currentDocument;
+                docTarget.style.color = '#333'; // Сброс цвета
+            } else {
+                docTarget.innerHTML = 'Док. не найден';
+            }
+        } catch (error) {
+            console.error('Error fetching current document:', error);
+            docTarget.innerHTML = 'Ошибка док.';
+        }
+    }
 
     async function fetchTransactionData(url) {
         const response = await new Promise((resolve, reject) => {
@@ -4991,7 +5435,7 @@ ${fraud.manager === managerName ? `
         return new DOMParser().parseFromString(response.responseText, 'text/html');
     }
 
-    function processTransactionRow(row, state) {
+    function processTransactionRow(row, state, cutoffDate) {
         const cells = row.querySelectorAll('td');
         if (cells.length === 0) return;
 
@@ -5011,6 +5455,24 @@ ${fraud.manager === managerName ? `
             state.waitingForBonus = false;
             state.totalWithdrawAmount = 0;
             state.totalDeposits++;
+
+            if (actionType.includes('Ввод средств') && dateStr && cutoffDate) {
+                try {
+                    const parts = dateStr.split('/');
+                    const transactionDate = new Date(parts[2], parts[1] - 1, parts[0]);
+
+                    if (transactionDate >= cutoffDate) {
+                        const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
+                        if (amount > 0) {
+                            state.totalDepositAmountLast30Days += amount;
+                            state.depositCountLast30Days++;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing date for AVG:', dateStr, e);
+                }
+            }
+
         } else if (actionType.includes('Ручное начисление баланса')) {
             const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
             if (amount > 1 && state.manualBalanceCount < 3) {
@@ -5078,13 +5540,10 @@ ${fraud.manager === managerName ? `
             return;
         }
 
-        const textElement = window.popupBox.querySelector('.popup-text');
-        if (!textElement) return;
-
         const message = document.createElement('div');
         applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
         message.innerHTML = `<center><span id="popup-manual-balance-${index}">${bonusInfo} | ${dateStr}</span></center>`;
-        textElement.appendChild(message);
+        addMessageToContainer(message);
     }
 
     async function fetchAndProcessData() {
@@ -5097,6 +5556,14 @@ ${fraud.manager === managerName ? `
             const formData = new FormData();
             formData.append('pageSize', '10000');
             const doc = await fetchDetailedTransactionData(url, formData);
+
+            const currencySymbol = currencySymbols.get(getCurrency()) || '';
+            const showAmount = GM_getValue(amountDisplayKey, true);
+
+            const today = new Date();
+            const cutoffDate = new Date();
+            cutoffDate.setDate(today.getDate() - 30);
+            cutoffDate.setHours(0, 0, 0, 0);
 
             const state = {
                 withdrawAmount: 0,
@@ -5114,10 +5581,12 @@ ${fraud.manager === managerName ? `
                 totalWithdrawAmount: 0,
                 messageCount: 0,
                 bonusAssignments: {},
-                displayedMessages: {}
+                displayedMessages: {},
+                totalDepositAmountLast30Days: 0,
+                depositCountLast30Days: 0
             };
 
-            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state));
+            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state, cutoffDate));
 
             processBonusViolations(state);
 
@@ -5128,6 +5597,21 @@ ${fraud.manager === managerName ? `
             } else {
                 console.log('Депозити відсутні.');
             }
+
+            let formattedAvg = formatCurrency(0, showAmount, currencySymbol);
+            let formattedTotal = formatCurrency(0, showAmount, currencySymbol);
+            if (state.depositCountLast30Days > 0) {
+                const avgAmount = state.totalDepositAmountLast30Days / state.depositCountLast30Days;
+                formattedAvg = formatCurrency(avgAmount, showAmount, currencySymbol);
+                formattedTotal = formatCurrency(state.totalDepositAmountLast30Days, showAmount, currencySymbol);
+            }
+
+            showAVG({
+                formattedAvg: formattedAvg,
+                depositCount: state.depositCountLast30Days,
+                formattedTotal: formattedTotal
+            });
+
         } catch (error) {
             console.error('Ошибка загрузки данных:', error);
         }
@@ -5977,6 +6461,7 @@ ${fraud.manager === managerName ? `
                 MonthPA: inOutData?.monthInOut ?? '−',
                 TotalPA: inOutData?.totalInOut ?? '−',
                 Balance: getBalance(),
+                SafeBalance: getInnerBalanceValue(),
                 NDFL: balanceData?.balance_after ?? '0'
             };
 
@@ -5987,6 +6472,18 @@ ${fraud.manager === managerName ? `
 
             await createPopupBox(params);
             await fetchAndProcessData();
+
+            verificationProvider()
+                .then(provider => {
+                showVerificationProvider(provider);
+            })
+                .catch(error => {
+                console.error('Ошибка при получении KYC провайдера:', error);
+                showVerificationProvider(null);
+            });
+
+            fetchAndShowCurrentDocument();
+
 
             if (typeof addCheckButton === 'function') {
                 addCheckButton(params.TotalPA, params.Balance, params.totalPending);

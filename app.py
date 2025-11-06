@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify
+from dateutil.relativedelta import relativedelta
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from dateutil import parser
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 import random
 import string
@@ -26,6 +27,27 @@ logger = logging.getLogger(__name__)
 
 db = SQLAlchemy(app)
 
+ALLOWED_ORIGINS = [
+    "https://admin.777.ua", 
+    "https://admin.betking.ua", 
+    "https://app.powerbi.com", 
+    "https://admin.funrize.com", 
+    "https://admin.nolimitcoins.com", 
+    "https://admin.taofortune.com", 
+    "https://admin.funzcity.com", 
+    "https://admin.fortunewheelz.com", 
+    "https://admin.vegas.ua", 
+    "https://admin.wildwinz.com", 
+    "https://admin.betking.com.ua", 
+    "https://admin.jackpotrabbit.com", 
+    "https://admin.sweepshark.com", 
+    "https://admin.scarletsands.com", 
+    "https://admin.stormrush.com", 
+    "https://admin.mrgoodwin.com", 
+    "https://admin.playtana.com", 
+    "https://admin.vegasway.com"
+]
+
 with app.app_context():
     db.create_all()
     with db.engine.connect() as conn:
@@ -34,7 +56,7 @@ with app.app_context():
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
-        "origins": ["https://admin.777.ua", "https://admin.betking.ua", "https://app.powerbi.com", "https://admin.funrize.com", "https://admin.nolimitcoins.com" , "https://admin.taofortune.com", "https://admin.funzcity.com", "https://admin.fortunewheelz.com", "https://admin.vegas.ua", "https://admin.wildwinz.com", "https://admin.betking.com.ua", "https://admin.jackpotrabbit.com", "https://admin.sweepshark.com", "https://admin.scarletsands.com"], 
+        "origins": ALLOWED_ORIGINS, 
         "methods": ["GET", "POST", "DELETE", "OPTIONS", "PUT"],
         "allow_headers": ["Authorization", "Content-Type"], 
         "supports_credentials": True
@@ -319,18 +341,20 @@ def add_working_entry():
         system_entry.date = formatted_date  
         system_entry.manager_name = manager_name
         system_entry.comment = comment
+        system_entry.created_at = datetime.now(timezone.utc)
         db.session.commit()
         return jsonify({"success": True, "message": "System entry updated."}), 200
     else:
         existing_entry = Working.query.filter_by(date=formatted_date, playerID=playerID, manager_name=manager_name).first()
         if existing_entry:
             existing_entry.comment = comment
+            existing_entry.created_at = datetime.now(timezone.utc)
             if autopayment == 1:
                 existing_entry.autopayment = autopayment
             db.session.commit()
             return jsonify({"success": True, "message": "Comment updated."}), 200
         else:
-            new_entry = Working(date=formatted_date, url=url, project=project, playerID=playerID, manager_name=manager_name, comment=comment, autopayment=autopayment)
+            new_entry = Working(date=formatted_date, url=url, project=project, playerID=playerID, manager_name=manager_name, comment=comment, autopayment=autopayment, created_at=datetime.now(timezone.utc))
             db.session.add(new_entry)
             db.session.commit()
             return jsonify({"success": True, "message": "New entry created."}), 200
@@ -722,7 +746,7 @@ def get_all_statistics():
 
             seen_entries = Seen.query.filter_by(manager_name=user.manager_name)
             if date_filter:
-                seen_entries = seen_entries.filter(db.func.date(Seen.date) == date_filter)  # Фильтр по дате без времени
+                seen_entries = seen_entries.filter(db.func.date(Seen.date) == date_filter)
             seen_entries = seen_entries.all()
             seen_today = len(seen_entries)
 
@@ -964,7 +988,7 @@ def check_user_in_checklsit():
         return jsonify({'error': 'Користувача не знайдено або токен неправильний'}), 404
 
     checklist_entries = Working.query.filter(
-        Working.playerID == player_id,
+        Working.url == url,
         Working.comment.ilike('%Переглянутий%')
     ).order_by(Working.date).all()
     if checklist_entries:
@@ -1159,21 +1183,20 @@ def get_team_performance():
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid year or month parameters"}), 400
 
+    query_start_date = datetime(year, month, 1) - timedelta(days=1)
+	
     start_of_month = datetime(year, month, 1)
-    if month == 12:
-        end_of_month = datetime(year + 1, 1, 1) - timedelta(days=1)
-    else:
-        end_of_month = datetime(year, month + 1, 1) - timedelta(days=1)
+    
+    query_end_date = start_of_month + relativedelta(months=2)
 
     managers = User.query.filter(User.status.in_(['Manager'])).all()
-    manager_names = [m.manager_name for m in managers]
     goals = {m.manager_name: m.performance_goal for m in managers}
 
     all_workings = Working.query.filter(
-        Working.created_at.between(start_of_month, end_of_month + timedelta(days=1))
+        Working.created_at.between(query_start_date, query_end_date)
     ).all()
 
-    results = {name: {} for name in manager_names}
+    results = {m.manager_name: {} for m in managers}
 
     kyiv_tz = pytz.timezone('Europe/Kyiv')
 
@@ -1183,19 +1206,17 @@ def get_team_performance():
 
         created_local = w.created_at.replace(tzinfo=pytz.utc).astimezone(kyiv_tz)
         hour = created_local.hour
-        
         shift_date = created_local.date()
-        shift_type = ""
+        shift_type = "day" if 9 <= hour < 21 else "night"
 
-        if 9 <= hour < 21:
-            shift_type = "day"
-        else:
-            shift_type = "night"
-            if hour < 9:
-                shift_date -= timedelta(days=1)
+        if shift_type == "night" and hour < 9:
+            shift_date -= timedelta(days=1)
         
-        date_str = shift_date.strftime('%Y-%m-%d')
+        if shift_date.year != year or shift_date.month != month:
+            continue
 
+        date_str = shift_date.strftime('%Y-%m-%d')
+        
         if date_str not in results[w.manager_name]:
             results[w.manager_name][date_str] = {"day": 0, "night": 0, "total": 0}
 
@@ -1203,9 +1224,9 @@ def get_team_performance():
         results[w.manager_name][date_str]["total"] += 1
         
     return jsonify({
-            "performance": results,
-            "goals": goals
-        })
+        "performance": results,
+        "goals": goals
+    })
 
 
 def decode_token(token):

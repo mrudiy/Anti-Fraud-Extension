@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      6.5.9
+// @version      7.0
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -17,6 +17,9 @@
 // @match        https://admin.sweepshark.com/*
 // @match        https://admin.scarletsands.com/*
 // @match        https://admin.stormrush.com/*
+// @match        https://admin.mrgoodwin.com/*
+// @match        https://admin.playtana.com/*
+// @match        https://admin.vegasway.com/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -40,6 +43,9 @@
 // @connect      admin.scarletsands.com
 // @connect      admin.sweepshark.com
 // @connect      admin.stormrush.com
+// @connect      admin.mrgoodwin.com
+// @connect      admin.playtana.com
+// @connect      admin.vegasway.com
 // @connect      api.easypay.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
@@ -84,7 +90,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "6.5.9";
+    const currentVersion = "7.0";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -3680,14 +3686,11 @@ ${fraud.manager === managerName ? `
         top: '20px',
         width: '350px',
         zIndex: '10000',
-        resize: 'horizontal',
-        overflow: 'visible' // ‼️ ГЛАВНОЕ: не обрезаем 'dragHandle'
+        overflow: 'visible'
     };
 
-    // 2. Стили для ВНУТРЕННЕГО видимого контента
-    // (Здесь все оформление, скролл и т.д.)
     const CONTENT_WRAPPER_STYLES = {
-        position: 'relative', // Важно
+        position: 'relative',
         width: '100%',
         maxHeight: '90vh',
         padding: '5px',
@@ -3699,8 +3702,9 @@ ${fraud.manager === managerName ? `
         flexDirection: 'column',
         alignItems: 'stretch',
         borderRadius: '30px',
-        overflow: 'auto', // ‼️ Скролл переехал сюда
-        boxSizing: 'border-box' // Добавлено для правильного padding
+        overflow: 'auto',
+        boxSizing: 'border-box',
+        resize: 'both'
     };
 
     const BUTTON_STYLES = {
@@ -3907,7 +3911,7 @@ ${fraud.manager === managerName ? `
         const dragHandle = document.createElement('div');
         applyStyles(dragHandle, {
             position: 'absolute',
-            top: '-20px', // Теперь зона будет НАД попапом
+            top: '-20px',
             left: '0',
             width: '100%',
             height: '20px',
@@ -4637,7 +4641,7 @@ ${fraud.manager === managerName ? `
     }
 
     function determineUserStatus(tempDiv) {
-        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header');
+        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header, .attention-header-content');
         for (const header of attentionHeaders) {
             const text = header.textContent.trim();
             if (text.includes('Дубликат') || text.includes('Отключен') || text.includes('Ограничение по возрасту!') || text.includes('Не подтвержден')) return 'danger';
@@ -4687,7 +4691,7 @@ ${fraud.manager === managerName ? `
 
                         appendCardResult({
                             container: container,
-                            html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                            html: `<i class="fa fa-exchange" aria-hidden="true"></i> <b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
                         });
                     }
                 });

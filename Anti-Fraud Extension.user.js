@@ -73,9 +73,6 @@
     const reminderBlinkKey = 'reminderDisplayBlinkKey';
     const lastSeenArticleIdKey = 'lastSeenArticleId';
     const amountDisplayKey = 'amountDisplay';
-    const pendingButtonsDisplayKey = 'pendingButtonsDisplay';
-    const reminderDisplayKey = 'reminderDisplay';
-    const autoPaymentsDisplayKey = 'autoPaymentsDisplay';
     const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
     const fullNumberCardDisplayKey = 'fullNumberCardDisplay';
     const progressBarDisplayKey = 'progressBarDisplay';
@@ -858,23 +855,6 @@
                 GM_setValue(amountDisplayKey, e.target.checked);
             })
         );
-
-        settingsPopup.appendChild(
-            createCheckboxWithLabel('Кнопки Pending', GM_getValue(pendingButtonsDisplayKey, true), (e) => {
-                GM_setValue(pendingButtonsDisplayKey, e.target.checked);
-            })
-        );
-
-        settingsPopup.appendChild(
-            createCheckboxWithLabel('Відображати пам`ятку', GM_getValue(reminderDisplayKey, true), (e) => {
-                GM_setValue(reminderDisplayKey, e.target.checked);
-            })
-        );
-        settingsPopup.appendChild(
-            createCheckboxWithLabel('Кнопка автовиплат', GM_getValue(autoPaymentsDisplayKey, true), (e) => {
-                GM_setValue(autoPaymentsDisplayKey, e.target.checked);
-            })
-        );
         settingsPopup.appendChild(
             createCheckboxWithLabel('Швидкий покрас карток', GM_getValue(fastPaintCardsDisplayKey, true), (e) => {
                 GM_setValue(fastPaintCardsDisplayKey, e.target.checked);
@@ -1437,7 +1417,6 @@
         });
     }
 
-    // Получение всех статей
     async function fetchArticles() {
         const response = await fetch(`${API_BASE_URL}/get_articles`);
         const data = await response.json();
@@ -3700,19 +3679,28 @@ ${fraud.manager === managerName ? `
         position: 'fixed',
         top: '20px',
         width: '350px',
+        zIndex: '10000',
+        resize: 'horizontal',
+        overflow: 'visible' // ‼️ ГЛАВНОЕ: не обрезаем 'dragHandle'
+    };
+
+    // 2. Стили для ВНУТРЕННЕГО видимого контента
+    // (Здесь все оформление, скролл и т.д.)
+    const CONTENT_WRAPPER_STYLES = {
+        position: 'relative', // Важно
+        width: '100%',
         maxHeight: '90vh',
         padding: '5px',
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
-        zIndex: '10000',
         fontFamily: '"Roboto", sans-serif',
         fontSize: '16px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
         borderRadius: '30px',
-        resize: 'horizontal',
-        overflow: 'auto'
+        overflow: 'auto', // ‼️ Скролл переехал сюда
+        boxSizing: 'border-box' // Добавлено для правильного padding
     };
 
     const BUTTON_STYLES = {
@@ -3739,7 +3727,7 @@ ${fraud.manager === managerName ? `
     };
 
     const MESSAGE_STYLES = {
-        fontSize: '13px',
+        fontSize: '14px',
         fontWeight: 'bold',
         marginTop: '5px',
         padding: '4px 8px',
@@ -3777,15 +3765,21 @@ ${fraud.manager === managerName ? `
         window.popupBox = popupBox;
         const popupWidth = parseInt(POPUP_STYLES.width.replace('px', ''), 10);
 
+        popupBox.appendChild(createDragHandle(popupBox));
+
         applyStyles(popupBox, {
             ...POPUP_STYLES,
             left: `calc(100% - ${popupWidth + 20}px)`,
-            border: `2px solid ${getColor(TotalPA)}`,
-            animation: 'glow 1s infinite alternate'
         });
 
         try {
-            popupBox.appendChild(createDragHandle(popupBox));
+            const contentWrapper = document.createElement('div');
+
+            applyStyles(contentWrapper, {
+                ...CONTENT_WRAPPER_STYLES,
+                border: `2px solid ${getColor(TotalPA)}`,
+                animation: 'glow 1s infinite alternate'
+            });
 
             const headerContainer = document.createElement('div');
             applyStyles(headerContainer, {
@@ -3830,12 +3824,12 @@ ${fraud.manager === managerName ? `
             const checkedButton = createCleanButton(isCheckedToday);
             headerContainer.appendChild(checkedButton);
 
-            popupBox.appendChild(headerContainer);
+            contentWrapper.appendChild(headerContainer);
 
-            popupBox.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA, cards: displayCards }));
+            contentWrapper.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }));
 
             const buttonRows = createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday });
-            popupBox.appendChild(buttonRows);
+            contentWrapper.appendChild(buttonRows);
 
             const messagesContainer = document.createElement('div');
             messagesContainer.className = 'popup-text';
@@ -3843,23 +3837,41 @@ ${fraud.manager === managerName ? `
                 width: '100%',
                 marginTop: '15px',
             });
-            popupBox.appendChild(messagesContainer);
+            contentWrapper.appendChild(messagesContainer);
 
             const projectSearchContainer = document.createElement('div');
             projectSearchContainer.className = 'project-search-results';
             applyStyles(projectSearchContainer, { width: '100%' });
-            popupBox.appendChild(projectSearchContainer);
+            contentWrapper.appendChild(projectSearchContainer);
 
-            const allButton = popupBox.querySelector('#all-button-trigger');
-            if (allButton) {
+            const allButtonContainer = contentWrapper.querySelector('#all-button-container');
+            const allButton = contentWrapper.querySelector('#all-button-trigger');
+
+            if (allButton && allButtonContainer) {
                 const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
                 ? handleTotalInOutClick
                 : handleCombinedProfit;
 
-                allButton.addEventListener('click', () => {
-                    handleProjectSearchClick(projectSearchContainer, allButton);
-                    clickHandler(messagesContainer, { Balance, totalPending });
-                });
+                allButton.addEventListener('click', async () => {
+
+                    const loader = createLoader();
+                    allButtonContainer.innerHTML = '';
+                    allButtonContainer.appendChild(loader);
+
+                    try {
+                        await Promise.all([
+                            handleProjectSearchClick(projectSearchContainer, allButton),
+                            clickHandler(messagesContainer, { Balance, totalPending })
+                        ]);
+
+                        allButtonContainer.innerHTML = '<i class="fa fa-check-circle" style="font-size: 28px; color: green; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
+
+                    } catch (err) {
+                        console.error("Ошибка при выполнении 'All':", err);
+                        allButtonContainer.innerHTML = '<i class="fa fa-times-circle" style="font-size: 28px; color: red; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
+                    }
+
+                }, { once: true });
             }
 
             const footerContainer = document.createElement('div');
@@ -3881,7 +3893,8 @@ ${fraud.manager === managerName ? `
             footerContainer.appendChild(reminderIcon);
             footerContainer.appendChild(createSettingsIcon());
 
-            popupBox.appendChild(footerContainer);
+            contentWrapper.appendChild(footerContainer)
+            popupBox.appendChild(contentWrapper)
             document.body.appendChild(popupBox);
             addGlobalStyles(getColor(TotalPA));
             console.log('Popup creation completed');
@@ -3894,7 +3907,7 @@ ${fraud.manager === managerName ? `
         const dragHandle = document.createElement('div');
         applyStyles(dragHandle, {
             position: 'absolute',
-            top: '0',
+            top: '-20px', // Теперь зона будет НАД попапом
             left: '0',
             width: '100%',
             height: '20px',
@@ -3925,7 +3938,7 @@ ${fraud.manager === managerName ? `
         return dragHandle;
     }
 
-    async function createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA, cards }) {
+    async function createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }) {
         const showAmount = GM_getValue(amountDisplayKey, true);
         const currencySymbol = currencySymbols.get(getCurrency()) || '';
 
@@ -3951,23 +3964,22 @@ ${fraud.manager === managerName ? `
 
         mainText.innerHTML = `
             <div style="font-size: 12px;">
-                <strong>BRP</strong><br>
-                <span id="brp-value-target" style="font-size: 16px;">---</span>
+                <strong>Full Money</strong><br>
+                <span style="font-size: 16px;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
             </div>
             <div style="font-size: 12px;">
                 <strong>PayOut</strong><br>
                 <span style="font-size: 16px; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
             </div>
             <div style="font-size: 12px;">
-                <strong>Balanсe</strong><br>
-                <span style="font-size: 16px;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+                <strong>BRP</strong><br>
+                <span id="brp-value-target" style="font-size: 16px;">---</span>
             </div>
-
             <div style="font-size: 12px;">
                 <strong>Total</strong><br>
                 <span id="total-inout-target" style="font-size: 16px;">---</span>
             </div>
-            <div>
+            <div id="all-button-container">
                 <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
                     All
                 </button>
@@ -3978,12 +3990,13 @@ ${fraud.manager === managerName ? `
             </div>
 
             <div style="font-size: 12px;">
-                <strong>Verification</strong><br>
+                <strong>KYC</strong><br>
                 <span id="verification-provider-target" style="font-size: 16px;">---</span>
             </div>
 
-            <div>
-                <span id="current-document-target" style="font-size: 12px; font-weight: bold; color: #333;">
+            <div style="font-size: 12px;">
+                <strong>Passport</strong><br>
+                <span id="current-document-target" style="font-size: 16px; color: #333;">
                     </span>
             </div>
             <div style="font-size: 12px;">
@@ -4001,6 +4014,15 @@ ${fraud.manager === managerName ? `
 
         applyStyles(icon, { ...NAV_ICON_STYLES });
 
+        icon.title = 'Налаштування';
+        icon.onclick = createSettingsPopup;
+        return icon;
+    }
+
+    function createOldSettingsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-cog"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '10px', right: '10px' });
         icon.title = 'Налаштування';
         icon.onclick = createSettingsPopup;
         return icon;
@@ -4027,6 +4049,15 @@ ${fraud.manager === managerName ? `
 
         applyStyles(icon, { ...NAV_ICON_STYLES });
 
+        icon.title = 'Статистика';
+        icon.onclick = createStatisticPopup;
+        return icon;
+    }
+
+    function createOldStatisticIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-signal"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '35px', right: '10px' });
         icon.title = 'Статистика';
         icon.onclick = createStatisticPopup;
         return icon;
@@ -4095,14 +4126,6 @@ ${fraud.manager === managerName ? `
             gap: '10px',
             justifyContent: 'center'
         });
-
-        if (GM_getValue(pendingButtonsDisplayKey, true)) {
-            secondRow.appendChild(createPendingPlusButton(TotalPA));
-            secondRow.appendChild(createPendingMinusButton(TotalPA));
-        } else {
-            return document.createElement('div');
-        }
-
         const container = document.createElement('div');
         container.appendChild(secondRow);
         return container;
@@ -4136,26 +4159,6 @@ ${fraud.manager === managerName ? `
         button.onmouseout = () => !button.disabled && (button.style.backgroundColor = '#28a745');
 
         button.addEventListener('click', handleCleanButtonClick);
-        return button;
-    }
-
-    function createPendingPlusButton(TotalPA) {
-        const button = document.createElement('button');
-        button.innerText = 'Pending (+)';
-        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#28a745' });
-        button.onmouseover = () => button.style.backgroundColor = '#218838';
-        button.onmouseout = () => button.style.backgroundColor = '#28a745';
-        button.addEventListener('click', () => handlePendingPlusButtonClick(TotalPA));
-        return button;
-    }
-
-    function createPendingMinusButton(TotalPA) {
-        const button = document.createElement('button');
-        button.innerText = 'Pending (-)';
-        applyStyles(button, { ...BUTTON_STYLES, backgroundColor: '#dc3545' });
-        button.onmouseover = () => button.style.backgroundColor = '#c82333';
-        button.onmouseout = () => button.style.backgroundColor = '#dc3545';
-        button.addEventListener('click', () => handlePendingMinusButtonClick(TotalPA));
         return button;
     }
 
@@ -4261,7 +4264,7 @@ ${fraud.manager === managerName ? `
         image.src = `${domain}/img/${project}.png`;
 
         applyStyles(image, {
-            maxWidth: '100%',
+            maxWidth: project === 'vegas' ? '75%' : '100%', // Ограничиваем Vegas
             maxHeight: '100%',
             objectFit: 'contain'
         });
@@ -4274,7 +4277,7 @@ ${fraud.manager === managerName ? `
 
     function getSearchIcon(fieldType) {
         if (fieldType === 'inn') {
-            return '<i class="fa fa-id-badge" aria-hidden="true"></i>';
+            return '<i class="fa fa-user" aria-hidden="true"></i>';
         }
         if (fieldType === 'email') {
             return '<i class="fa fa-envelope-o" aria-hidden="true"></i>';
@@ -4344,7 +4347,7 @@ ${fraud.manager === managerName ? `
             textOverflow: 'ellipsis',
             textAlign: 'left',
             marginTop: '4px',
-            fontSize: '14px'
+            fontSize: '16px'
         });
 
         div.innerHTML = html;
@@ -4481,6 +4484,10 @@ ${fraud.manager === managerName ? `
                 const playerId = getValueByLabel(tempDiv, 'Номер игрока');
                 let status = determineUserStatus(tempDiv);
 
+                if (fieldType === 'inn' && playerId) {
+                    container.dataset.foundPlayerId = playerId;
+                }
+
                 if (fieldType !== 'inn') {
                     appendProjectResult({
                         container,
@@ -4550,7 +4557,7 @@ ${fraud.manager === managerName ? `
                                     const relatedStatus = getCard(relatedStatusValue);
 
                                     const currentStatus = CURRENT_PLAYER_CARDS[card];
-                                    console.log(currentStatus);
+
                                     if (currentStatus && currentStatus !== relatedStatus) {
                                         let color = 'grey';
                                         if (relatedStatus === 'own') color = 'green';
@@ -4663,9 +4670,21 @@ ${fraud.manager === managerName ? `
                 const table = tempDiv.querySelector('table.items tbody');
                 if (!table) return;
 
+                const innPlayerId = container.dataset.foundPlayerId;
+
                 table.querySelectorAll('tr').forEach(row => {
                     const playerCard = row.querySelector('td span.player_card');
                     if (playerCard) {
+
+                        const link = playerCard.querySelector('a');
+                        if (!link) return;
+
+                        const cardOwnerPlayerId = link.textContent.trim();
+
+                        if (innPlayerId && cardOwnerPlayerId === innPlayerId) {
+                            return;
+                        }
+
                         appendCardResult({
                             container: container,
                             html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
@@ -5181,15 +5200,13 @@ ${fraud.manager === managerName ? `
 
     function createLoader() {
         const loader = document.createElement('div');
+        loader.innerHTML = '<i class="fa fa-spinner fa-spin" style="font-size: 24px; color: #2196F3;"></i>';
+
         applyStyles(loader, {
-            border: '8px solid #f3f3f3',
-            borderTop: '8px solid #3498db',
-            borderRadius: '50%',
-            width: '50px',
-            height: '50px',
-            animation: 'spin 2s linear infinite',
-            margin: '10px auto',
-            display: 'block'
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
         });
         return loader;
     }
@@ -5298,14 +5315,12 @@ ${fraud.manager === managerName ? `
         const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
         const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
-        // --- Вот изменение ---
         textElement.appendChild(createClickableMessage(
             `popup-bonus-violation-${index}`,
             content,
             onClick,
-            { color: 'orange' } // Передаем кастомный стиль
+            { color: 'orange' }
         ));
-        // --- Конец изменения ---
     }
 
     function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
@@ -5334,6 +5349,29 @@ ${fraud.manager === managerName ? `
         if (depositCount > 0) {
             avgTarget.title = `Всього ${depositCount} депозитів на суму ${formattedTotal} за 30 днів`;
         }
+    }
+
+    function showVerificationCards(cards) {
+        if (!cards || !Array.isArray(cards) || cards.length === 0) {
+            return;
+        }
+
+        const message = document.createElement('div');
+
+        applyStyles(message, MESSAGE_STYLES);
+
+        const cardsHtml = cards.map(card => `
+            <div style="display: inline-block; margin-top: 5px;">
+                ${card}
+                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')" style="border: none; background: none; cursor: pointer; margin-left: 5px;">
+                    <span class="fa fa-files-o"></span>
+                </button>
+            </div>
+        `).join('<br>');
+
+        message.innerHTML = `<b>Картки для верифікації:</b><br>${cardsHtml}`;
+
+        addMessageToContainer(message);
     }
 
     function showVerificationProvider(provider) {
@@ -5397,7 +5435,7 @@ ${fraud.manager === managerName ? `
             const currentDocument = idCard || passportFull || otherDocument || null;
 
             if (currentDocument) {
-                docTarget.innerHTML = `<i class="fa fa-id-card-o"></i> ${currentDocument}`;
+                docTarget.innerHTML = `${currentDocument}`;
                 docTarget.dataset.document = currentDocument;
                 docTarget.style.color = '#333'; // Сброс цвета
             } else {
@@ -6471,6 +6509,8 @@ ${fraud.manager === managerName ? `
             Object.assign(params, { totalPending, cards, displayCards });
 
             await createPopupBox(params);
+            showVerificationCards(displayCards);
+
             await fetchAndProcessData();
 
             verificationProvider()
@@ -6483,7 +6523,6 @@ ${fraud.manager === managerName ? `
             });
 
             fetchAndShowCurrentDocument();
-
 
             if (typeof addCheckButton === 'function') {
                 addCheckButton(params.TotalPA, params.Balance, params.totalPending);
@@ -9316,21 +9355,20 @@ ${fraud.manager === managerName ? `
         `;
             popupBox.appendChild(mainText);
 
-            popupBox.appendChild(createSettingsIcon());
-            popupBox.appendChild(createStatisticIcon());
+            popupBox.appendChild(createOldSettingsIcon());
+            popupBox.appendChild(createOldStatisticIcon());
             popupBox.appendChild(createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup()));
-            const showReminder = GM_getValue('reminderDisplayKey', true);
-            if (showReminder) {
-                const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
-                    createReminderPopup();
-                    reminderIcon.classList.remove('blinking');
-                    GM_setValue('reminderBlinkKey', false);
-                });
-                if (await checkForNewArticles() || GM_getValue('reminderBlinkKey', true)) {
-                    reminderIcon.classList.add('blinking');
-                }
-                popupBox.appendChild(reminderIcon);
+
+            const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
+                createReminderPopup();
+                reminderIcon.classList.remove('blinking');
+                GM_setValue('reminderBlinkKey', false);
+            });
+            if (await checkForNewArticles() || GM_getValue('reminderBlinkKey', true)) {
+                reminderIcon.classList.add('blinking');
             }
+            popupBox.appendChild(reminderIcon);
+
             await addAdminIcon(popupBox);
 
             const firstRowButtonContainer = document.createElement('div');

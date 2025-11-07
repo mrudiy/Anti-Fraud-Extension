@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0
+// @version      7.0.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -90,7 +90,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "7.0";
+    const currentVersion = "7.0.1";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4000,8 +4000,7 @@ ${fraud.manager === managerName ? `
 
             <div style="font-size: 12px;">
                 <strong>Passport</strong><br>
-                <span id="current-document-target" style="font-size: 16px; color: #333;">
-                    </span>
+                <span id="current-document-target" style="font-size: 16px; color: #333;">---</span>
             </div>
             <div style="font-size: 12px;">
                 <strong>AVG</strong><br>
@@ -4410,6 +4409,25 @@ ${fraud.manager === managerName ? `
             onload: response => {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
+                const docTarget = document.getElementById('current-document-target');
+                if (!docTarget) {
+                    console.warn('fetchAndShowCurrentDocument: target not found');
+                    return;
+                }
+                const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+                const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+                const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+                const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+                const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+                const currentDocument = idCard || passportFull || otherDocument || null;
+
+                if (currentDocument) {
+                    docTarget.innerHTML = `${currentDocument}`;
+                    docTarget.dataset.document = currentDocument;
+                    docTarget.style.color = '#333';
+                } else {
+                    docTarget.innerHTML = 'Док. не найден';
+                }
 
                 const inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
                 const email = getFirstValueByLabel('E-mail');
@@ -5405,52 +5423,6 @@ ${fraud.manager === managerName ? `
         kycTarget.style.fontWeight = 'bold';
     }
 
-    async function fetchAndShowCurrentDocument() {
-        const docTarget = document.getElementById('current-document-target');
-        if (!docTarget) {
-            console.warn('fetchAndShowCurrentDocument: target not found');
-            return;
-        }
-
-        const url = getAjaxUrl();
-        if (!url) {
-            docTarget.innerHTML = 'Error: No Ajax URL';
-            return;
-        }
-
-        try {
-            const response = await new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url,
-                    onload: resolve,
-                    onerror: reject
-                });
-            });
-
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = response.responseText;
-
-            const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
-            const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
-            const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
-            const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
-            const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
-            const currentDocument = idCard || passportFull || otherDocument || null;
-
-            if (currentDocument) {
-                docTarget.innerHTML = `${currentDocument}`;
-                docTarget.dataset.document = currentDocument;
-                docTarget.style.color = '#333'; // Сброс цвета
-            } else {
-                docTarget.innerHTML = 'Док. не найден';
-            }
-        } catch (error) {
-            console.error('Error fetching current document:', error);
-            docTarget.innerHTML = 'Ошибка док.';
-        }
-    }
-
     async function fetchTransactionData(url) {
         const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -6263,82 +6235,6 @@ ${fraud.manager === managerName ? `
         createOrUpdatePopup(message, false);
     }
 
-    function getCardStatus(playerUrl, callback) {
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: playerUrl,
-            onload: function(response) {
-                if (response.status === 200) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(response.responseText, 'text/html');
-                    const cardRows = doc.querySelectorAll('table.items tbody tr');
-
-                    const cardStatuses = {};
-                    cardRows.forEach(row => {
-                        const cells = row.children;
-                        const cardNumberElement = cells[1]?.querySelector('strong');
-                        const cardStatusElement = cells[4]?.querySelector('input');
-
-                        if (cardNumberElement && cardStatusElement) {
-                            const cardNumber = cardNumberElement.textContent.trim();
-                            const cardStatus = cardStatusElement.value.trim();
-                            cardStatuses[cardNumber] = cardStatus;
-                        }
-                    });
-                    callback(cardStatuses);
-                } else {
-                    console.error('Failed to fetch player page:', response.statusText);
-                }
-            }
-        });
-    }
-
-    function updateCardStatus(cardStatuses) {
-        const cardElements = document.querySelectorAll('td span.label');
-
-        cardElements.forEach(span => {
-            const cardNumber = span.textContent.trim();
-            if (span.closest('td')?.cellIndex === 7) {
-                if (cardStatuses[cardNumber]) {
-                    switch (cardStatuses[cardNumber]) {
-                        case 'Чужая':
-                            span.className = 'label label-danger';
-                            break;
-                        case 'Верифицирована':
-                            span.className = 'label label-success';
-                            break;
-                        case 'Не проверена':
-                            span.className = 'label label-default';
-                            break;
-                    }
-                } else {
-                    span.className = 'label label-warning';
-                }
-            }
-        });
-
-        console.log('Updated card statuses on the main page');
-    }
-
-    function depositCardChecker() {
-        const playerLink = document.querySelector('tr.odd td span.player_card a');
-        if (playerLink) {
-            var href = playerLink.getAttribute('href');
-            if (href.startsWith('/')) {
-                href = href.substring(1);
-            }
-            const playerUrl = ProjectUrl + href;
-
-            console.log(playerUrl)
-
-            getCardStatus(playerUrl, function(cardStatuses) {
-                updateCardStatus(cardStatuses);
-            });
-        } else {
-            console.error('Player link not found');
-        }
-    }
-
     function observeDOMChanges(nameFunction) {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
@@ -6525,8 +6421,6 @@ ${fraud.manager === managerName ? `
                 console.error('Ошибка при получении KYC провайдера:', error);
                 showVerificationProvider(null);
             });
-
-            fetchAndShowCurrentDocument();
 
             if (typeof addCheckButton === 'function') {
                 addCheckButton(params.TotalPA, params.Balance, params.totalPending);
@@ -10621,9 +10515,6 @@ ${fraud.manager === managerName ? `
             }
             else if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);
-            } else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D')) {
-                depositCardChecker();
-                observeDOMChanges(depositCardChecker);
             } else if (currentUrl.includes('playersItems/transactionLog/')) {
                 initTransactionsPage();
                 processTableRows();

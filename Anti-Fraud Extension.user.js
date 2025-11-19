@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.1
+// @version      7.0.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -90,7 +90,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "7.0.1";
+    const currentVersion = "7.0.2";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4372,12 +4372,36 @@ ${fraud.manager === managerName ? `
     }
 
     function appendCardResult({ container, html }) {
+
+        if (container.id === 'current-project-cards-container' && !container.dataset.hasHeader) {
+
+            applyStyles(container, {
+                marginTop: '15px',
+                paddingTop: '4px',
+                textAlign: 'center',
+                borderTop: '2px dashed #ccc'
+            });
+
+            const title = document.createElement('div');
+            applyStyles(title, {
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                marginBottom: '5px'
+            });
+            title.innerText = 'Перетини карт на поточному проєкті:';
+            container.appendChild(title);
+
+            container.dataset.hasHeader = 'true';
+        }
+
+
         const div = document.createElement('div');
         applyStyles(div, {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            textAlign: 'left',
+            textAlign: 'center',
             marginTop: '4px',
             fontSize: '14px'
         });
@@ -4457,7 +4481,22 @@ ${fraud.manager === managerName ? `
                 });
 
                 container.appendChild(projectsRow);
+
+                const currentCardsContainer = document.createElement('div');
+                currentCardsContainer.id = 'current-project-cards-container';
+                applyStyles(currentCardsContainer, {
+                    width: '100%'
+                });
+
+                container.appendChild(currentCardsContainer);
+
+                processCurrentProjectCards(
+                    currentProject,
+                    projectUrls[currentProject],
+                    currentCardsContainer
+                );
             },
+
             onerror: () => container.innerHTML += '<div>Ошибка при получении данных ИНН.</div>'
         });
     }
@@ -4738,7 +4777,6 @@ ${fraud.manager === managerName ? `
                         table.querySelectorAll('tr').forEach(row => {
                             const playerCard = row.querySelector('td span.player_card');
                             if (playerCard && !playerCard.outerHTML.includes(userId)) {
-                                // ‼️ БЫЛО: container.innerHTML += ...
                                 appendCardResult({
                                     container: container,
                                     html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`

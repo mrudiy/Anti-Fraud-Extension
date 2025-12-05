@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.2
+// @version      7.0.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -90,7 +90,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "7.0.2";
+    const currentVersion = "7.0.3";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -4409,6 +4409,41 @@ ${fraud.manager === managerName ? `
         container.appendChild(div);
     }
 
+    function cleanExtractedText(html) {
+        if (!html) return null;
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        temp.querySelectorAll('script, .modal, button').forEach(el => el.remove());
+        const input = temp.querySelector('input[type="text"]');
+        return input && input.value ? input.value.trim() : (temp.textContent || temp.innerText).trim();
+    }
+
+    function revealContact(type) {
+        return new Promise(resolve => {
+            const label = type === 'email' ? 'E-mail' : 'Телефон';
+            const row = Array.from(document.querySelectorAll('tr')).find(r => r.querySelector('th')?.textContent.trim() === label);
+            if (!row) return resolve(null);
+
+            const td = row.querySelector('td');
+            const btn = td.querySelector('input[value="Показать"]');
+
+            if (!btn) return resolve(cleanExtractedText(td.innerHTML));
+
+            btn.click();
+            let attempts = 0;
+            const interval = setInterval(() => {
+                if (!td.querySelector('input[value="Показать"]')) {
+                    clearInterval(interval);
+                    const result = cleanExtractedText(td.innerHTML);
+                    if (result && result.length > 2) resolve(result);
+                } else if (++attempts >= 30) {
+                    clearInterval(interval);
+                    resolve(cleanExtractedText(td.innerHTML));
+                }
+            }, 100);
+        });
+    }
+
     function handleProjectSearchClick(container, searchImage) {
         container.innerHTML = '';
 
@@ -4417,6 +4452,7 @@ ${fraud.manager === managerName ? `
             '777': 'https://admin.777.ua/players/playersItems/search/',
             'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
         };
+
         initializeCurrentPlayerCards();
         const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
         const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
@@ -4430,33 +4466,41 @@ ${fraud.manager === managerName ? `
         GM_xmlhttpRequest({
             method: 'GET',
             url,
-            onload: response => {
+            onload: async response => {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
-                const docTarget = document.getElementById('current-document-target');
-                if (!docTarget) {
-                    console.warn('fetchAndShowCurrentDocument: target not found');
-                    return;
-                }
-                const idCard = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
-                const passportSeries = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
-                const passportNumber = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
-                const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
-                const otherDocument = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
-                const currentDocument = idCard || passportFull || otherDocument || null;
 
-                if (currentDocument) {
-                    docTarget.innerHTML = `${currentDocument}`;
-                    docTarget.dataset.document = currentDocument;
-                    docTarget.style.color = '#333';
-                } else {
-                    docTarget.innerHTML = 'Док. не найден';
+                const docTarget = document.getElementById('current-document-target');
+                if (docTarget) {
+                    const creds = '#common_services_players_models_PlayerCredentials_';
+                    const idCard = tempDiv.querySelector(`${creds}id_card`)?.value;
+                    const pSeries = tempDiv.querySelector(`${creds}passport_series`)?.value;
+                    const pNumber = tempDiv.querySelector(`${creds}passport_number`)?.value;
+                    const otherDoc = tempDiv.querySelector(`${creds}other_document`)?.value;
+
+                    const currentDocument = idCard || ((pSeries && pNumber) ? pSeries + pNumber : null) || otherDoc || null;
+
+                    if (currentDocument) {
+                        docTarget.innerHTML = currentDocument;
+                        docTarget.dataset.document = currentDocument;
+                        docTarget.style.color = '#333';
+                    } else {
+                        docTarget.innerHTML = 'Док. не найден';
+                    }
                 }
 
                 const inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
-                const email = getFirstValueByLabel('E-mail');
-                const phone = getFirstValueByLabel('Телефон');
 
+                const loaderId = 'loading-contacts-' + Date.now();
+                container.insertAdjacentHTML('beforeend', `<div id="${loaderId}" style="padding:5px; color:#666;"><i class="fa fa-spinner fa-spin"></i> Открываю контакты...</div>`);
+
+                const [email, phone] = await Promise.all([
+                    revealContact('email'),
+                    revealContact('phone')
+                ]);
+
+                const loader = document.getElementById(loaderId);
+                if (loader) loader.remove();
 
                 const projectsRow = document.createElement('div');
                 applyStyles(projectsRow, {
@@ -4471,12 +4515,12 @@ ${fraud.manager === managerName ? `
                     const projectUrl = projectUrls[project];
                     const projectContainer = createProjectContainer(project, projectUrl);
                     projectContainer.id = `project-container-${project}`;
-
                     projectsRow.appendChild(projectContainer);
 
                     searchUser(inn, 'inn', projectUrl, projectContainer);
-                    searchUser(email, 'email', projectUrl, projectContainer);
-                    searchUser(phone, 'phone', projectUrl, projectContainer);
+                    if (email) searchUser(email, 'email', projectUrl, projectContainer);
+                    if (phone) searchUser(phone, 'phone', projectUrl, projectContainer);
+
                     processProjectCards(project, projectUrl, projectContainer);
                 });
 
@@ -4484,20 +4528,12 @@ ${fraud.manager === managerName ? `
 
                 const currentCardsContainer = document.createElement('div');
                 currentCardsContainer.id = 'current-project-cards-container';
-                applyStyles(currentCardsContainer, {
-                    width: '100%'
-                });
-
+                applyStyles(currentCardsContainer, { width: '100%' });
                 container.appendChild(currentCardsContainer);
 
-                processCurrentProjectCards(
-                    currentProject,
-                    projectUrls[currentProject],
-                    currentCardsContainer
-                );
+                processCurrentProjectCards(currentProject, projectUrls[currentProject], currentCardsContainer);
             },
-
-            onerror: () => container.innerHTML += '<div>Ошибка при получении данных ИНН.</div>'
+            onerror: () => container.innerHTML += '<div>Ошибка при получении данных.</div>'
         });
     }
 
@@ -5032,7 +5068,7 @@ ${fraud.manager === managerName ? `
                 const targetDivId = `inn-result-project-container-${projectName}`;
 
                 try {
-                    const targetDiv = await waitForElement(targetDivId, 5000);
+                    const targetDiv = await waitForElement(targetDivId, 7000);
 
                     const profitHtml = ` <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span>`;
                     const closingTagIndex = targetDiv.innerHTML.indexOf('</a>');

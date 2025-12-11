@@ -7394,7 +7394,7 @@ ${fraud.manager === managerName ? `
     async function processBanVerification(playerID, reason, updateButton, verificationSheets) {
         const project = getProject();
         const sheetName = getSheetNameForProject(project, verificationSheets);
-        const { name, email } = gatherPlayerData();
+        const { name, email } = await gatherPlayerData();
         const currentDate = getCurrentDate();
         const initials = GM_getValue(initialsKey);
         try {
@@ -8376,7 +8376,7 @@ ${fraud.manager === managerName ? `
         const { department, reason } = await showVerificationPopup();
         if (!department || !reason) return;
 
-        const playerData = gatherPlayerData();
+        const playerData = await gatherPlayerData();
         const sheetName = getSheetNameForProject(playerData.project, verificationSheets);
 
         try {
@@ -8466,17 +8466,14 @@ ${fraud.manager === managerName ? `
         }).then(result => result.isConfirmed ? result.value : {});
     }
 
-    function gatherPlayerData() {
+    async function gatherPlayerData() {
         const playerID = getPlayerID();
         const project = getProject();
         const name = Array.from(document.querySelectorAll('tr'))
         .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
         .map(row => row.querySelector('td').textContent.trim())
         .join(' ');
-        const email = Array.from(document.querySelectorAll('tr.even, tr.odd'))
-        .find(row => row.querySelector('th')?.textContent.trim() === 'E-mail')
-        ?.querySelector('td > div')
-        ?.childNodes[0]?.textContent.trim();
+        const email = await revealContact('email');
 
         return { playerID, project, name, email };
     }

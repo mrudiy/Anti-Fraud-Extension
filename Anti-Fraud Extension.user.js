@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.3
+// @version      7.0.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -20,6 +20,8 @@
 // @match        https://admin.mrgoodwin.com/*
 // @match        https://admin.playtana.com/*
 // @match        https://admin.vegasway.com/*
+// @match        https://admin.sweepico.com/*
+// @match        https://admin.firesevens.com/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -46,6 +48,8 @@
 // @connect      admin.mrgoodwin.com
 // @connect      admin.playtana.com
 // @connect      admin.vegasway.com
+// @connect      admin.firesevens.com
+// @connect      admin.sweepico.com
 // @connect      api.easypay.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
@@ -90,7 +94,7 @@
         ['CAD', '$'],
         ['EUR', '€']
     ]);
-    const currentVersion = "7.0.3";
+    const currentVersion = "7.0.4";
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';

@@ -92,7 +92,8 @@
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
-        ['EUR', '€']
+        ['EUR', '€'],
+        ['PLN', 'zł'],
     ]);
     const currentVersion = "7.0.4";
 
@@ -1065,12 +1066,14 @@
     function calculatePendingAmountWildWinz() {
         let totalPendingCAD = 0;
         let totalPendingEUR = 0;
+        let totalPendingPLN = 0;
 
         const rows = document.querySelectorAll('tr');
         rows.forEach(row => {
             const statusSpan = row.querySelector('span.label');
             if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
-                const amountCode = row.querySelector('td:nth-child(5) code');
+                const amountCode = row.querySelector('td:nth-child(6) code');
+                console.log(amountCode)
                 if (amountCode) {
                     const amountText = amountCode.textContent.trim();
                     const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, ''));
@@ -1079,6 +1082,8 @@
                             totalPendingCAD += amount;
                         } else if (amountText.includes('EUR')) {
                             totalPendingEUR += amount;
+                        } else if (amountText.includes('PLN')) {
+                            totalPendingPLN += amount;
                         }
                     }
                 }
@@ -1108,6 +1113,10 @@
         const textEUR = document.createElement('div');
         textEUR.innerHTML = `<center><b>Сума pending EUR: ${totalPendingEUR.toFixed(2)}€</b></center>`;
         popupBoxWithDraw.appendChild(textEUR);
+
+        const textPLN = document.createElement('div');
+        textPLN.innerHTML = `<center><b>Сума pending PLN: ${totalPendingPLN.toFixed(2)}zł</b></center>`;
+        popupBoxWithDraw.appendChild(textPLN);
 
         document.body.appendChild(popupBoxWithDraw);
     }
@@ -3832,6 +3841,16 @@ ${fraud.manager === managerName ? `
             const checkedButton = createCleanButton(isCheckedToday);
             headerContainer.appendChild(checkedButton);
 
+            const headerCardsContainer = document.createElement('div');
+            headerCardsContainer.id = 'header-verification-container';
+            applyStyles(headerCardsContainer, {
+                width: '100%',
+                marginTop: '8px',
+                fontSize: '12px',
+                textAlign: 'center'
+            });
+            headerContainer.appendChild(headerCardsContainer);
+
             contentWrapper.appendChild(headerContainer);
 
             contentWrapper.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }));
@@ -3955,62 +3974,55 @@ ${fraud.manager === managerName ? `
         const safeNum = parseFloat(SafeBalance) || 0;
         const sum = BalanceNum + pendingNum + safeNum;
         const totalBalance = Number(sum.toFixed(2));
-        const payOutPercent = (TotalPA * 100).toFixed(0);
 
         const mainText = document.createElement('div');
         mainText.className = 'popup-main-text';
 
         applyStyles(mainText, {
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gridTemplateRows: 'auto auto auto',
-            gap: '10px',
+            gridTemplateColumns: '1fr auto 1fr',
+            gap: '10px 20px',
             alignItems: 'center',
             textAlign: 'center',
-            width: '100%'
+            width: '100%',
+            padding: '10px 0'
         });
 
         mainText.innerHTML = `
-            <div style="font-size: 12px;">
-                <strong>Full Money</strong><br>
-                <span style="font-size: 16px;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
-            </div>
-            <div style="font-size: 12px;">
-                <strong>PayOut</strong><br>
-                <span style="font-size: 16px; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
-            </div>
-            <div style="font-size: 12px;">
-                <strong>BRP</strong><br>
-                <span id="brp-value-target" style="font-size: 16px;">---</span>
-            </div>
-            <div style="font-size: 12px;">
-                <strong>Total</strong><br>
-                <span id="total-inout-target" style="font-size: 16px;">---</span>
-            </div>
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Full Money</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Pending</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>
+        </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Total</strong><br>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>
+        </div>
+
             <div id="all-button-container">
                 <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
                     All
                 </button>
             </div>
-            <div style="font-size: 12px;">
-                <strong>Prognose</strong><br>
-                <span id="prognos-inout-target" style="font-size: 16px;">---</span>
-            </div>
 
-            <div style="font-size: 12px;">
-                <strong>KYC</strong><br>
-                <span id="verification-provider-target" style="font-size: 16px;">---</span>
-            </div>
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Prognose</strong><br>
+            <span id="prognos-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>
+        </div>
 
-            <div style="font-size: 12px;">
-                <strong>Passport</strong><br>
-                <span id="current-document-target" style="font-size: 16px; color: #333;">---</span>
-            </div>
-            <div style="font-size: 12px;">
-                <strong>AVG</strong><br>
-                <span id="avg-value-target" style="font-size: 16px;">---</span>
-            </div>
-        `;
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">KYC</strong><br>
+            <span id="verification-provider-target" style="font-size: 15px; font-weight: bold; color: green;">---</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Passport</strong><br>
+            <span id="current-document-target" style="font-size: 15px; color: #333;">---</span>
+        </div>
+    `;
 
         return mainText;
     }
@@ -5424,54 +5436,49 @@ ${fraud.manager === managerName ? `
     }
 
     function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
-        const brpTarget = document.getElementById('brp-value-target');
+        if (bonusDepositPercentage > 40) {
+            const brpWarning = document.createElement('div');
+            brpWarning.id = 'brp-warning-msg';
 
-        if (!brpTarget) {
-            console.warn('Елемент #brp-value-target не знайдено');
-            return;
-        }
+            applyStyles(brpWarning, {
+                fontWeight: 'bold',
+                padding: '5px',
+                textAlign: 'center',
+                marginBottom: '5px',
+                color: 'red'
+            });
 
-        const textColor = bonusDepositPercentage > 50 ? 'maroon' : 'black';
+            brpWarning.innerHTML = `High BRP: ${bonusDepositPercentage.toFixed(2)}%`;
+            brpWarning.title = `Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}`;
 
-        brpTarget.innerHTML = `${bonusDepositPercentage.toFixed(2)}%`;
-        brpTarget.style.color = textColor;
-        brpTarget.title = `Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}`;
-    }
-
-    function showAVG({ formattedAvg, depositCount, formattedTotal }) {
-        const avgTarget = document.getElementById('avg-value-target');
-        if (!avgTarget) {
-            console.warn('Елемент #avg-value-target не знайдено');
-            return;
-        }
-
-        avgTarget.innerHTML = formattedAvg;
-        if (depositCount > 0) {
-            avgTarget.title = `Всього ${depositCount} депозитів на суму ${formattedTotal} за 30 днів`;
+            addMessageToContainer(brpWarning);
         }
     }
 
     function showVerificationCards(cards) {
-        if (!cards || !Array.isArray(cards) || cards.length === 0) {
+        const container = document.getElementById('header-verification-container');
+
+        if (!container) {
+            console.error('Контейнер для карточек в хедере не найден');
             return;
         }
 
-        const message = document.createElement('div');
-
-        applyStyles(message, MESSAGE_STYLES);
+        if (!cards || !Array.isArray(cards) || cards.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
 
         const cardsHtml = cards.map(card => `
-            <div style="display: inline-block; margin-top: 5px;">
-                ${card}
-                <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')" style="border: none; background: none; cursor: pointer; margin-left: 5px;">
-                    <span class="fa fa-files-o"></span>
-                </button>
-            </div>
-        `).join('<br>');
+        <div style="display: inline-block; margin: 2px 0; font-size: 16px;">
+            <span style="font-family: monospace;">${card}</span>
+            <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')"
+                    style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #666;">
+                <span class="fa fa-files-o"></span>
+            </button>
+        </div>
+    `).join('<br>');
 
-        message.innerHTML = `<b>Картки для верифікації:</b><br>${cardsHtml}`;
-
-        addMessageToContainer(message);
+        container.innerHTML = `<b style="font-size: 12px;">Картки для верифікації:</b><br>${cardsHtml}`;
     }
 
     function showVerificationProvider(provider) {
@@ -5527,13 +5534,25 @@ ${fraud.manager === managerName ? `
         return new DOMParser().parseFromString(response.responseText, 'text/html');
     }
 
-    function processTransactionRow(row, state, cutoffDate) {
+    function processTransactionRow(row, state) {
         const cells = row.querySelectorAll('td');
         if (cells.length === 0) return;
 
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+
         const actionType = cells[1]?.textContent.trim() || '';
         const bonusInfo = cells[7]?.textContent.trim() || '';
-        const dateStr = (cells[6]?.textContent.trim().match(/^(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '';
+
+        const dateMatch = cells[6]?.textContent.trim().match(/^(\d{2}\/\d{2}\/\d{4})/);
+        const dateStr = dateMatch ? dateMatch[1] : '';
+
+        let isRecent = false;
+        if (dateMatch) {
+            const parts = dateStr.split('/');
+            const rowDate = new Date(parts[2], parts[1] - 1, parts[0]);
+            isRecent = rowDate >= cutoffDate;
+        }
 
         if (actionType.includes('Вывод средств')) {
             state.withdrawAmount = parseFloat(cells[2]?.textContent.replace('-', '').replace(',', '.') || '0');
@@ -5541,28 +5560,15 @@ ${fraud.manager === managerName ? `
             state.withdrawId = cells[0]?.textContent.trim() || '';
             state.withdrawText = bonusInfo;
             state.waitingForBonus = true;
+
         } else if (['Ввод средств', 'Purchase', 'Возврат средств', 'Отмена вывода средств'].some(t => actionType.includes(t))) {
             state.withdrawAmount = 0;
             state.balanceAfterBonus = 0;
             state.waitingForBonus = false;
             state.totalWithdrawAmount = 0;
-            state.totalDeposits++;
 
-            if (actionType.includes('Ввод средств') && dateStr && cutoffDate) {
-                try {
-                    const parts = dateStr.split('/');
-                    const transactionDate = new Date(parts[2], parts[1] - 1, parts[0]);
-
-                    if (transactionDate >= cutoffDate) {
-                        const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
-                        if (amount > 0) {
-                            state.totalDepositAmountLast30Days += amount;
-                            state.depositCountLast30Days++;
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error parsing date for AVG:', dateStr, e);
-                }
+            if (actionType.includes('Ввод средств')) {
+                state.totalDeposits++;
             }
 
         } else if (actionType.includes('Ручное начисление баланса')) {
@@ -5576,10 +5582,12 @@ ${fraud.manager === managerName ? `
             state.bonusId = cells[0]?.textContent.trim() || '';
             state.bonusText = bonusInfo;
             state.bonusDate = dateStr;
-            if (state.totalWithdrawAmount > state.balanceAfterBonus && state.messageCount < 2) {
+
+            if (isRecent && state.totalWithdrawAmount > state.balanceAfterBonus && state.messageCount < 2) {
                 updatePopupBox({ ...state, index: state.messageCount++ });
             }
             state.waitingForBonus = false;
+
         } else if (['Bonus assignment', 'Присвоение бонуса', 'Активация бонуса'].some(t => actionType.includes(t))) {
             if (bonusInfo.match(/платеж № (\d+)/)) {
                 state.bonusWithDeposits++;
@@ -5597,11 +5605,23 @@ ${fraud.manager === managerName ? `
     function processBonusViolations(state) {
         const violations = [];
 
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+
         for (const bonusId in state.bonusAssignments) {
             const dates = state.bonusAssignments[bonusId];
+
             for (const dateStr in dates) {
+                const parts = dateStr.split('/');
+                const rowDate = new Date(parts[2], parts[1] - 1, parts[0]);
+
+                if (rowDate < cutoffDate) {
+                    continue;
+                }
+
                 const count = dates[dateStr];
                 const key = `${bonusId}_${dateStr}`;
+
                 if (count >= 3 && !state.displayedMessages[key]) {
                     violations.push({ bonusId, dateStr, count, key });
                 }
@@ -5609,7 +5629,10 @@ ${fraud.manager === managerName ? `
         }
 
         violations.sort((a, b) => {
-            const parseDate = str => new Date(str.split('/').reverse().join('-'));
+            const parseDate = str => {
+                const p = str.split('/');
+                return new Date(p[2], p[1] - 1, p[0]);
+            };
             return parseDate(b.dateStr) - parseDate(a.dateStr);
         });
 
@@ -5623,7 +5646,6 @@ ${fraud.manager === managerName ? `
             state.displayedMessages[v.key] = true;
         }
     }
-
 
 
     function showManualBalance({ dateStr, bonusInfo, index }) {
@@ -5652,11 +5674,6 @@ ${fraud.manager === managerName ? `
             const currencySymbol = currencySymbols.get(getCurrency()) || '';
             const showAmount = GM_getValue(amountDisplayKey, true);
 
-            const today = new Date();
-            const cutoffDate = new Date();
-            cutoffDate.setDate(today.getDate() - 30);
-            cutoffDate.setHours(0, 0, 0, 0);
-
             const state = {
                 withdrawAmount: 0,
                 manualBalanceCount: 0,
@@ -5675,10 +5692,9 @@ ${fraud.manager === managerName ? `
                 bonusAssignments: {},
                 displayedMessages: {},
                 totalDepositAmountLast30Days: 0,
-                depositCountLast30Days: 0
             };
 
-            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state, cutoffDate));
+            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state));
 
             processBonusViolations(state);
 
@@ -5689,21 +5705,6 @@ ${fraud.manager === managerName ? `
             } else {
                 console.log('Депозити відсутні.');
             }
-
-            let formattedAvg = formatCurrency(0, showAmount, currencySymbol);
-            let formattedTotal = formatCurrency(0, showAmount, currencySymbol);
-            if (state.depositCountLast30Days > 0) {
-                const avgAmount = state.totalDepositAmountLast30Days / state.depositCountLast30Days;
-                formattedAvg = formatCurrency(avgAmount, showAmount, currencySymbol);
-                formattedTotal = formatCurrency(state.totalDepositAmountLast30Days, showAmount, currencySymbol);
-            }
-
-            showAVG({
-                formattedAvg: formattedAvg,
-                depositCount: state.depositCountLast30Days,
-                formattedTotal: formattedTotal
-            });
-
         } catch (error) {
             console.error('Ошибка загрузки данных:', error);
         }
@@ -8107,6 +8108,7 @@ ${fraud.manager === managerName ? `
         })
                                                                                                               );
     }
+
     function verificationProvider() {
         return new Promise((resolve, reject) => {
             const playerId = getPlayerID();
@@ -9879,6 +9881,16 @@ ${fraud.manager === managerName ? `
             `;
                 navElement.insertBefore(offersItem, navElement.firstChild);
             }
+            if (managerData.status = 'Admin') {
+                const alertsSettings = document.createElement('li');
+                offersItem.innerHTML = `
+                <a href="/antifraudAlertings/AntifraudAlertingsSettings/">
+                    <i class="fa fa-cog"></i> Алерти
+                </a>
+            `;
+                navElement.insertBefore(offersItem, navElement.firstChild);
+
+            }
         }
     }
 
@@ -10080,6 +10092,146 @@ ${fraud.manager === managerName ? `
             }
         }
     }
+
+    //============== Окно AVG (на странице депозитов) ==================
+
+    async function fetchAndRenderMiniStats() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('PaymentsItemsInForm[search_login]');
+
+        if (!userId) return;
+
+        const now = new Date();
+        const past = new Date();
+        past.setDate(now.getDate() - 30);
+        const formatDate = (d, isEnd) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}.${month}.${day} ${isEnd ? "23:59:59" : "00:00:00"}`;
+        };
+        const period = `${formatDate(past, false)} - ${formatDate(now, true)}`;
+
+        const formData = new FormData();
+        formData.append('PlayersDetailForm[login]', userId);
+        formData.append('PlayersDetailForm[period]', period);
+        formData.append('PlayersDetailForm[show_table]', '1');
+        formData.append('yt0', 'Применить');
+
+        try {
+            const response = await fetch('/players/playersDetail/index/', {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+
+            const htmlText = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+            const rows = Array.from(doc.querySelectorAll('tr'));
+            const countRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Count')?.querySelector('td')?.textContent.trim();
+            const totalRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Total')?.querySelector('td')?.textContent.trim();
+
+            const count = countRaw ? parseInt(countRaw.replace(/[^\d]/g, ''), 10) : 0;
+            const total = totalRaw ? parseFloat(totalRaw.replace(/[^\d.]/g, '')) : 0;
+            const avg = count > 0 ? (total / count).toFixed(2) : "0.00";
+
+            let miniBox = document.getElementById('mini-deposit-stats');
+
+            if (!miniBox) {
+                miniBox = document.createElement('div');
+                miniBox.id = 'mini-deposit-stats';
+                Object.assign(miniBox.style, {
+                    position: 'fixed',
+                    top: '20px',
+                    right: '20px',
+                    zIndex: '10000',
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    backdropFilter: 'blur(10px)',
+                    webkitBackdropFilter: 'blur(10px)',
+                    color: '#1a202c',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    fontFamily: '"Inter", sans-serif',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.5)',
+                    minWidth: '280px',
+                    overflow: 'hidden',
+                    transition: 'height 0.3s ease'
+                });
+                document.body.appendChild(miniBox);
+
+                let isDragging = false;
+                let currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+
+                const dragStart = (e) => {
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+                    if (e.target.closest('#stats-header')) isDragging = true;
+                };
+
+                const dragEnd = () => { isDragging = false; };
+
+                const drag = (e) => {
+                    if (isDragging) {
+                        e.preventDefault();
+                        currentX = e.clientX - initialX;
+                        currentY = e.clientY - initialY;
+                        xOffset = currentX;
+                        yOffset = currentY;
+                        miniBox.style.transform = `translate(${currentX}px, ${currentY}px)`;
+                    }
+                };
+
+                document.addEventListener('mousedown', dragStart);
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', dragEnd);
+            }
+
+            miniBox.innerHTML = `
+            <div id="stats-header" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; cursor: move; border-bottom: 1px solid rgba(0,0,0,0.05); user-select: none;">
+                <b style="font-size: 13px; color: #2d3748;">Статистика депозитів за 30 днів</b>
+                <div id="stats-toggle" style="cursor: pointer; padding: 2px 8px; font-size: 18px; line-height: 1; color: #64748b; font-weight: bold;">−</div>
+            </div>
+            <div id="stats-body" style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Кількість:</span>
+                    <span style="font-weight: 600;">${count}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Загальна сума:</span>
+                    <span style="font-weight: 600;">${total.toLocaleString()}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
+                    <span style="color: #1e293b; font-weight: bold;">AVG:</span>
+                    <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${avg}</span>
+                </div>
+            </div>
+        `;
+
+            const toggleBtn = miniBox.querySelector('#stats-toggle');
+            const body = miniBox.querySelector('#stats-body');
+
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (body.style.display === 'none') {
+                    body.style.display = 'flex';
+                    toggleBtn.textContent = '−';
+                    miniBox.style.minWidth = '280px';
+                } else {
+                    body.style.display = 'none';
+                    toggleBtn.textContent = '+';
+                    miniBox.style.minWidth = 'auto';
+                }
+            };
+
+        } catch (e) {
+            console.error('[Stats] Error:', e);
+        }
+    }
+
+    //============== Конец окна AVG (на странице депозитов) ==================
+
 
     //============== ПОПАП СТАТИСТИКИ ==================
 
@@ -10505,7 +10657,6 @@ ${fraud.manager === managerName ? `
 
     window.addEventListener('load', async function() {
         addLocationButton();
-        addMainMenuButtons();
         const isUser = await checkToken();
         const currentHost = window.location.hostname;
         if (isUser.success) {
@@ -10514,9 +10665,14 @@ ${fraud.manager === managerName ? `
             if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents')) {
                 setupManagerStats(API_BASE_URL, token);
             }
+            addMainMenuButtons();
+
             sendActivePageInfo();
             if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountWildWinz();
+            }
+            else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=')) {
+                fetchAndRenderMiniStats();
             }
             else if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();

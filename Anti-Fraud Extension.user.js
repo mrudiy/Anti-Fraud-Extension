@@ -62,7 +62,7 @@
 (function() {
     'use strict';
 
-    const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
+    const API_BASE_URL = 'http://127.0.0.1:5000';
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -3081,9 +3081,14 @@ ${fraud.manager === managerName ? `
     function openTlCommentEditor(managerId, entryId, comment) {
         const content = `
         <style>
+            /* Встановлюємо індекс вище за вікно статистики (20000) */
+            #tl-comment-popup {
+                z-index: 30000 !important;
+            }
             #tl-comment-editor {
                 height: 200px;
                 margin-bottom: 10px;
+                background: white;
             }
             .ql-container {
                 border-radius: 4px;
@@ -3118,6 +3123,11 @@ ${fraud.manager === managerName ? `
 
         createPopup('tl-comment-popup', 'Редагувати коментар TL', content, () => {});
 
+        const popupEl = document.getElementById('tl-comment-popup');
+        if (popupEl) {
+            popupEl.style.zIndex = "30000";
+        }
+
         const quill = new Quill('#tl-comment-editor', {
             theme: 'snow',
             modules: {
@@ -3149,7 +3159,12 @@ ${fraud.manager === managerName ? `
 
                 const data = await response.json();
                 if (response.ok) {
-                    Swal.fire('Успіх', 'Коментар TL збережено', 'success');
+                    Swal.fire({
+                        title: 'Успіх',
+                        text: 'Коментар TL збережено',
+                        icon: 'success',
+                        target: '#tl-comment-popup'
+                    });
                     document.getElementById('tl-comment-popup').remove();
                     fetchStatistics(managerId, document.getElementById('datePicker').value);
                 } else {
@@ -3166,11 +3181,9 @@ ${fraud.manager === managerName ? `
         });
     }
 
-    async function fetchStatistics(userId, selectedDate, unreadEntryIds = []) {
+    async function fetchStatistics(userId, selectedDate, hour = null, unreadEntryIds = []) {
         try {
-            if (!token) {
-                throw new Error('Authorization token is missing');
-            }
+            if (!token) throw new Error('Authorization token is missing');
 
             const userStatus = managerData.status;
             const isAdmin = userStatus === 'Admin';
@@ -3179,76 +3192,59 @@ ${fraud.manager === managerName ? `
                 const purifyScript = document.createElement('script');
                 purifyScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js';
                 document.head.appendChild(purifyScript);
-                await new Promise((resolve, reject) => {
-                    purifyScript.onload = resolve;
-                    purifyScript.onerror = () => reject(new Error('Failed to load DOMPurify'));
-                });
+                await new Promise((resolve) => { purifyScript.onload = resolve; });
             }
 
-            if (isAdmin) {
-                await loadQuillResources();
-            }
+            if (isAdmin) await loadQuillResources();
 
-            const response = await fetch(`${API_BASE_URL}/api/get_statistics/${userId}?date=${selectedDate}`, {
+            let url = `${API_BASE_URL}/api/get_statistics/${userId}?date=${selectedDate}`;
+            if (hour !== null) url += `&hour=${hour}`;
+
+            const response = await fetch(url, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
-            console.log(data);
 
             if (response.ok) {
+                const timeTitle = hour !== null ? `за ${hour}:00` : `за день`;
                 const content = `
                 <style>
+                    #statistics-popup { z-index: 20000 !important; }
+                    .popup-backdrop { z-index: 19999 !important; }
                     #updateButton {
                         background-color: #6a5acd;
                         color: white;
-                        padding: 10px 20px;
+                        padding: 8px 16px;
                         border: none;
                         border-radius: 5px;
                         cursor: pointer;
-                        font-size: 16px;
+                        font-size: 14px;
+                        margin-left: 10px;
                     }
-                    #updateButton:hover {
-                        background-color: #5244a8;
-                    }
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                    }
-                    th, td {
-                        border: 1px solid #ddd;
-                        padding: 8px;
-                    }
-                    .tl-comment-placeholder {
-                        color: #888;
-                        font-size: 12px;
-                        font-style: italic;
-                        cursor: pointer;
-                    }
-                    .tl-comment-content {
-                        cursor: pointer;
-                    }
-                    .unread-comment-row {
-                        animation: pulseBorder 1.5s infinite;
-                    }
-                    @keyframes pulseBorder {
-                        0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-                        50% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); }
-                        100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
-                    }
+                    #updateButton:hover { background-color: #5244a8; }
+                    #stats-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    #stats-table th, #stats-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    .unread-comment-row { background-color: #fff5f5; border: 2px solid #ff4d4d !important; }
+                    .tl-comment-placeholder { color: #888; font-size: 12px; font-style: italic; cursor: pointer; }
                 </style>
-                <label for="datePicker">Оберіть дату:</label>
-                <input type="date" id="datePicker" value="${selectedDate}" />
-                <button id="updateButton">Оновити</button>
-                <p>Кількість всіх гравців: ${data.total_players}</p>
-                <p>Кількість Betking: ${data.betking_count}</p>
-                <p>Кількість 777: ${data.seven_count}</p>
-                <p>Кількість Vegas: ${data.vegas_count}</p>
-                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-                    <table>
-                        <thead>
+                <div style="margin-bottom: 15px;">
+                    <label>Дата:</label>
+                    <input type="date" id="datePicker" value="${selectedDate}" style="padding: 5px;" />
+                    <button id="updateButton">Оновити</button>
+                </div>
+                <div style="display: flex; gap: 20px; margin: 15px 0; font-weight: bold; background: #f8f9fa; padding: 10px;">
+                    <span>Всього: ${data.total_players}</span>
+                    <span style="color: #007bff;">Betking: ${data.betking_count}</span>
+                    <span style="color: #ff4500;">777: ${data.seven_count}</span>
+                    <span style="color: #28a745;">Vegas: ${data.vegas_count}</span>
+                </div>
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #eee;">
+                    <table id="stats-table">
+                        <thead style="position: sticky; top: 0; background: white;">
                             <tr>
+                                <th>Час</th>
                                 <th>ID Гравця</th>
                                 <th>Проект</th>
                                 <th>Авто</th>
@@ -3257,71 +3253,57 @@ ${fraud.manager === managerName ? `
                             </tr>
                         </thead>
                         <tbody>
-                            ${data.entries.map(entry => `
+                            ${data.entries.map(entry => {
+                                let displayTime = '';
+                                if (entry.created_at) {
+                                    displayTime = entry.created_at.includes('T')
+                                        ? entry.created_at.split('T')[1].substring(0, 5)
+                                    : entry.created_at.substring(0, 5);
+                                }
+                                return `
                                 <tr ${!isAdmin && unreadEntryIds.includes(entry.id) ? 'class="unread-comment-row"' : ''}>
+                                    <td style="font-size: 11px; color: #666;">${displayTime}</td>
                                     <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
                                     <td>${entry.project}</td>
-                                    <td>
-                                        ${entry.autopayment === false ? '<span style="color: green;">✔</span>' : '<span style="color: red;">❌</span>'}
+                                    <td style="text-align: center;">${entry.autopayment === false ? '✔' : '❌'}</td>
+                                    <td style="font-size: 12px;">${entry.comment || ''}</td>
+                                    <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}" style="cursor: pointer;"` : ''}>
+                                        ${isAdmin ? (entry.tl_comment || '<span class="tl-comment-placeholder">Додати...</span>') : (entry.tl_comment ? DOMPurify.sanitize(entry.tl_comment) : '')}
                                     </td>
-                                    <td>${entry.comment || ''}</td>
-                                     <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}"` : (!isAdmin && unreadEntryIds.includes(entry.id) ? `class="tl-comment-unread" data-entry-id="${entry.id}"` : '')}>
-                                        ${isAdmin ? `
-                                            ${entry.tl_comment ?
-                                               `<div>${entry.tl_comment}</div>` :
-                                               `<span class="tl-comment-placeholder">Хочете щось додати?</span>`
-                                               }
-                                        ` : `
-                                            ${entry.tl_comment ? `<div>${DOMPurify.sanitize(entry.tl_comment)}</div>` : ''}
-                                        `}
-                                    </td>
-                                </tr>
-                            `).join('')}
+                                </tr>`;
+                            }).join('')}
                         </tbody>
                     </table>
-                </div>
-            `;
+                </div>`;
 
-                const popup = document.getElementById('statistics-popup');
-                if (popup) {
-                    popup.querySelector('.popup-content').innerHTML = content;
+                const popupId = 'statistics-popup';
+                const popupTitle = `Статистика менеджерa ${timeTitle}`;
+                const existingPopup = document.getElementById(popupId);
+
+                if (existingPopup) {
+                    existingPopup.querySelector('.popup-content').innerHTML = content;
+                    existingPopup.style.zIndex = "20000";
                 } else {
-                    createPopup('statistics-popup', 'Статистика менеджера', content, () => {});
+                    createPopup(popupId, popupTitle, content, () => {});
+                    const newPopup = document.getElementById(popupId);
+                    if (newPopup) newPopup.style.zIndex = "20000";
                 }
 
-                document.getElementById('updateButton').addEventListener('click', () => updateStatistics(userId));
+                document.getElementById('updateButton').onclick = () => {
+                    fetchStatistics(userId, document.getElementById('datePicker').value);
+                };
 
                 if (isAdmin) {
-                    document.querySelectorAll('.tl-comment-cell-admin').forEach(element => {
-                        element.addEventListener('click', () => {
-                            const entryId = element.getAttribute('data-entry-id');
-                            const comment = decodeURIComponent(element.getAttribute('data-comment') || '');
-                            openTlCommentEditor(userId, entryId, comment);
-                        });
-                    });
-                } else {
-                    document.querySelectorAll('.tl-comment-unread').forEach(element => {
-                        element.addEventListener('click', async () => {
-                            const entryId = element.getAttribute('data-entry-id');
-                            try {
-                                await fetch(`${API_BASE_URL}/api/working/${entryId}/mark_read`, {
-                                    method: 'PUT',
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                element.closest('tr').classList.remove('unread-comment-row');
-                                element.classList.remove('tl-comment-unread');
-                            } catch (error) {
-                                console.error('Error marking comment as read:', error);
-                            }
-                        });
+                    document.querySelectorAll('.tl-comment-cell-admin').forEach(el => {
+                        el.onclick = () => {
+                            openTlCommentEditor(userId, el.getAttribute('data-entry-id'), decodeURIComponent(el.getAttribute('data-comment') || ''));
+                        };
                     });
                 }
-            } else {
-                Swal.fire('Помилка', data.error || 'Не вдалося завантажити статистику', 'error');
             }
         } catch (error) {
-            console.error('Error:', error);
-            Swal.fire('Помилка', 'Помилка завантаження статистики', 'error');
+            console.error(error);
+            Swal.fire('Помилка', 'Не вдалося завантажити дані', 'error');
         }
     }
 
@@ -10031,12 +10013,12 @@ ${fraud.manager === managerName ? `
             }
             if (managerData.status === 'Admin') {
                 const alertsSettings = document.createElement('li');
-                offersItem.innerHTML = `
+                alertsSettings.innerHTML = `
                 <a href="/antifraudAlertings/AntifraudAlertingsSettings/">
                     <i class="fa fa-cog"></i> Алерти
                 </a>
             `;
-                navElement.insertBefore(offersItem, navElement.firstChild);
+                navElement.insertBefore(alertsSettings, navElement.firstChild);
 
             }
         }
@@ -10882,8 +10864,10 @@ ${fraud.manager === managerName ? `
 
         function renderHourlyShiftGrid(data, container) {
             container.innerHTML = '';
-            const { stats, hours, shift } = data;
+            const { stats, hours, shift, manager_ids } = data;
             let managers = Object.keys(stats);
+
+            const isAdmin = managerData.status === 'Admin';
 
             if (managerData.status === 'Manager') {
                 managers = managers.filter(name => name === managerData.name);
@@ -10895,6 +10879,7 @@ ${fraud.manager === managerName ? `
                 container.innerHTML = '<div style="padding:20px; text-align:center; color: #e74c3c;">Доступ обмежено. Ви можете переглядати лише власну статистику.</div>';
                 return;
             }
+
             const gridStyle = `180px 70px repeat(12, minmax(45px, 1fr))`;
 
             const header = document.createElement('div');
@@ -10919,6 +10904,11 @@ ${fraud.manager === managerName ? `
                 const nameCell = document.createElement('div');
                 nameCell.className = 'dash-manager-name';
                 nameCell.textContent = name;
+
+                if (name === managerData.name) {
+                    nameCell.style.color = '#3498db';
+                    nameCell.style.fontWeight = 'bold';
+                }
                 row.appendChild(nameCell);
 
                 let shiftTotal = 0;
@@ -10939,9 +10929,36 @@ ${fraud.manager === managerName ? `
                         bar.className = 'dash-bar';
                         bar.textContent = val;
                         bar.style.width = '100%';
+
                         const opacity = 0.3 + (Math.min(val, 10) / 10) * 0.7;
                         const color = shift === 'day' ? '243, 156, 18' : '155, 89, 182';
                         bar.style.backgroundColor = `rgba(${color}, ${opacity})`;
+
+                        if (isAdmin) {
+                            bar.style.cursor = 'pointer';
+                            bar.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
+                            bar.title = `Переглянути деталі ${name} за ${h}:00`;
+
+                            bar.onclick = () => {
+                                const titleEl = document.getElementById('hourly-title');
+                                const dateStr = titleEl ? titleEl.textContent.replace('Статистика за ', '').trim() : '';
+
+                                const mId = manager_ids ? manager_ids[name] : null;
+
+                                if (mId && dateStr) {
+                                    fetchStatistics(mId, dateStr, h);
+                                } else {
+                                    console.error("Не вдалося знайти ID менеджера або дату");
+                                    Swal.fire('Помилка', 'Дані для запиту неповні', 'error');
+                                }
+                            };
+
+                            bar.onmouseenter = () => { bar.style.filter = 'brightness(0.9)'; };
+                            bar.onmouseleave = () => { bar.style.filter = 'none'; };
+                        } else {
+                            bar.style.cursor = 'default';
+                        }
+
                         cell.appendChild(bar);
                     }
                     row.appendChild(cell);

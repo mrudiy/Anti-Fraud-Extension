@@ -62,7 +62,7 @@
 (function() {
     'use strict';
 
-    const API_BASE_URL = 'http://127.0.0.1:5000';
+    const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
     let popupBox;
     const currentUrl = window.location.href;

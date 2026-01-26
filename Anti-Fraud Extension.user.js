@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.5
+// @version      7.0.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -49,7 +49,7 @@
 // @connect      admin.playtana.com
 // @connect      admin.vegasway.com
 // @connect      admin.firesevens.com
-// @connect      admin.sweepico.com
+// @connect      admin.sweepico.coma
 // @connect      api.easypay.ua
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
@@ -95,7 +95,9 @@
         ['EUR', '€'],
         ['PLN', 'zł'],
     ]);
-    const currentVersion = "7.0.5";
+    const currentVersion = "7.0.6";
+
+    const TEAMS = ['', 'Betting', 'Product', 'Financial'];
 
     const stylerangePicker = document.createElement('style');
     stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
@@ -1176,10 +1178,22 @@
         }
     }
 
-
-
     function createAdminPopup() {
+        const adminTeam = (managerData && managerData.team) ? managerData.team : 'All';
+
         const content = `
+    <div class="team-tabs" style="margin-bottom: 15px; display: flex; gap: 5px; flex-wrap: wrap;">
+        ${TEAMS.map(team => `
+            <button class="team-tab-btn ${team === adminTeam ? 'active' : ''}"
+                    data-team="${team}"
+                    style="padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px;
+                           background: ${team === adminTeam ? '#3498db' : '#fff'};
+                           color: ${team === adminTeam ? '#fff' : '#000'};
+                           transition: all 0.2s;">
+                ${team === '' ? 'Усі' : team}
+            </button>
+        `).join('')}
+    </div>
     <table id="admin-popup-table">
         <thead>
             <tr>
@@ -1193,15 +1207,36 @@
         </thead>
         <tbody id="users-list"></tbody>
     </table>
-    <button id="add-user-btn">Додати користувача</button>
-    <button id="alerts-settings-btn">Налаштування Alerts</button>
+    <div style="margin-top: 15px; display: flex; gap: 10px;">
+        <button id="add-user-btn">Додати користувача</button>
+        <button id="alerts-settings-btn">Налаштування Alerts</button>
+    </div>
     `;
+
         createPopup('admin-popup', 'Менеджери', content, () => {});
 
-        loadUsers();
+        loadUsers(adminTeam);
 
-        document.getElementById('add-user-btn').addEventListener('click', createRegisterPopup);
-        document.getElementById('alerts-settings-btn').addEventListener('click', createAlertSettingsPopup);
+        document.querySelectorAll('.team-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const selectedTeam = e.target.getAttribute('data-team');
+
+                document.querySelectorAll('.team-tab-btn').forEach(b => {
+                    b.style.background = '#fff';
+                    b.style.color = '#000';
+                    b.classList.remove('active');
+                });
+
+                e.target.style.background = '#3498db';
+                e.target.style.color = '#fff';
+                e.target.classList.add('active');
+
+                loadUsers(selectedTeam);
+            });
+        });
+
+        document.getElementById('add-user-btn').onclick = createRegisterPopup;
+        document.getElementById('alerts-settings-btn').onclick = createAlertSettingsPopup;
     }
 
     function loadQuillResources() {
@@ -1215,7 +1250,7 @@
         document.head.appendChild(quillJS);
 
         return new Promise((resolve) => {
-            quillJS.onload = resolve; // Ждём загрузки скрипта
+            quillJS.onload = resolve;
         });
     }
 
@@ -1955,41 +1990,85 @@
     }
 
     function createRegisterPopup() {
+        const teamOptions = TEAMS.map(t => `<option value="${t}">${t}</option>`).join('');
+
         const content = `
-    <input type="text" id="register-username" placeholder="Логін" required />
-    <input type="password" id="register-password" placeholder="Пароль" required />
-    <input type="text" id="manager-name" placeholder="Ім'я Фамілія" required />
-    <select id="user-status" required>
-        <option value="" disabled selected>Статус</option>
-        <option value="Manager">Менеджер</option>
-        <option value="Admin">Admin</option>
-    </select>
-    <button id="register-btn">Додати користувача</button>
-    <div class="error" id="register-error-msg"></div>
-    <div class="success" id="register-success-msg"></div>
+    <div style="display: flex; flex-direction: column; gap: 10px; min-width: 300px;">
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Авторизація</label>
+            <input type="text" id="register-username" placeholder="Логін" required style="width: 100%; margin-top: 5px;"/>
+            <input type="password" id="register-password" placeholder="Пароль" required style="width: 100%; margin-top: 5px;"/>
+        </div>
+
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Основна інформація</label>
+            <input type="text" id="manager-name" placeholder="Ім'я Фамілія" required style="width: 100%; margin-top: 5px;"/>
+
+            <select id="user-status" required style="width: 100%; margin-top: 5px;">
+                <option value="" disabled selected>Виберіть статус</option>
+                <option value="Manager">Менеджер</option>
+                <option value="Admin">Admin</option>
+            </select>
+        </div>
+
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Команда</label>
+            <select id="user-team" style="width: 100%; margin-top: 5px;">
+                ${teamOptions}
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 15px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666;">Робочих годин:</label>
+                <input type="number" id="user-work-hours" value="8" min="1" max="24" style="width: 100%;"/>
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666;">Норма в годину:</label>
+                <input type="number" id="user-hour-goal" value="50" min="1" style="width: 100%;"/>
+            </div>
+        </div>
+
+        <button id="register-btn" style="margin-top: 10px;">Додати користувача</button>
+        <div class="error" id="register-error-msg"></div>
+        <div class="success" id="register-success-msg"></div>
+    </div>
     `;
-        createPopup('register-popup', 'Додати користувача', content, () => {});
+
+        createPopup('register-popup', 'Реєстрація нового співробітника', content, () => {});
 
         document.getElementById('register-btn').addEventListener('click', async () => {
             const username = document.getElementById('register-username').value;
             const password = document.getElementById('register-password').value;
             const managerName = document.getElementById('manager-name').value;
             const status = document.getElementById('user-status').value;
+            const team = document.getElementById('user-team').value;
+            const workHours = parseInt(document.getElementById('user-work-hours').value) || 8;
+            const performanceGoal = parseInt(document.getElementById('user-hour-goal').value) || 50;
 
-            const isRegistered = await registerUser(username, password, managerName, status);
+            if (!username || !password || !managerName || !status) {
+                document.getElementById('register-error-msg').textContent = 'Заповніть обовʼязкові поля!';
+                return;
+            }
+
+            const isRegistered = await registerUser(
+                username, password, managerName, status,
+                team, workHours, performanceGoal
+            );
 
             const errorMsg = document.getElementById('register-error-msg');
             const successMsg = document.getElementById('register-success-msg');
 
             if (isRegistered) {
-                successMsg.textContent = 'Користувача було додано!';
+                successMsg.textContent = 'Користувача додано успішно!';
                 errorMsg.textContent = '';
                 setTimeout(() => {
-                    document.getElementById('register-popup').remove();
+                    const popup = document.getElementById('register-popup');
+                    if (popup) popup.remove();
                 }, 2000);
                 loadUsers();
             } else {
-                errorMsg.textContent = 'Виникла помилка! Такий користувач вже існує.';
+                errorMsg.textContent = 'Помилка! Можливо, логін вже зайнятий.';
                 successMsg.textContent = '';
             }
         });
@@ -2024,29 +2103,34 @@
         }
     }
 
-    async function loadUsers() {
+    async function loadUsers(filterTeam = 'All') {
         const today = getCurrentDateRequest();
+        const usersList = document.getElementById('users-list');
+
+        usersList.innerHTML = '<tr><td colspan="6" style="text-align:center;">Завантаження...</td></tr>';
 
         try {
             const usersResponse = await fetch(`${API_BASE_URL}/api/users`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!usersResponse.ok) {
-                throw new Error(`Failed to fetch users: ${usersResponse.status}`);
-            }
-            const users = await usersResponse.json();
+            if (!usersResponse.ok) throw new Error(`Users fetch error: ${usersResponse.status}`);
+            const allUsers = await usersResponse.json();
+
+            const isAll = filterTeam === 'All' || !filterTeam;
+
+            const filteredUsers = isAll
+            ? allUsers
+            : allUsers.filter(u => u.team === filterTeam);
 
             const statsResponse = await fetch(`${API_BASE_URL}/api/get_all_statistics?date=${today}`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!statsResponse.ok) {
-                throw new Error(`Failed to fetch statistics: ${statsResponse.status}`);
-            }
+            if (!statsResponse.ok) throw new Error(`Stats fetch error: ${statsResponse.status}`);
             const stats = await statsResponse.json();
 
-            const usersWithStats = users.map(user => {
+            const usersWithStats = filteredUsers.map(user => {
                 const userStats = stats.find(stat => stat.id === user.id) || {};
                 return {
                     ...user,
@@ -2057,13 +2141,22 @@
 
             usersWithStats.sort((a, b) => b.processedToday - a.processedToday);
 
-            const usersList = document.getElementById('users-list');
             usersList.innerHTML = '';
+
+            if (usersWithStats.length === 0) {
+                usersList.innerHTML = `<tr><td colspan="6" style="text-align:center;">У команді "${filterTeam}" поки немає менеджерів</td></tr>`;
+                return;
+            }
 
             usersWithStats.forEach(user => {
                 const row = document.createElement('tr');
+
+                const teamBadge = isAll
+                ? `<br><small style="color: #888;">${user.team || 'Без команди'}</small>`
+                : '';
+
                 row.innerHTML = `
-                <td>${user.manager_name}</td>
+                <td><strong>${user.manager_name}</strong>${teamBadge}</td>
                 <td>${user.status}</td>
                 <td>${user.processedToday}</td>
                 <td><a href="#" class="seen-today-link">${user.seenToday}</a></td>
@@ -2072,29 +2165,32 @@
                 </td>
                 <td class="actions">
                     <i class="fa fa-bar-chart get-statistics" title="Статистика"></i>
-                    <i class="fa fa-cog user-settings" title="Налаштування користувача"></i>
-                    <i class="fa fa-trash delete-user" title="Видалити користувача"></i>
+                    <i class="fa fa-cog user-settings" title="Налаштування"></i>
+                    <i class="fa fa-trash delete-user" title="Видалити"></i>
                 </td>
             `;
                 usersList.appendChild(row);
 
-                row.querySelector('.get-statistics').addEventListener('click', () => getStatistics(user.id));
-                row.querySelector('.user-settings').addEventListener('click', () =>
-                                                                     createUserSettingsPopup(user.id, user.manager_name, user.username, user.status, user.performance_goal, user.work_hours));
-                row.querySelector('.delete-user').addEventListener('click', () => deleteUser(user.id));
-                row.querySelector('.seen-today-link').addEventListener('click', (e) => {
+                row.querySelector('.get-statistics').onclick = () => getStatistics(user.id);
+                row.querySelector('.user-settings').onclick = () => createUserSettingsPopup(
+                    user.id, user.manager_name, user.username, user.status,
+                    user.performance_goal, user.work_hours, user.team || ''
+                );
+                row.querySelector('.delete-user').onclick = () => deleteUser(user.id);
+                row.querySelector('.seen-today-link').onclick = (e) => {
                     e.preventDefault();
                     fetchSeenEntries(user.id, today);
-                });
+                };
+
                 const activeUrlBtn = row.querySelector('.active-url-btn');
                 if (activeUrlBtn) {
-                    activeUrlBtn.addEventListener('click', () => openActiveUrl(user.id));
+                    activeUrlBtn.onclick = () => openActiveUrl(user.id);
                 }
             });
+
         } catch (error) {
             console.error('Error loading users:', error);
-            const usersList = document.getElementById('users-list');
-            usersList.innerHTML = '<tr><td colspan="6">Помилка завантаження даних</td></tr>';
+            usersList.innerHTML = '<tr><td colspan="6" style="color:red; text-align:center;">Помилка завантаження даних</td></tr>';
         }
     }
 
@@ -2121,52 +2217,63 @@
         }
     }
 
-    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal, currentWorkHours) {
+    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal, currentWorkHours, currentTeam) {
+        const teamSelectOptions = TEAMS.map(teamName => {
+            const label = teamName === '' ? 'Без команди' : teamName;
+            return `<option value="${teamName}" ${currentTeam === teamName ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+
         const content = `
-        <div class="user-settings-form">
-            <div class="form-settings-group">
-                <label for="user-name">Ім'я користувача:</label>
-                <input type="text" id="user-name" value="${currentName || ''}" required>
-            </div>
-            <div class="form-settings-group">
-                <label for="user-login">Логін:</label>
-                <input type="text" id="user-login" value="${currentLogin || ''}" required>
-            </div>
-            <div class="form-settings-group">
-                <label for="user-status">Роль:</label>
-                <select id="user-status" required>
-                    <option value="" disabled>Статус</option>
-                    <option value="Manager" ${currentStatus === 'Manager' ? 'selected' : ''}>Менеджер</option>
-                    <option value="Admin" ${currentStatus === 'Admin' ? 'selected' : ''}>Admin</option>
-                </select>
-            </div>
-            <div class="form-settings-group">
-            <label for="user-goal">Норма (акаунтів за зміну):</label>
-            <input type="number" id="user-goal" value="${currentGoal || 80}" min="1">
-            </div>
-            <div class="form-settings-group">
-            <label for="user-workhours">Кількість робочих годин:</label>
-            <input type="number" id="user-workhours" value="${currentWorkHours || 7}" min="1">
-            </div>
-            <button id="reset-password-btn">Скинути пароль</button>
-            <button id="save-settings-btn">Зберегти зміни</button>
+    <div class="user-settings-form">
+        <div class="form-settings-group">
+            <label>Ім'я користувача:</label>
+            <input type="text" id="user-name" value="${currentName || ''}" required>
         </div>
-    `;
+        <div class="form-settings-group">
+            <label>Команда:</label>
+            <select id="user-team">
+                ${teamSelectOptions}
+            </select>
+        </div>
+        <div class="form-settings-group">
+            <label>Логін:</label>
+            <input type="text" id="user-login" value="${currentLogin || ''}" required>
+        </div>
+        <div class="form-settings-group">
+            <label>Роль:</label>
+            <select id="user-status" required>
+                <option value="Manager" ${currentStatus === 'Manager' ? 'selected' : ''}>Менеджер</option>
+                <option value="Admin" ${currentStatus === 'Admin' ? 'selected' : ''}>Admin</option>
+            </select>
+        </div>
+        <div class="form-settings-group">
+            <label>Норма (акаунтів):</label>
+            <input type="number" id="user-goal" value="${currentGoal || 80}">
+        </div>
+        <div class="form-settings-group">
+            <label>Робочі години:</label>
+            <input type="number" id="user-workhours" value="${currentWorkHours || 7}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+            <button id="reset-password-btn" class="dash-btn" style="background: #e67e22;">Скинути пароль</button>
+            <button id="save-settings-btn" class="dash-btn">Зберегти зміни</button>
+        </div>
+    </div>`;
 
         createPopup('user-settings-popup', 'Налаштування користувача', content, () => {});
 
-        document.getElementById('reset-password-btn').addEventListener('click', () => changePassword(userId));
-        document.getElementById('save-settings-btn').addEventListener('click', async () => {
-            const name = document.getElementById('user-name').value.trim();
-            const username = document.getElementById('user-login').value.trim();
-            const status = document.getElementById('user-status').value;
-            const goal = document.getElementById('user-goal').value;
-            const workHours = document.getElementById('user-workhours').value;
+        document.getElementById('save-settings-btn').onclick = async () => {
+            const payload = {
+                manager_name: document.getElementById('user-name').value.trim(),
+                username: document.getElementById('user-login').value.trim(),
+                team: document.getElementById('user-team').value,
+                status: document.getElementById('user-status').value,
+                performance_goal: parseInt(document.getElementById('user-goal').value, 10),
+                work_hours: parseInt(document.getElementById('user-workhours').value, 10)
+            };
 
-
-
-            if (!name || !username || !status || !goal || !workHours) {
-                Swal.fire('Помилка', 'Будь ласка, заповніть усі поля', 'error');
+            if (!payload.manager_name || !payload.username) {
+                Swal.fire('Помилка', 'Заповніть обов\'язкові поля', 'error');
                 return;
             }
 
@@ -2177,29 +2284,23 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        manager_name: name,
-                        username: username,
-                        status: status,
-                        performance_goal: parseInt(goal, 10),
-                        work_hours: parseInt(workHours, 10),
-                    })
+                    body: JSON.stringify(payload)
                 });
 
-                const data = await response.json();
-
                 if (response.ok) {
-                    Swal.fire('Успіх', 'Налаштування користувача збережено', 'success');
+                    Swal.fire('Успіх', 'Дані користувача оновлено', 'success');
                     document.getElementById('user-settings-popup').remove();
                     loadUsers();
                 } else {
-                    Swal.fire('Помилка', data.message || 'Не вдалося зберегти зміни', 'error');
+                    const err = await response.json();
+                    Swal.fire('Помилка', err.message || 'Не вдалося зберегти', 'error');
                 }
             } catch (error) {
-                console.error('Error updating user:', error);
-                Swal.fire('Помилка', 'Виникла помилка при збереженні налаштувань', 'error');
+                Swal.fire('Помилка', 'Мережева помилка', 'error');
             }
-        });
+        };
+
+        document.getElementById('reset-password-btn').onclick = () => changePassword(userId);
     }
 
     async function fetchSeenEntries(userId, selectedDate) {
@@ -2676,17 +2777,28 @@ ${fraud.manager === managerName ? `
     }
 
 
-    async function registerUser(username, password, managerName, status) {
+    async function registerUser(username, password, managerName, status, team, workHours, performanceGoal) {
         try {
             const response = await fetch(`${API_BASE_URL}/api/register`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, managerName, status })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    username,
+                    password,
+                    managerName,
+                    status,
+                    team,
+                    workHours,
+                    performanceGoal
+                })
             });
             const data = await response.json();
             return data.success;
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error registering user:', error);
             return false;
         }
     }
@@ -3495,7 +3607,9 @@ ${fraud.manager === managerName ? `
 
 
     async function loadStatisticData(startDate, endDate) {
+        const managersList = document.getElementById('managersList');
 
+        managersList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Завантаження...</td></tr>';
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
@@ -3506,32 +3620,69 @@ ${fraud.manager === managerName ? `
             const data = await response.json();
 
             if (response.ok) {
-                document.getElementById('totalPeriod').textContent = data.totalForPeriod;
-                document.getElementById('totalAllTime').textContent = data.totalAllTime;
-                document.getElementById('averageProcessedPerManager').textContent = data.averageProcessedPerManager.toFixed(2);
+                let displayManagers = data.managers;
 
-                const managersList = document.getElementById('managersList');
+                if (managerData.status === 'Manager') {
+                    const myTeam = managerData.team;
+                    displayManagers = data.managers.filter(m =>
+                                                           m.team === myTeam || m.name === managerData.name
+                                                          );
+                }
+
+                let totalPeriod = 0;
+                let totalAllTime = 0;
+                let totalAvgSum = 0;
+
+                displayManagers.forEach(m => {
+                    totalPeriod += m.processedForPeriod;
+                    totalAllTime += m.processedAllTime;
+                    totalAvgSum += m.averageProcessedPerPeriod;
+                });
+
+                const avgProcessedPerManager = displayManagers.length > 0
+                ? totalAvgSum / displayManagers.length
+                : 0;
+
+                document.getElementById('totalPeriod').textContent = totalPeriod;
+                document.getElementById('totalAllTime').textContent = totalAllTime;
+                document.getElementById('averageProcessedPerManager').textContent = avgProcessedPerManager.toFixed(2);
+
                 managersList.innerHTML = '';
 
-                data.managers.forEach(manager => {
+                if (displayManagers.length === 0) {
+                    managersList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Дані відсутні</td></tr>';
+                    return;
+                }
+
+                displayManagers.forEach(manager => {
+                    const isMe = manager.name === managerData.name;
                     const row = document.createElement('tr');
+
+                    if (isMe) {
+                        row.style.backgroundColor = '#eef2ff';
+                        row.style.fontWeight = 'bold';
+                    }
+
                     row.innerHTML = `
-                    <td>${manager.name}</td>
+                    <td>
+                        ${isMe ? '<span class="crown">👑</span> ' : ''}
+                        ${manager.name}
+                    </td>
                     <td>${manager.processedForPeriod}</td>
                     <td>${manager.processedAllTime}</td>
                     <td>${manager.averageProcessedPerPeriod.toFixed(2)}</td>
                 `;
                     managersList.appendChild(row);
                 });
+
             } else {
-                alert('Ошибка загрузки данных: ' + data.error);
+                alert('Помилка завантаження статистики: ' + (data.error || 'Unknown error'));
             }
         } catch (error) {
-            console.error('Ошибка:', error);
+            console.error('Сталася помилка при завантаженні статистики:', error);
+            managersList.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Помилка мережі</td></tr>';
         }
     }
-
-
 
     function updateStatisticPopup() {
         const dateRange = $('#dateRangePicker').data('daterangepicker');
@@ -3974,6 +4125,7 @@ ${fraud.manager === managerName ? `
         const safeNum = parseFloat(SafeBalance) || 0;
         const sum = BalanceNum + pendingNum + safeNum;
         const totalBalance = Number(sum.toFixed(2));
+        const payOutPercent = (TotalPA * 100).toFixed(0);
 
         const mainText = document.createElement('div');
         mainText.className = 'popup-main-text';
@@ -4000,7 +4152,7 @@ ${fraud.manager === managerName ? `
 
         <div style="font-size: 12px;">
             <strong style="color: #666;">Total</strong><br>
-            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
         </div>
 
             <div id="all-button-container">
@@ -5411,23 +5563,10 @@ ${fraud.manager === managerName ? `
     }
 
     function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
-
-        if (!window.popupBox) {
-            console.error('Попап не существует');
-            return;
-        }
-
-        const textElement = window.popupBox.querySelector('.popup-text');
-
-        if (!textElement) {
-            console.warn('Элемент .popup-text не найден в попапе');
-            return;
-        }
-
         const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
         const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
-        textElement.appendChild(createClickableMessage(
+        addMessageToContainer(createClickableMessage(
             `popup-bonus-violation-${index}`,
             content,
             onClick,
@@ -5481,6 +5620,20 @@ ${fraud.manager === managerName ? `
         container.innerHTML = `<b style="font-size: 12px;">Картки для верифікації:</b><br>${cardsHtml}`;
     }
 
+    function getLastBetValue() {
+        const headers = document.querySelectorAll('th');
+        for (let th of headers) {
+            if (th.textContent.includes('Последняя ставка')) {
+                const td = th.nextElementSibling;
+                if (td) {
+                    return td.textContent.trim();
+                }
+            }
+        }
+        return 'Не заданий';
+    }
+
+
     function showVerificationProvider(provider) {
         const kycTarget = document.getElementById('verification-provider-target');
         if (!kycTarget) {
@@ -5488,16 +5641,27 @@ ${fraud.manager === managerName ? `
             return;
         }
 
-        if (!provider) {
+        let displayProvider = provider;
+        let color = 'green';
+
+        if (!displayProvider) {
+            const lastBet = getLastBetValue();
+
+            if (lastBet !== 'Не заданий') {
+                displayProvider = 'Manual';
+            }
+        }
+
+        if (!displayProvider) {
             kycTarget.innerHTML = '---';
             kycTarget.style.color = '#888';
+            kycTarget.style.fontWeight = 'normal';
             return;
         }
 
-        const firstWord = provider.split(' ')[0];
+        const firstWord = displayProvider.split(' ')[0];
 
-        let color;
-        if (firstWord === 'Kycaid' || firstWord === 'SumSub') {
+        if (firstWord === 'Kycaid' || firstWord === 'SumSub' || firstWord === 'Manual') {
             color = 'red';
         } else {
             color = 'green';
@@ -7501,7 +7665,7 @@ ${fraud.manager === managerName ? `
             fields: {
                 priorities: { type: 'multi-select', selector: 'pendings-priority-select', required: true },
                 total_amount: { type: 'text', selector: 'pendings-total-amount', required: true, validate: v => /^\d+$/.test(v) },
-                manager: { type: 'select', selector: 'pendings-manager-select', required: true }
+                manager: { type: 'text', selector: 'pendings-manager-input', required: true }
             },
             apiFields: ['priorities', 'amount', 'manager'],
             requiresProject: true
@@ -7511,7 +7675,7 @@ ${fraud.manager === managerName ? `
                 priorities: { type: 'multi-select', selector: 'payout-priority-select', required: true },
                 total_amount: { type: 'text', selector: 'payout-total-amount', required: true, validate: v => /^\d+$/.test(v) },
                 auto_disable: { type: 'checkbox', selector: 'payout-auto-disable' },
-                manager: { type: 'select', selector: 'payout-manager-select', required: true }
+                manager: { type: 'text', selector: 'payout-manager-input', required: true }
             },
             apiFields: ['priorities', 'amount', 'auto_disable', 'manager'],
             requiresProject: true
@@ -7530,7 +7694,7 @@ ${fraud.manager === managerName ? `
                     validate: settings => settings.every(s => /^\d+$/.test(s.amount) && /^\d+$/.test(s.bonusAmount))
                 },
                 inefficient_transaction_percent: { type: 'text', selector: 'inefficient-transaction-percent', required: true, validate: v => /^\d+%$/.test(v) },
-                manager: { type: 'select', selector: 'deposits-manager-select', required: true }
+                manager: { type: 'text', selector: 'deposits-manager-input', required: true }
             },
             apiFields: ['settings', 'inefficient_transaction_percent', 'manager'],
             requiresProject: true
@@ -7592,24 +7756,6 @@ ${fraud.manager === managerName ? `
             this.alertType = alertType;
             this.config = ALERT_CONFIG[alertType];
             this.section = SETTINGS_SECTIONS[alertType];
-        }
-
-        async loadManagers() {
-            if (this.alertType === 'Verification') return;
-            try {
-                const data = await ApiService.fetchData('/api/users');
-                const managers = data.filter(user => user.status === 'Manager');
-                const select = byId(this.config.fields.manager.selector);
-                select.innerHTML = '<option value="" disabled selected>Оберіть менеджера</option>';
-                managers.forEach(manager => {
-                    const option = document.createElement('option');
-                    option.value = option.textContent = manager.manager_name;
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Ошибка загрузки менеджеров:', error);
-                setMessage('error', 'Не вдалося завантажити список менеджерів');
-            }
         }
 
         async loadSettings(project) {
@@ -7745,10 +7891,7 @@ ${fraud.manager === managerName ? `
     }
 
     #project-select,
-    #alert-type-select,
-    #deposits-manager-select,
-    #payout-manager-select,
-    #pendings-manager-select{
+    #alert-type-select {
         width: 100%;
         padding: 10px;
         margin: 10px 0;
@@ -7759,6 +7902,18 @@ ${fraud.manager === managerName ? `
         appearance: none;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
+
+    #pendings-manager-input,
+#payout-manager-input,
+#deposits-manager-input {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ced4da;
+    border-radius: 5px;
+    background-color: #ffffff;
+    font-size: 16px;
+}
 
      #pendings-priority-select,
     #payout-priority-select {
@@ -7994,10 +8149,8 @@ ${fraud.manager === managerName ? `
                 <select id="pendings-priority-select" multiple required></select>
                 <label for="pendings-total-amount">Сума:</label>
                 <input type="text" id="pendings-total-amount">
-                <label for="pendings-manager-select" align="center">Відповідальний менеджер:</label>
-                <select id="pendings-manager-select" required align="center">
-                <option value="" disabled selected>Оберіть менеджера</option>
-                </select>
+                <label for="pendings-manager-input">Лист:</label>
+                <input type="text" id="pendings-manager-input" placeholder="Введіть назву листа">
             </div>
             <button id="pendings-update-btn">Оновити</button>
         </div>
@@ -8010,10 +8163,8 @@ ${fraud.manager === managerName ? `
                 <input type="text" id="payout-total-amount">
                 <label for="payout-auto-disable">Автоматичне відключення авто:</label>
                 <input type="checkbox" id="payout-auto-disable">
-                <label for="payout-manager-select" align="center">Відповідальний менеджер:</label>
-                <select id="payout-manager-select" required align="center">
-                <option value="" disabled selected>Оберіть менеджера</option>
-                </select>
+                <label for="payout-manager-input">Лист:</label>
+                <input type="text" id="payout-manager-input" placeholder="Введіть назву листа">
             </div>
             <button id="payout-update-btn">Оновити</button>
         </div>
@@ -8035,10 +8186,8 @@ ${fraud.manager === managerName ? `
             </div>
             <label for="inefficient-transaction-percent">Відсоток недоцільних транзакцій:</label>
             <input type="text" id="inefficient-transaction-percent" placeholder="Введіть відсоток (приклад): 10%" />
-             <label for="deposits-manager-select" align="center">Відповідальний менеджер:</label>
-             <select id="deposits-manager-select" required align="center">
-             <option value="" disabled selected>Оберіть менеджера</option>
-             </select>
+            <label for="deposits-manager-input">Лист:</label>
+            <input type="text" id="deposits-manager-input" placeholder="Введіть назву листа">
             <button id="update-deposits-btn">Оновити</button>
         </div>
 
@@ -8090,7 +8239,6 @@ ${fraud.manager === managerName ? `
             showSection(SETTINGS_SECTIONS[alertType]);
             const project = byId('project-select').value;
             if (project) {
-                await manager.loadManagers();
                 await manager.loadSettings(project);
             }
         });
@@ -10481,38 +10629,83 @@ ${fraud.manager === managerName ? `
     }
     //================= КІНЕЦЬ БЛОКУ СТАТИСТИКИ =================
 
-    //============== ДАШБОРД ПРОДУКТИВНОСТІ КОМАНДИ==================
+
+    //============== ДАШБОРД ПРОДУКТИВНОСТІ КОМАНДИ ==================
+    GM_addStyle(`
+    #dash-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; }
+    #dash-modal-content { display: flex; flex-direction: column; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 10001; width: 95%; max-width: 1400px; height: 90vh; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif; }
+    #dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 10px; }
+    #dash-grid-container { flex-grow: 1; overflow: auto; font-size: 12px; }
+    .dash-grid-row { display: grid; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .dash-day-header, .dash-manager-name, .dash-total-cell { padding: 8px 4px; font-weight: bold; text-align: center; }
+    .dash-day-header.clickable { cursor: pointer; transition: background 0.2s; }
+    .dash-day-header.clickable:hover { background: #f0f0f0; color: #3498db; }
+    .dash-manager-name { text-align: left; position: sticky; left: 0; background: white; z-index: 2; border-right: 1px solid #eee; padding-left: 10px; }
+    .dash-total-cell { background: #f9f9f9; border-right: 1px solid #eee; font-weight: 800; color: #2c3e50; }
+    .dash-day-cell { padding: 4px; display: flex; align-items: center; min-width: 35px; border-right: 1px solid #f9f9f9; justify-content: center; }
+    .dash-bar { height: 22px; border-radius: 3px; color: white; line-height: 22px; font-weight: bold; text-align: center; font-size: 10px; white-space: nowrap; cursor: pointer; transition: opacity 0.2s; }
+    .dash-bar:hover { opacity: 0.8; }
+    #dash-tooltip { display: none; position: fixed; background: #2c3e50; color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; z-index: 11000; pointer-events: none; transform: translateX(-50%); box-shadow: 0 4px 10px rgba(0,0,0,0.2); white-space: nowrap; }
+
+    .dash-btn {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s, transform 0.1s;
+        outline: none;
+    }
+    .dash-btn:hover { background-color: #2980b9; }
+    .dash-btn:active { transform: scale(0.98); }
+    .dash-nav-group { display: flex; align-items: center; gap: 15px; }
+
+    .shift-tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #f0f0f0; padding: 5px; border-radius: 8px; width: fit-content; }
+    .shift-tab { padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: all 0.2s; border: none; background: transparent; color: #7f8c8d; }
+    .shift-tab.active { background: white; color: #3498db; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    `);
+
     async function showTeamDashboardPopup() {
+        if (document.getElementById('dash-modal-content')) return;
+
         const tooltip = document.createElement('div');
         tooltip.id = 'dash-tooltip';
         document.body.appendChild(tooltip);
 
         const modal = document.createElement('div');
+        modal.id = 'dash-performance-wrapper';
         modal.innerHTML = `
         <div id="dash-modal-backdrop"></div>
         <div id="dash-modal-content">
             <div id="dash-header">
-                <button id="dash-prev-month"><</button>
-                <h2 id="dash-month-name"></h2>
-                <button id="dash-next-month">></button>
+                <div class="dash-nav-group">
+                    <button id="dash-prev-month" class="dash-btn">&lt;</button>
+                    <h2 id="dash-month-name" style="margin:0; color: #2c3e50;"></h2>
+                    <button id="dash-next-month" class="dash-btn">&gt;</button>
+                </div>
+                <button id="dash-close-main" class="dash-btn" style="background-color: #95a5a6;">Закрити</button>
             </div>
             <div id="dash-grid-container">Завантаження...</div>
         </div>
-    `;
+        `;
         document.body.appendChild(modal);
 
         const closeModal = () => { modal.remove(); tooltip.remove(); };
         modal.querySelector('#dash-modal-backdrop').onclick = closeModal;
+        modal.querySelector('#dash-close-main').onclick = closeModal;
 
         let currentDate = new Date();
         const gridContainer = modal.querySelector('#dash-grid-container');
         const monthNameEl = modal.querySelector('#dash-month-name');
 
         async function loadAndRender() {
-            gridContainer.innerHTML = 'Завантаження...';
+            gridContainer.innerHTML = '<div style="padding:20px; text-align:center; color: #7f8c8d;">Завантаження даних...</div>';
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth() + 1;
-            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' });
+            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' }).toUpperCase();
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/get_team_performance?year=${year}&month=${month}`, {
@@ -10528,52 +10721,88 @@ ${fraud.manager === managerName ? `
 
         function renderGrid(data, year, month) {
             gridContainer.innerHTML = '';
-            const performanceData = data.performance;
-            const goalsData = data.goals;
+
+            const { performance: performanceData, goals: goalsData, teams: teamsData } = data;
+
             if (!performanceData || Object.keys(performanceData).length === 0) {
-                gridContainer.textContent = 'За цей період немає даних.';
+                gridContainer.innerHTML = '<div style="padding:20px; text-align:center;">За цей період немає даних.</div>';
                 return;
             }
+
             const daysInMonth = new Date(year, month, 0).getDate();
-            const managers = Object.keys(performanceData).sort();
+            const gridStyle = `180px repeat(${daysInMonth}, minmax(35px, 1fr))`;
+
+            let managers = Object.keys(performanceData);
+
+            if (managerData.status === 'Manager') {
+                const myTeamName = managerData.team;
+
+                managers = managers.filter(name => {
+                    const itsHisTeam = teamsData && teamsData[name] === myTeamName;
+                    const isMe = name === managerData.name;
+                    return itsHisTeam || isMe;
+                });
+            }
+
+            managers.sort();
+
             const headerRow = document.createElement('div');
             headerRow.className = 'dash-grid-row';
+            headerRow.style.gridTemplateColumns = gridStyle;
             headerRow.appendChild(document.createElement('div'));
+
             for (let i = 1; i <= daysInMonth; i++) {
                 const dayHeader = document.createElement('div');
-                dayHeader.className = 'dash-day-header';
+                dayHeader.className = 'dash-day-header clickable';
                 dayHeader.textContent = i;
+                dayHeader.onclick = () => {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    showHourlyDetail(dateStr);
+                };
                 headerRow.appendChild(dayHeader);
             }
             gridContainer.appendChild(headerRow);
+
             managers.forEach(managerName => {
                 const managerRow = document.createElement('div');
                 managerRow.className = 'dash-grid-row';
+                managerRow.style.gridTemplateColumns = gridStyle;
+
                 const nameCell = document.createElement('div');
                 nameCell.className = 'dash-manager-name';
                 nameCell.textContent = managerName;
+
+                if (managerName === managerData.name) {
+                    nameCell.style.color = '#3498db';
+                    nameCell.style.fontWeight = 'bold';
+                }
+
                 managerRow.appendChild(nameCell);
+
                 const managerGoal = goalsData[managerName] || 80;
                 const standardGoal = managerGoal * 0.875;
+
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayCell = document.createElement('div');
                     dayCell.className = 'dash-day-cell';
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                    const dayData = performanceData[managerName] ? performanceData[managerName][dateStr] : null;
+                    const dayData = performanceData[managerName]?.[dateStr];
+
                     if (dayData && dayData.total > 0) {
                         const bar = document.createElement('div');
                         bar.className = 'dash-bar';
                         bar.textContent = dayData.total;
                         const percentage = (dayData.total / managerGoal) * 100;
                         bar.style.width = Math.min(percentage, 100) + '%';
+
                         if (dayData.total >= managerGoal) bar.style.backgroundColor = '#27ae60';
                         else if (dayData.total >= standardGoal) bar.style.backgroundColor = '#f39c12';
                         else bar.style.backgroundColor = '#e74c3c';
-                        let tooltipText = '';
-                        if (dayData.day > 0 && dayData.night > 0) tooltipText = `Денна: ${dayData.day}, Нічна: ${dayData.night}`;
-                        else if (dayData.day > 0) tooltipText = `Денна: ${dayData.day}`;
-                        else if (dayData.night > 0) tooltipText = `Нічна: ${dayData.night}`;
-                        bar.dataset.tooltip = tooltipText;
+
+                        const details = [];
+                        if (dayData.day > 0) details.push(`Денна: ${dayData.day}`);
+                        if (dayData.night > 0) details.push(`Нічна: ${dayData.night}`);
+                        bar.dataset.tooltip = details.join(', ');
                         dayCell.appendChild(bar);
                     }
                     managerRow.appendChild(dayCell);
@@ -10582,40 +10811,164 @@ ${fraud.manager === managerName ? `
             });
         }
 
+        async function showHourlyDetail(initialDateStr) {
+            if (document.getElementById('hourly-modal-wrapper')) return;
+
+            let currentDetailDate = new Date(initialDateStr + 'T12:00:00');
+            let currentShift = 'day';
+
+            const hourlyModal = document.createElement('div');
+            hourlyModal.id = 'hourly-modal-wrapper';
+            hourlyModal.innerHTML = `
+            <div id="dash-modal-backdrop" style="z-index: 10010;"></div>
+            <div id="dash-modal-content" style="z-index: 10011; width: 95%; height: auto; max-height: 85vh;">
+                <div id="dash-header">
+                    <div class="dash-nav-group">
+                        <button id="hourly-prev" class="dash-btn">&lt;</button>
+                        <h2 id="hourly-title" style="margin:0; color: #2c3e50;"></h2>
+                        <button id="hourly-next" class="dash-btn">&gt;</button>
+                    </div>
+                    <button id="close-hourly" class="dash-btn" style="background-color: #95a5a6;">Закрити</button>
+                </div>
+                <div class="shift-tabs">
+                    <button class="shift-tab active" data-shift="day">ДЕННА (09:00 - 21:00)</button>
+                    <button class="shift-tab" data-shift="night">НІЧНА (21:00 - 09:00)</button>
+                </div>
+                <div id="hourly-grid-container-inner" style="overflow: auto; margin-top: 15px;">Завантаження...</div>
+            </div>
+            `;
+            document.body.appendChild(hourlyModal);
+
+            const innerContainer = hourlyModal.querySelector('#hourly-grid-container-inner');
+            const titleEl = hourlyModal.querySelector('#hourly-title');
+            const tabs = hourlyModal.querySelectorAll('.shift-tab');
+
+            async function loadHourlyData() {
+                const year = currentDetailDate.getFullYear();
+                const month = String(currentDetailDate.getMonth() + 1).padStart(2, '0');
+                const day = String(currentDetailDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+
+                titleEl.textContent = `Статистика за ${dateStr}`;
+                innerContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: #7f8c8d;">Завантаження...</div>';
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/get_day_hourly_stats?date=${dateStr}&shift=${currentShift}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    renderHourlyShiftGrid(data, innerContainer);
+                } catch (e) {
+                    innerContainer.textContent = 'Помилка завантаження.';
+                }
+            }
+
+            tabs.forEach(tab => {
+                tab.onclick = () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentShift = tab.dataset.shift;
+                    loadHourlyData();
+                };
+            });
+
+            hourlyModal.querySelector('#hourly-prev').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() - 1); loadHourlyData(); };
+            hourlyModal.querySelector('#hourly-next').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() + 1); loadHourlyData(); };
+            hourlyModal.querySelector('#close-hourly').onclick = () => hourlyModal.remove();
+            hourlyModal.querySelector('#dash-modal-backdrop').onclick = () => hourlyModal.remove();
+
+            loadHourlyData();
+        }
+
+        function renderHourlyShiftGrid(data, container) {
+            container.innerHTML = '';
+            const { stats, hours, shift } = data;
+            let managers = Object.keys(stats);
+
+            if (managerData.status === 'Manager') {
+                managers = managers.filter(name => name === managerData.name);
+            }
+
+            managers.sort();
+
+            if (managers.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color: #e74c3c;">Доступ обмежено. Ви можете переглядати лише власну статистику.</div>';
+                return;
+            }
+            const gridStyle = `180px 70px repeat(12, minmax(45px, 1fr))`;
+
+            const header = document.createElement('div');
+            header.className = 'dash-grid-row';
+            header.style.gridTemplateColumns = gridStyle;
+            header.innerHTML = '<div></div><div class="dash-total-cell">Всього</div>';
+
+            hours.forEach(h => {
+                const hDiv = document.createElement('div');
+                hDiv.className = 'dash-day-header';
+                hDiv.textContent = h + ':00';
+                hDiv.style.color = shift === 'day' ? '#f39c12' : '#9b59b6';
+                header.appendChild(hDiv);
+            });
+            container.appendChild(header);
+
+            managers.forEach(name => {
+                const row = document.createElement('div');
+                row.className = 'dash-grid-row';
+                row.style.gridTemplateColumns = gridStyle;
+
+                const nameCell = document.createElement('div');
+                nameCell.className = 'dash-manager-name';
+                nameCell.textContent = name;
+                row.appendChild(nameCell);
+
+                let shiftTotal = 0;
+                hours.forEach(h => shiftTotal += (stats[name][h] || 0));
+
+                const totalCell = document.createElement('div');
+                totalCell.className = 'dash-total-cell';
+                totalCell.textContent = shiftTotal;
+                row.appendChild(totalCell);
+
+                hours.forEach(h => {
+                    const val = stats[name][h] || 0;
+                    const cell = document.createElement('div');
+                    cell.className = 'dash-day-cell';
+
+                    if (val > 0) {
+                        const bar = document.createElement('div');
+                        bar.className = 'dash-bar';
+                        bar.textContent = val;
+                        bar.style.width = '100%';
+                        const opacity = 0.3 + (Math.min(val, 10) / 10) * 0.7;
+                        const color = shift === 'day' ? '243, 156, 18' : '155, 89, 182';
+                        bar.style.backgroundColor = `rgba(${color}, ${opacity})`;
+                        cell.appendChild(bar);
+                    }
+                    row.appendChild(cell);
+                });
+                container.appendChild(row);
+            });
+        }
+
         modal.querySelector('#dash-prev-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() - 1); loadAndRender(); };
         modal.querySelector('#dash-next-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() + 1); loadAndRender(); };
 
-        gridContainer.addEventListener('mouseover', (e) => {
+        gridContainer.onmouseover = (e) => {
             const bar = e.target.closest('.dash-bar');
-            if (bar && bar.dataset.tooltip) {
+            if (bar?.dataset.tooltip) {
                 const rect = bar.getBoundingClientRect();
                 tooltip.textContent = bar.dataset.tooltip;
                 tooltip.style.display = 'block';
                 tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                tooltip.style.top = `${rect.bottom + 5}px`;
+                tooltip.style.top = `${rect.top - 30}px`;
             }
-        });
-        gridContainer.addEventListener('mouseout', (e) => {
-            const bar = e.target.closest('.dash-bar');
-            if (bar) { tooltip.style.display = 'none'; }
-        });
+        };
+        gridContainer.onmouseout = () => { tooltip.style.display = 'none'; };
 
         loadAndRender();
-
-        GM_addStyle(`
-        #dash-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; }
-        #dash-modal-content { display: flex; flex-direction: column; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 10001; width: 95%; max-width: 1400px; height: 90vh; }
-        #dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-        #dash-grid-container { flex-grow: 1; overflow: auto; font-size: 12px; }
-        .dash-grid-row { display: grid; grid-template-columns: 150px repeat(${new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()}, 1fr); border-bottom: 1px solid #f0f0f0; }
-        .dash-day-header, .dash-manager-name { padding: 8px 4px; font-weight: bold; text-align: center; }
-        .dash-manager-name { text-align: left; position: sticky; left: 0; background: white; z-index: 1; }
-        .dash-day-cell { padding: 4px; display: flex; align-items: center; min-width: 30px; }
-        .dash-bar { height: 20px; border-radius: 3px; color: white; line-height: 20px; font-weight: bold; text-align: center; font-size: 11px; white-space: nowrap; cursor: pointer; }
-        #dash-tooltip { display: none; position: fixed; background: #222; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 10002; pointer-events: none; transform: translateX(-50%); }
-    `);
     }
     //================= КІНЕЦЬ ДАШБОРДУ =================
+
 
     document.addEventListener('click', (event) => {
         const header = event.target.closest(`#players-documents_c6`);
@@ -10660,7 +11013,7 @@ ${fraud.manager === managerName ? `
         const isUser = await checkToken();
         const currentHost = window.location.hostname;
         if (isUser.success) {
-            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours};
+            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours, team:isUser.team};
             const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
             if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents')) {
                 setupManagerStats(API_BASE_URL, token);

@@ -10865,23 +10865,14 @@ ${fraud.manager === managerName ? `
         function renderHourlyShiftGrid(data, container) {
             container.innerHTML = '';
             const { stats, hours, shift, manager_ids } = data;
-            let managers = Object.keys(stats);
-
+            let managers = Object.keys(stats).sort();
             const isAdmin = managerData.status === 'Admin';
 
             if (managerData.status === 'Manager') {
                 managers = managers.filter(name => name === managerData.name);
             }
 
-            managers.sort();
-
-            if (managers.length === 0) {
-                container.innerHTML = '<div style="padding:20px; text-align:center; color: #e74c3c;">Доступ обмежено. Ви можете переглядати лише власну статистику.</div>';
-                return;
-            }
-
             const gridStyle = `180px 70px repeat(12, minmax(45px, 1fr))`;
-
             const header = document.createElement('div');
             header.className = 'dash-grid-row';
             header.style.gridTemplateColumns = gridStyle;
@@ -10904,15 +10895,10 @@ ${fraud.manager === managerName ? `
                 const nameCell = document.createElement('div');
                 nameCell.className = 'dash-manager-name';
                 nameCell.textContent = name;
-
-                if (name === managerData.name) {
-                    nameCell.style.color = '#3498db';
-                    nameCell.style.fontWeight = 'bold';
-                }
                 row.appendChild(nameCell);
 
                 let shiftTotal = 0;
-                hours.forEach(h => shiftTotal += (stats[name][h] || 0));
+                hours.forEach(h => { shiftTotal += (stats[name][h]?.count || 0); });
 
                 const totalCell = document.createElement('div');
                 totalCell.className = 'dash-total-cell';
@@ -10920,45 +10906,40 @@ ${fraud.manager === managerName ? `
                 row.appendChild(totalCell);
 
                 hours.forEach(h => {
-                    const val = stats[name][h] || 0;
+                    const hourData = stats[name][h] || { count: 0, first: null, last: null };
                     const cell = document.createElement('div');
                     cell.className = 'dash-day-cell';
 
-                    if (val > 0) {
+                    if (hourData.count > 0) {
                         const bar = document.createElement('div');
                         bar.className = 'dash-bar';
-                        bar.textContent = val;
+                        bar.textContent = hourData.count;
                         bar.style.width = '100%';
 
-                        const opacity = 0.3 + (Math.min(val, 10) / 10) * 0.7;
+                        const opacity = 0.3 + (Math.min(hourData.count, 10) / 10) * 0.7;
                         const color = shift === 'day' ? '243, 156, 18' : '155, 89, 182';
                         bar.style.backgroundColor = `rgba(${color}, ${opacity})`;
 
                         if (isAdmin) {
+                            bar.onmouseenter = (e) => {
+                                if (hourData.first && hourData.last) {
+                                    const rect = bar.getBoundingClientRect();
+                                    const tooltip = document.getElementById('dash-tooltip');
+                                    tooltip.innerHTML = `🕒 ${hourData.first} — ${hourData.last}`;
+                                    tooltip.style.display = 'block';
+                                    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                                    tooltip.style.top = `${rect.top - 35}px`;
+                                }
+                            };
+                            bar.onmouseleave = () => { document.getElementById('dash-tooltip').style.display = 'none'; };
                             bar.style.cursor = 'pointer';
-                            bar.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
-                            bar.title = `Переглянути деталі ${name} за ${h}:00`;
-
                             bar.onclick = () => {
                                 const titleEl = document.getElementById('hourly-title');
                                 const dateStr = titleEl ? titleEl.textContent.replace('Статистика за ', '').trim() : '';
-
                                 const mId = manager_ids ? manager_ids[name] : null;
-
-                                if (mId && dateStr) {
-                                    fetchStatistics(mId, dateStr, h);
-                                } else {
-                                    console.error("Не вдалося знайти ID менеджера або дату");
-                                    Swal.fire('Помилка', 'Дані для запиту неповні', 'error');
-                                }
+                                if (mId && dateStr) fetchStatistics(mId, dateStr, h);
                             };
-
-                            bar.onmouseenter = () => { bar.style.filter = 'brightness(0.9)'; };
-                            bar.onmouseleave = () => { bar.style.filter = 'none'; };
-                        } else {
-                            bar.style.cursor = 'default';
                         }
-
                         cell.appendChild(bar);
                     }
                     row.appendChild(cell);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.6
+// @version      7.0.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -64,6 +64,8 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
+    const currentVersion = "7.0.7";
+
     let popupBox;
     const currentUrl = window.location.href;
     const initialsKey = 'userInitials';
@@ -95,7 +97,31 @@
         ['EUR', '€'],
         ['PLN', 'zł'],
     ]);
-    const currentVersion = "7.0.6";
+
+    const CURRENCY_CONFIG = {
+        'UAH': { minBalance: 1000, minPending: 100, symbol: '₴' },
+        'PLN': { minBalance: 500, minPending: 100, symbol: 'zł' },
+        'CAD': { minBalance: 100, minPending: 100, symbol: '$' },
+        'EUR': { minBalance: 100, minPending: 100, symbol: '€' },
+        'DEFAULT': { minBalance: 100, minPending: 100, symbol: '' }
+    };
+
+    const TRANSLATIONS = {
+        'українська': {
+            balance: 'На балансі',
+            pending: 'На виплаті',
+            safe: 'В сейфі',
+            checked: 'перевірено антифрод командою'
+        },
+        'російська': {
+            balance: 'На балансе',
+            pending: 'На выплате',
+            safe: 'В сейфе',
+            checked: 'проверен антифрод командой'
+        }
+    };
+
+    const ALERT_THRESHOLD = 1000000;
 
     const TEAMS = ['', 'Betting', 'Product', 'Financial'];
 
@@ -488,49 +514,36 @@
                 const date = getCurrentDate();
                 const time = getCurrentTime();
                 const initials = GM_getValue(initialsKey);
-                const currentLanguage = GM_getValue(languageKey, 'російська');
-                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
-                const formattedBalance = formatAmount(Balance);
-                const formattedTotalPending = formatAmount(totalPending);
+                const lang = GM_getValue(languageKey, 'російська');
                 const currency = getCurrency();
-                let currencySymbol = currencySymbols.get(currency) || '';
-
                 const safeBalance = getInnerBalanceValue();
-                const formattedSafeBalance = formatAmount(safeBalance);
 
-                let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+                const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
+                const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
+                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
 
-                if (currentLanguage === 'українська') {
-                    if (Balance > 1000) {
-                        const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На балансі:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
-                    }
+                const smartFormat = (val) => {
+                    const num = parseFloat(val);
 
-                    if (totalPending > 1) {
-                        const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На виплаті:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
-                    }
+                    if (isNaN(num)) return val;
 
-                    if (safeBalance >= 4200) {
-                        const safeStyle = safeBalance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>В сейфі:</b> <b style="${safeStyle}">${formattedSafeBalance}${currencySymbol}</b> | `;
-                    }
-                } else {
-                    if (Balance > 1000) {
-                        const balanceStyle = Balance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На балансе:</b> <b style="${balanceStyle}">${formattedBalance}${currencySymbol}</b> | `;
-                    }
+                    return Number.isInteger(num)
+                        ? num.toString()
+                    : num.toFixed(2);
+                };
 
-                    if (totalPending > 1000) {
-                        const pendingStyle = totalPending > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>На выплате:</b> <b style="${pendingStyle}">${formattedTotalPending}${currencySymbol} </b>| `;
-                    }
+                const createEntry = (label, value, minLimit) => {
+                    if (value < minLimit) return '';
+                    const style = value > ALERT_THRESHOLD ? 'style="color: red;"' : '';
+                    return `<b>${label}:</b> <b ${style}>${smartFormat(value)}${config.symbol}</b> | `;
+                };
 
-                    if (safeBalance >= 4200) {
-                        const safeStyle = safeBalance > 1000000 ? 'color: red;' : '';
-                        textToInsert += `<b>В сейфе:</b> <b style="${safeStyle}">${formattedSafeBalance}${currencySymbol}</b> | `;
-                    }
-                }
+                let textToInsert = `${date} в ${time} ${t.checked}/${initials}<br>` +
+                    `<b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+
+                textToInsert += createEntry(t.balance, Balance, config.minBalance);
+                textToInsert += createEntry(t.pending, totalPending, config.minPending);
+                textToInsert += createEntry(t.safe, safeBalance, 4200);
 
                 insertTextIntoField(textToInsert);
             };
@@ -548,8 +561,6 @@
             formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
         }
     }
-
-
 
     function addFraudPageButton(isInFraudList, fraudId = null) {
         const container = document.querySelector('.form-actions');
@@ -10935,9 +10946,17 @@ ${fraud.manager === managerName ? `
                             bar.style.cursor = 'pointer';
                             bar.onclick = () => {
                                 const titleEl = document.getElementById('hourly-title');
-                                const dateStr = titleEl ? titleEl.textContent.replace('Статистика за ', '').trim() : '';
+                                let dateStr = titleEl ? titleEl.textContent.replace('Статистика за ', '').trim() : '';
                                 const mId = manager_ids ? manager_ids[name] : null;
-                                if (mId && dateStr) fetchStatistics(mId, dateStr, h);
+
+                                if (mId && dateStr) {
+                                    if (shift === 'night' && parseInt(h) < 9) {
+                                        let d = new Date(dateStr + 'T12:00:00');
+                                        d.setDate(d.getDate() + 1);
+                                        dateStr = d.toISOString().split('T')[0];
+                                    }
+                                    fetchStatistics(mId, dateStr, h);
+                                }
                             };
                         }
                         cell.appendChild(bar);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.7
+// @version      7.0.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.0.7";
+    const currentVersion = "7.0.8";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -517,25 +517,19 @@
                 const lang = GM_getValue(languageKey, 'російська');
                 const currency = getCurrency();
                 const safeBalance = getInnerBalanceValue();
+                const showAmount = GM_getValue(amountDisplayKey, true);
 
                 const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
                 const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
                 const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
 
-                const smartFormat = (val) => {
-                    const num = parseFloat(val);
-
-                    if (isNaN(num)) return val;
-
-                    return Number.isInteger(num)
-                        ? num.toString()
-                    : num.toFixed(2);
-                };
-
                 const createEntry = (label, value, minLimit) => {
                     if (value < minLimit) return '';
                     const style = value > ALERT_THRESHOLD ? 'style="color: red;"' : '';
-                    return `<b>${label}:</b> <b ${style}>${smartFormat(value)}${config.symbol}</b> | `;
+
+                    const displayValue = formatCurrency(value, showAmount, config.symbol);
+
+                    return `<b>${label}:</b> <b ${style}>${displayValue}</b> | `;
                 };
 
                 let textToInsert = `${date} в ${time} ${t.checked}/${initials}<br>` +
@@ -3796,10 +3790,15 @@ ${fraud.manager === managerName ? `
             formattedBalance = absoluteBalance / 1000;
             formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
         } else {
-            formattedBalance = absoluteBalance.toFixed(2);
+            formattedBalance = smartRound(absoluteBalance);
         }
 
         return isNegative ? `-${formattedBalance}` : formattedBalance;
+    }
+
+    function smartRound(num) {
+        const val = Number(num);
+        return Number.isInteger(val) ? val.toString() : val.toFixed(2);
     }
 
     function handleShortcut(event) {

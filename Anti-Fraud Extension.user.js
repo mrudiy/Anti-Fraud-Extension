@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.8
+// @version      7.0.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.0.8";
+    const currentVersion = "7.0.9";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -3740,7 +3740,7 @@ ${fraud.manager === managerName ? `
     function getPlayerID() {
         const rows = document.querySelectorAll('tr');
         for (const row of rows) {
-            if (row.textContent.includes('Номер игрока') || row.textContent.includes('Player number')) {
+            if (row.textContent.includes('Номер игрока') || row.textContent.includes('Player number') || row.textContent.includes('Номер гравця')) {
                 const span = row.querySelector('td span');
                 if (span) {
                     return span.textContent.trim();
@@ -4738,7 +4738,21 @@ ${fraud.manager === managerName ? `
             onload: response => {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
-                const playerId = getValueByLabel(tempDiv, 'Номер игрока');
+                const playerLabels = ['Номер игрока', 'Player number', 'Номер гравця'];
+                let playerId = null;
+
+                for (const label of playerLabels) {
+                    const foundValue = getValueByLabel(tempDiv, label);
+                    if (foundValue && parseFloat(foundValue) !== 0) {
+                        playerId = foundValue;
+                        break;
+                    }
+                }
+
+                if (!playerId) {
+                    console.warn(`Не удалось найти ID игрока по меткам ${playerLabels.join(', ')} для URL: ${url}`);
+                }
+
                 let status = determineUserStatus(tempDiv);
 
                 if (fieldType === 'inn' && playerId) {

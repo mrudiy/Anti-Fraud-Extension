@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.8
+// @version      7.1.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.8";
+    const currentVersion = "7.1.9";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -7686,7 +7686,8 @@ ${fraud.manager === managerName ? `
             'Недоцільні транзакції',
             'Картковий фрод',
             'Фін претензія',
-            'Cascad'
+            'Cascad',
+            'Схемщик/Ставки на спорт⚽',
         ];
 
         return Swal.fire({
@@ -7742,7 +7743,7 @@ ${fraud.manager === managerName ? `
                 date: null,
                 name,
                 email,
-                department: 'Anti Fraud',
+                department: managerData.team === 'Betting' ? 'AF Betting' : 'Anti Fraud',
                 reason
             };
 
@@ -8755,6 +8756,7 @@ ${fraud.manager === managerName ? `
                 <option value="Managers">Managers</option>
                 <option value="Cascad">Cascad</option>
                 <option value="Anti Fraud">Anti Fraud</option>
+                <option value="AF Betting">AF Betting</option>
             </select>
             <label for="reason-select">Вкажіть причину</label>
             <select id="reason-select" class="swal2-select">
@@ -8769,7 +8771,8 @@ ${fraud.manager === managerName ? `
                     'Недоцільні транзакції',
                     'Картковий фрод',
                     'Фін претензія',
-                    'Cascad'
+                    'Cascad',
+                    'Схемщик/Ставки на спорт⚽',
                 ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
             </select>
         `,
@@ -11298,13 +11301,13 @@ ${fraud.manager === managerName ? `
             if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountWildWinz();
             }
-            else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=')) {
+            else if (currentUrl.includes('PaymentsItemsInForm%5Bsearch_login%5D=')) {
                 fetchAndRenderMiniStats();
             }
             else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();
             }
-            else if (currentHost.endsWith('.ua') && currentUrl.includes('paymentsItemsOut/index')) {
+            else if (currentHost.endsWith('.ua') && (currentUrl.includes('PaymentsItemsOut') || currentUrl.includes('paymentsItemsOut'))) {
                 calculatePendingAmount();
                 setPageSize1k();
                 checkForUpdates();

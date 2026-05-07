@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Anti-Fraud Extension Fork
+// @name         Anti-Fraud Extension /Fork
 // @namespace    http://tampermonkey.net/
-// @version      7.1.9
-// @description  Anti-Fraud Extension Fork
+// @version      7.1.9.1
+// @description  Anti-Fraud Extension
 // @author       Maksym Rudyi /fork Eduard
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
@@ -7892,6 +7892,7 @@ ${fraud.manager === managerName ? `
     }
 
     async function checkForUpdates() {
+        return; // Fork: перевірка відключена, оновлення через @updateURL Tampermonkey
         try {
             const response = await fetch(`${API_BASE_URL}/api/version`);
             const data = await response.json();

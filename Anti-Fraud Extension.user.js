@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.9
+// @version      7.2.0
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -54,6 +54,7 @@
 // @connect      admin.dexyplay.com
 // @connect      admin.spintime.app
 // @connect      api.easypay.ua
+// @connect      cabinet.easypay.ua
 // @connect      ip-api.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
@@ -68,7 +69,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.9";
+    const currentVersion = "7.2.0";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -480,99 +481,134 @@
     }
 
     function addExcludeButton() {
-        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+        const formatableTextDiv =
+              document.getElementById('formatable-text-antifraud_manager') ||
+              document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+        if (!formatableTextDiv) {
+            return;
+        }
 
-        if (formatableTextDiv) {
-            const existingButton = document.getElementById('exclude-button');
-            if (existingButton) {
-                existingButton.remove();
-            }
+        const container = formatableTextDiv.closest('td') || formatableTextDiv.parentNode;
 
-            const excludeButton = document.createElement('button');
-            excludeButton.id = 'exclude-button';
-            excludeButton.type = 'button';
-            excludeButton.innerHTML = 'Виключити з моніторингу';
-            excludeButton.title = 'Виключити з моніторингу';
-            excludeButton.style.marginLeft = '5px';
+        const existingButton = container.querySelector('#exclude-button');
+        if (existingButton) {
+            existingButton.remove();
+        }
 
-            excludeButton.onclick = () => {
-                const date = getCurrentDate();
-                const time = getCurrentTime();
-                const initials = GM_getValue(initialsKey);
-                let textToInsert = `${date} в ${time} виключений з моніторингу/${initials}<br>`;
+        const excludeButton = document.createElement('button');
+        excludeButton.id = 'exclude-button';
+        excludeButton.type = 'button';
+        excludeButton.innerHTML = 'Виключити з моніторингу';
+        excludeButton.title = 'Виключити з моніторингу';
+        excludeButton.style.marginLeft = '5px';
+        excludeButton.onclick = () => {
+            const date = getCurrentDate();
+            const time = getCurrentTime();
+            const initials = GM_getValue(initialsKey);
+            let textToInsert = `${date} в ${time} виключений з моніторингу/${initials}<br>`;
+            insertTextIntoField(textToInsert);
+        };
 
-                insertTextIntoField(textToInsert);
-            };
+        const boldButton = container.querySelector('button[onclick="makeBold()"]');
+        const controlsRow = boldButton ? boldButton.parentNode : null;
 
-            const boldButton = formatableTextDiv.querySelector('button[onclick="makeBold()"]');
-            if (boldButton) {
-                boldButton.insertAdjacentElement('afterend', excludeButton);
+        if (controlsRow) {
+            controlsRow.appendChild(excludeButton); // в самый конец ряда
+        } else if (formatableTextDiv.id === 'formatable-text-antifraud_manager') {
+            const localBold = formatableTextDiv.querySelector('button[onclick="makeBold()"]');
+            if (localBold) {
+                localBold.insertAdjacentElement('afterend', excludeButton);
             }
         }
     }
 
-
     function addCheckButton(TotalPA, Balance, totalPending) {
-        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+        const formatableTextDiv =
+              document.getElementById('formatable-text-antifraud_manager') ||
+              document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+        if (!formatableTextDiv) {
+            return;
+        }
 
-        if (formatableTextDiv) {
-            const existingButton = document.getElementById('check-button');
-            if (existingButton) {
-                existingButton.remove();
-            }
+        const container = formatableTextDiv.closest('td') || formatableTextDiv.parentNode;
 
-            const existingGreenButton = document.getElementById('green-button');
-            if (existingGreenButton) {
-                existingGreenButton.remove();
-            }
+        const existingButton = container.querySelector('#check-button');
+        if (existingButton) {
+            existingButton.remove();
+        }
+        const existingGreenButton = container.querySelector('#green-button');
+        if (existingGreenButton) {
+            existingGreenButton.remove();
+        }
+        const existingWrapper = container.querySelector('#antifraud-extra-buttons');
+        if (existingWrapper) {
+            existingWrapper.remove();
+        }
 
-            const checkButton = document.createElement('button');
-            checkButton.id = 'check-button';
-            checkButton.type = 'button';
-            checkButton.innerText = 'Коментар';
-            checkButton.onclick = () => {
-                const date = getCurrentDate();
-                const time = getCurrentTime();
-                const initials = GM_getValue(initialsKey);
-                const lang = GM_getValue(languageKey, 'російська');
-                const currency = getCurrency();
-                const safeBalance = getInnerBalanceValue();
-                const showAmount = GM_getValue(amountDisplayKey, true);
-
-                const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
-                const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
-                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
-
-                const createEntry = (label, value, minLimit) => {
-                    if (value < minLimit) return '';
-                    const style = value > ALERT_THRESHOLD ? 'style="color: red;"' : '';
-
-                    const displayValue = formatCurrency(value, showAmount, config.symbol);
-
-                    return `<b>${label}:</b> <b ${style}>${displayValue}</b> | `;
-                };
-
-                let textToInsert = `${date} в ${time} ${t.checked}/${initials}<br>` +
-                    `<b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
-
-                textToInsert += createEntry(t.balance, Balance, config.minBalance);
-                textToInsert += createEntry(t.pending, totalPending, config.minPending);
-                textToInsert += createEntry(t.safe, safeBalance, 4200);
-
-                insertTextIntoField(textToInsert);
+        const checkButton = document.createElement('button');
+        checkButton.id = 'check-button';
+        checkButton.type = 'button';
+        checkButton.innerText = 'Коментар';
+        checkButton.onclick = () => {
+            const date = getCurrentDate();
+            const time = getCurrentTime();
+            const initials = GM_getValue(initialsKey);
+            const lang = GM_getValue(languageKey, 'російська');
+            const currency = getCurrency();
+            const safeBalance = getInnerBalanceValue();
+            const showAmount = GM_getValue(amountDisplayKey, true);
+            const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
+            const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
+            const colorPA =
+                  TotalPA < 0.75
+            ? 'green'
+            : (TotalPA < 1 ? 'orange' : 'red');
+            const createEntry = (label, value, minLimit) => {
+                if (value < minLimit) {
+                    return '';
+                }
+                const style = value > ALERT_THRESHOLD
+                ? 'style="color:red;"'
+                : '';
+                const displayValue = formatCurrency(
+                    value,
+                    showAmount,
+                    config.symbol
+                );
+                return `<b>${label}:</b> <b ${style}>${displayValue}</b> | `;
             };
+            let textToInsert =
+                `${date} в ${time} ${t.checked}/${initials}<br>` +
+                `<b>РayOut: <span style="color:${colorPA}">${TotalPA}</span></b> | `;
+            textToInsert += createEntry(t.balance, Balance, config.minBalance);
+            textToInsert += createEntry(t.pending, totalPending, config.minPending);
+            textToInsert += createEntry(t.safe, safeBalance, 4200);
+            insertTextIntoField(textToInsert);
+        };
 
-            const greenButton = document.createElement('button');
-            greenButton.id = 'green-button';
-            greenButton.type = 'button';
-            greenButton.innerText = 'Green';
-            greenButton.style.marginLeft = '5px';
-            greenButton.onclick = () => {
-                document.execCommand('foreColor', false, 'green');
-            };
+        const greenButton = document.createElement('button');
+        greenButton.id = 'green-button';
+        greenButton.type = 'button';
+        greenButton.innerText = 'Green';
+        greenButton.onclick = () => {
+            document.execCommand('foreColor', false, 'green');
+        };
 
-            formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
-            formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
+        const redButton = container.querySelector('button[onclick*="makeRed"]');
+        const controlsRow = redButton ? redButton.parentNode : null;
+
+        if (controlsRow) {
+            controlsRow.insertBefore(greenButton, controlsRow.firstChild);
+            controlsRow.insertBefore(checkButton, controlsRow.firstChild);
+        } else {
+            const buttonsWrapper = document.createElement('div');
+            buttonsWrapper.id = 'antifraud-extra-buttons';
+            buttonsWrapper.style.marginBottom = '4px';
+            buttonsWrapper.style.display = 'flex';
+            buttonsWrapper.style.gap = '4px';
+            buttonsWrapper.appendChild(checkButton);
+            buttonsWrapper.appendChild(greenButton);
+            formatableTextDiv.parentNode.insertBefore(buttonsWrapper, formatableTextDiv);
         }
     }
 
@@ -735,6 +771,15 @@
     }
 
     function getDateFromField() {
+        const newList = document.querySelector('[data-antifraud-list] [data-comment-edit]');
+        if (newList) {
+            const content = newList.innerText;
+            const firstLine = content.split('\n')[0];
+            const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
+            const dateMatch = firstLine.match(dateRegex);
+            return dateMatch ? dateMatch[0] : null;
+        }
+
         const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
         const firstLine = content.split('\n')[0];
         const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
@@ -3808,18 +3853,30 @@ ${fraud.manager === managerName ? `
     }
 
     function insertTextIntoField(text) {
-        const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
-        if (field) {
+        const newField = document.querySelector(
+            'div[contenteditable="true"][id^="antifraud-input-"]'
+        );
+        if (newField) {
+            newField.focus();
+            newField.innerHTML = text + '<br>' + newField.innerHTML;
+            newField.dispatchEvent(
+                new Event('input', { bubbles: true })
+            );
+            return;
+        }
+        const oldField = document.querySelector(
+            '#gateway-method-description-visible-antifraud_manager'
+        );
+        if (oldField) {
             const pattern = /.*?(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2})?.*?Автовиплати відключено антифрод командою.*?(\d{2}:\d{2})?.*?(?=<br>|<\/[^>]+>|$)/gi;
-            field.innerHTML = field.innerHTML.replace(pattern, '').trim();
-            field.focus();
-            field.innerHTML = text + '<br>' + field.innerHTML;
-
-            const event = new Event('input', { bubbles: true });
-            field.dispatchEvent(event);
+            oldField.innerHTML = oldField.innerHTML.replace(pattern, '').trim();
+            oldField.focus();
+            oldField.innerHTML = text + '<br>' + oldField.innerHTML;
+            oldField.dispatchEvent(
+                new Event('input', { bubbles: true })
+            );
         }
     }
-
     let isProfitButtonClicked = false;
 
     function formatAmount(balance) {
@@ -4531,8 +4588,8 @@ ${fraud.manager === managerName ? `
         const language = GM_getValue(languageKey, 'російська');
         const colorPA = getColor(TotalPA);
         const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
-        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
         insertTextIntoField(textToInsert);
     }
 
@@ -4544,8 +4601,8 @@ ${fraud.manager === managerName ? `
         const colorPA = getColor(TotalPA)
 
         const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
-        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
         insertTextIntoField(textToInsert);
     }
 
@@ -5176,54 +5233,50 @@ ${fraud.manager === managerName ? `
     ];
 
     function insertTextToComment(textToInsert, shouldUpdate) {
+        const newField = document.querySelector(
+            'div[contenteditable="true"][id^="antifraud-input-"]'
+        );
+        if (newField) {
+            insertTextToCommentNew(textToInsert, shouldUpdate, newField);
+            return;
+        }
+
         const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
         const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
-
         if (!gatewayElement) {
             console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
             return;
         }
-
-        const currentLanguage = GM_getValue(languageKey, 'російська');
         const fieldDate = getDateFromField();
         const today = getCurrentDate();
-
         if (fieldDate === today) {
             const lines = gatewayElement.innerHTML.trim().split('<br>');
             if (lines.length > 1) {
                 let secondLine = lines[1];
                 let lastPipeIndex = secondLine.lastIndexOf('|');
                 let foundValidIndex = false;
-
                 while (lastPipeIndex !== -1) {
                     const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
                     const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-
                     const beforeMatch = beforePipe.match(/\d{4}$/);
                     const afterMatch = afterPipe.match(/^\d{2}/);
-
                     if (!(beforeMatch && afterMatch)) {
                         const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
                         const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
                         const updatedSecondLine = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
                         lines[1] = updatedSecondLine;
-
                         gatewayElement.innerHTML = lines.join('<br>');
                         gatewayElement.dispatchEvent(new Event('input'));
-
                         if (shouldUpdate) {
                             if (doneButton) {
                                 doneButton.click();
                             }
                         }
-
                         foundValidIndex = true;
                         break;
                     }
-
                     lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
                 }
-
                 if (!foundValidIndex) {
                     console.warn('Valid "|" not found in the second line.');
                 }
@@ -5234,7 +5287,6 @@ ${fraud.manager === managerName ? `
             const checkButton = document.getElementById('check-button');
             if (checkButton) {
                 checkButton.click();
-
                 const lines = gatewayElement.innerHTML.trim().split('<br>');
                 if (lines.length > 1) {
                     const secondLine = lines[1];
@@ -5260,6 +5312,55 @@ ${fraud.manager === managerName ? `
             } else {
                 console.warn('Button with id "check-button" not found.');
             }
+        }
+    }
+
+    function insertTextToCommentNew(textToInsert, shouldUpdate, newField) {
+        const addButton = document.querySelector('[data-antifraud-add]');
+
+        let lines = newField.innerHTML.trim().split('<br>');
+
+        if (lines.length <= 1) {
+            const checkButton = document.getElementById('check-button');
+            if (!checkButton) {
+                console.warn('Button with id "check-button" not found.');
+                return;
+            }
+            checkButton.click();
+            lines = newField.innerHTML.trim().split('<br>');
+            if (lines.length <= 1) {
+                console.warn('Not enough lines to process the second line.');
+                return;
+            }
+        }
+
+        let secondLine = lines[1];
+        let lastPipeIndex = secondLine.lastIndexOf('|');
+        let foundValidIndex = false;
+
+        while (lastPipeIndex !== -1) {
+            const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
+            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+            const beforeMatch = beforePipe.match(/\d{4}$/);
+            const afterMatch = afterPipe.match(/^\d{2}/);
+            if (!(beforeMatch && afterMatch)) {
+                const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                const updatedSecondLine = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
+                lines[1] = updatedSecondLine;
+                newField.innerHTML = lines.join('<br>');
+                newField.dispatchEvent(new Event('input', { bubbles: true }));
+                if (shouldUpdate && addButton) {
+                    addButton.click();
+                }
+                foundValidIndex = true;
+                break;
+            }
+            lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+        }
+
+        if (!foundValidIndex) {
+            console.warn('Valid "|" not found in the second line.');
         }
     }
 
@@ -5379,7 +5480,7 @@ ${fraud.manager === managerName ? `
 
                 if (totalPending > 1 || cleanBalance > 1 || safeBalance > 1) {
                     const prognosePaDiv = document.createElement('div');
-                    const paDataText = `<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>`;
+                    const paDataText = `<b>Prognose PayOut: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>`;
 
                     applyStyles(prognosePaDiv, { fontSize: '14px', color: getColor(prognosePA / 100) });
                     prognosePaDiv.innerHTML = `(${prognosePA.toFixed(2)}%)`;
@@ -6688,22 +6789,27 @@ ${fraud.manager === managerName ? `
     }
 
     function buttonToSave() {
+        const newButton = document.querySelector('[data-antifraud-add]');
+        const newField = document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+
+        if (newButton && newField) {
+            buttonToSaveNew(newButton, newField);
+            return;
+        }
+
         const button = document.querySelector('.btn-update-comment-antifraud_manager');
         const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
-
         const initials = GM_getValue(initialsKey, '');
         const currentDate = getCurrentDate();
         const playerID = getPlayerID();
         const project = getProject();
         const url = window.location.href;
-
         if (button) {
             button.addEventListener('click', () => {
                 const lines = textarea.value.split('<br>');
                 const firstLine = lines[0];
                 const secondLine = lines[1];
                 const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
-
                 if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
                     const dataToInsert = {
                         date: currentDate,
@@ -6713,14 +6819,11 @@ ${fraud.manager === managerName ? `
                         initials: initials,
                         comment: textarea.value.replace(/\r?\n/g, ""),
                     };
-
                     if (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) {
                         dataToInsert.autopayment = 1;
                     } else {
                         dataToInsert.autopayment = 0;
                     }
-
-
                     console.log(dataToInsert)
                     sendDataToServer(dataToInsert, token)
                         .then(response => {
@@ -6736,6 +6839,48 @@ ${fraud.manager === managerName ? `
         } else {
             console.error("Button not found.");
         }
+    }
+
+    function buttonToSaveNew(button, field) {
+        const initials = GM_getValue(initialsKey, '');
+        const currentDate = getCurrentDate();
+        const playerID = getPlayerID();
+        const project = getProject();
+        const url = window.location.href;
+
+        button.addEventListener('click', () => {
+            const content = field.innerHTML;
+            const lines = content.split('<br>');
+            const firstLine = lines[0];
+            const secondLine = lines[1];
+            const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
+
+            if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
+                const dataToInsert = {
+                    date: currentDate,
+                    url: url,
+                    project: project,
+                    playerID: playerID,
+                    initials: initials,
+                    comment: content.replace(/\r?\n/g, ""),
+                };
+                if (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) {
+                    dataToInsert.autopayment = 1;
+                } else {
+                    dataToInsert.autopayment = 0;
+                }
+                console.log(dataToInsert)
+                sendDataToServer(dataToInsert, token)
+                    .then(response => {
+                    console.log('Data sent successfully:', response);
+                })
+                    .catch(err => {
+                    console.error('Error sending data:', err);
+                });
+            } else {
+                console.log("The first line of the comment does not contain today's date or correct initials.");
+            }
+        });
     }
 
     async function sendDataToServer(data, accessToken) {
@@ -7765,14 +7910,39 @@ ${fraud.manager === managerName ? `
         }
     }
 
+    async function waitForFieldToClear(field, timeout = 5000, interval = 100) {
+        const start = Date.now();
+        while (field.innerHTML.trim() !== '' && (Date.now() - start) < timeout) {
+            await new Promise(resolve => setTimeout(resolve, interval));
+        }
+        return field.innerHTML.trim() === '';
+    }
+
     async function updateCommentField(currentDate, initials, updateButton) {
         const message = `<strong style="color: purple;">${currentDate} | Відправляємо на верифікацію по схемі юриста | ${initials} </strong><br><br>`;
+
+        const newField = document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+        if (newField) {
+            newField.innerHTML = message + newField.innerHTML;
+            newField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+            const addButton = document.querySelector('[data-antifraud-add]');
+            if (addButton) {
+                addButton.click();
+                const saved = await waitForFieldToClear(newField);
+                if (!saved) {
+                    console.warn('Комментарий, возможно, не успел сохраниться до сабмита формы.');
+                }
+            }
+
+            updateButton.form.submit();
+            return;
+        }
+
         const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
         if (!commentField) throw new Error('Поле комментария не найдено');
-
         commentField.innerHTML = message + commentField.innerHTML;
         commentField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
         const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
         if (updateCommentButton) {
             updateCommentButton.click();
@@ -10240,35 +10410,67 @@ ${fraud.manager === managerName ? `
         const getPageId = () => GM_getValue('easyPayPageId', null);
         const setPageId = id => GM_setValue('easyPayPageId', id);
 
+        const getDate = () => new Date()
+        .toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        .replace(/\./g, '');
+
         const fetchPageId = callback => {
-            console.log('Fetching new PageId...');
+            console.log('[PAGE_ID] Fetching new PageId');
+
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: 'https://api.easypay.ua/api/system/createPage',
-                headers: { 'PartnerKey': 'easypay-v2', 'locale': 'ua', 'AppId': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd', 'content-type': 'application/json' },
+                headers: {
+                    'PartnerKey': 'easypay-v2',
+                    'locale': 'ua',
+                    'AppId': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd',
+                    'content-type': 'application/json'
+                },
                 data: '{}',
                 onload: r => {
-                    const data = JSON.parse(r.responseText);
-                    console.log('PageId response:', data);
-                    callback(null, setPageId(data.pageId) || getPageId());
+                    console.log('[PAGE_ID] Status:', r.status);
+                    console.log('[PAGE_ID] Raw response:', r.responseText);
+
+                    try {
+                        const data = JSON.parse(r.responseText);
+
+                        if (!data.pageId) {
+                            callback('PageId error');
+                            return;
+                        }
+
+                        setPageId(data.pageId);
+                        callback(null, data.pageId);
+                    } catch (e) {
+                        console.error('[PAGE_ID] Parse error:', e);
+                        callback('PageId error');
+                    }
                 },
-                onerror: () => {
-                    console.error('PageId fetch failed');
+                onerror: e => {
+                    console.error('[PAGE_ID] Request failed:', e);
                     callback('PageId error');
                 }
             });
         };
 
-        const checkCard = (card, output) => {
+        const checkCardByInfoCheck = (card, output) => {
             const pageId = getPageId();
-            console.log('Checking card:', card, 'PageId:', pageId);
+
+            console.log('[INFOCHECK] Current pageId:', pageId);
 
             if (!pageId) {
-                console.log('No PageId, fetching new one...');
-                return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
+                console.log('[INFOCHECK] No pageId, fetching new one');
+
+                return fetchPageId((err) => {
+                    if (err) {
+                        output.textContent = err;
+                        return;
+                    }
+
+                    checkCardByInfoCheck(card, output);
+                });
             }
 
-            console.log('Sending card check request...');
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: 'https://api.easypay.ua/api/payment/infoCheck',
@@ -10281,37 +10483,109 @@ ${fraud.manager === managerName ? `
                 },
                 data: JSON.stringify({
                     serviceKey: 'CARDHOLDER-INFO',
-                    data: { operation: 'GetCardholderInfo', data: { Pan: card, PanGuid: null, IsFullName: false } }
+                    data: {
+                        operation: 'GetCardholderInfo',
+                        data: {
+                            Pan: card,
+                            PanGuid: null,
+                            IsFullName: false
+                        }
+                    }
                 }),
                 onload: r => {
-                    const data = JSON.parse(r.responseText);
-                    console.log('Card check response:', data);
+                    console.log('[INFOCHECK] Status:', r.status);
+                    console.log('[INFOCHECK] Raw response:', r.responseText);
 
-                    if (data.error?.errorCode?.includes('PAGE')) {
-                        console.log('PageId invalid, refreshing...');
-                        return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
-                    }
+                    try {
+                        const data = JSON.parse(r.responseText);
 
-                    const initials = data.data?.data?.fullname;
-                    if (initials) {
-                        const date = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\./g, '');
-                        output.textContent = `${card} ${initials} ${date}`;
-                    } else {
-                        output.textContent = 'Не знайдено';
+                        console.log('[INFOCHECK] Parsed:', data);
+
+                        if (data.error?.errorCode?.includes('PAGE')) {
+                            console.log('[INFOCHECK] PAGE error, refreshing pageId');
+
+                            return fetchPageId((err) => {
+                                if (err) {
+                                    output.textContent = err;
+                                    return;
+                                }
+
+                                checkCardByInfoCheck(card, output);
+                            });
+                        }
+
+                        const initials = data.data?.data?.fullname;
+
+                        console.log('[INFOCHECK] fullname:', initials);
+
+                        if (initials && initials.trim() !== '') {
+                            output.textContent = `${card} ${initials.trim()} ${getDate()}`;
+                        } else {
+                            output.textContent = 'Не знайдено';
+                        }
+                    } catch (e) {
+                        console.error('[INFOCHECK] Parse error:', e);
+                        output.textContent = 'Помилка';
                     }
-                    console.log('Result displayed:', output.textContent);
                 },
-                onerror: () => {
-                    console.error('Card check request failed');
+                onerror: e => {
+                    console.error('[INFOCHECK] Request failed:', e);
                     output.textContent = 'Помилка';
                 }
             });
         };
 
+        const checkCard = (card, output) => {
+            console.log('[CHECK] Start:', card);
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `https://cabinet.easypay.ua/payment-cards/holder?pan=${encodeURIComponent(card)}`,
+                headers: {
+                    'accept': 'application/json',
+                    'appid': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd',
+                    'content-type': 'application/json; charset=UTF-8',
+                    'partnerkey': 'easypay-v2'
+                },
+                onload: r => {
+                    console.log('[HOLDER] Status:', r.status);
+                    console.log('[HOLDER] Raw response:', r.responseText);
+
+                    try {
+                        const holderData = JSON.parse(r.responseText);
+
+                        console.log('[HOLDER] Parsed:', holderData);
+
+                        const holder = holderData?.holder;
+
+                        console.log('[HOLDER] holder:', holder);
+
+                        if (holder && holder.trim() !== '') {
+                            output.textContent = `${card} ${holder.trim()} ${getDate()}`;
+                            console.log('[HOLDER] Success result:', output.textContent);
+                            return;
+                        }
+
+                        console.log('[HOLDER] Empty holder, fallback to infoCheck');
+                    } catch (e) {
+                        console.error('[HOLDER] Parse error:', e);
+                    }
+
+                    checkCardByInfoCheck(card, output);
+                },
+                onerror: e => {
+                    console.error('[HOLDER] Request failed:', e);
+                    checkCardByInfoCheck(card, output);
+                }
+            });
+        };
+
         const targetDiv = document.getElementById('formatable-text-common');
+
         if (targetDiv && !document.getElementById('cardInput')) {
             const parentRow = targetDiv.closest('tr');
             const newRow = document.createElement('tr');
+
             newRow.innerHTML = `
             <th style="vertical-align: middle;">Пробив картки</th>
             <td>
@@ -10345,19 +10619,30 @@ ${fraud.manager === managerName ? `
 
             btn.onclick = e => {
                 e.preventDefault();
+
                 const card = input.value.trim();
-                if (!card) return result.textContent = 'Введи номер!';
+
+                if (!card) {
+                    result.textContent = 'Введи номер!';
+                    return;
+                }
+
                 result.textContent = 'Перевіряю...';
-                console.log('Button clicked, starting check...');
                 checkCard(card, result);
             };
 
             result.onclick = () => {
-                if (result.textContent && !result.textContent.includes('Перевіряю') && !result.textContent.includes('Помилка')) {
+                if (
+                    result.textContent
+                    && !result.textContent.includes('Перевіряю')
+                    && !result.textContent.includes('Помилка')
+                ) {
                     navigator.clipboard.writeText(result.textContent);
                     result.style.color = '#4CAF50';
-                    setTimeout(() => result.style.color = '#333', 500);
-                    console.log('Result copied to clipboard');
+
+                    setTimeout(() => {
+                        result.style.color = '#333';
+                    }, 500);
                 }
             };
         }

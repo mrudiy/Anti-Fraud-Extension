@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.0
+// @version      7.2.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -69,7 +69,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.0";
+    const currentVersion = "7.2.1";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -1054,44 +1054,147 @@
 
 
     function calculatePendingAmount() {
-        let totalPending = 0;
+        const now = Date.now();
+        const periods = {
+            '30d': 30 * 24 * 60 * 60 * 1000,
+            '3m': 90 * 24 * 60 * 60 * 1000,
+            '6m': 180 * 24 * 60 * 60 * 1000,
+            'year': 365 * 24 * 60 * 60 * 1000
+        };
 
-        const rows = document.querySelectorAll('tr');
+        let activeAmount = 0;
+        let stats = {
+            '30d': { count: 0, sum: 0 },
+            '3m': { count: 0, sum: 0 },
+            '6m': { count: 0, sum: 0 },
+            'year': { count: 0, sum: 0 }
+        };
+
+        const rows = document.querySelectorAll('table.items tbody tr');
         rows.forEach(row => {
-            const statusSpan = row.querySelector('span.label');
-            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
-                const amountCode = row.querySelector('td:nth-child(5) code');
-                if (amountCode) {
-                    const amountText = amountCode.textContent.trim().replace('UAH', '').trim();
-                    const amount = parseFloat(amountText.replace(',', '.'));
-                    if (!isNaN(amount)) {
-                        totalPending += amount;
+            const statusCell = row.querySelector('td:nth-child(2)');
+            const dateCell = row.querySelector('td:nth-child(8)');
+            const amountCell = row.querySelector('td:nth-child(5) code');
+
+            if (statusCell && amountCell) {
+                const status = statusCell.innerText.trim().toLowerCase();
+                const amount = parseFloat(amountCell.innerText.replace(/[^0-9.]/g, '')) || 0;
+
+                if (status.includes('pending') || status.includes('review') || status.includes('on_hold')) {
+                    activeAmount += amount;
+                }
+
+                if (status.includes('closed') && dateCell) {
+                    const dateParts = dateCell.innerText.trim().split(' ');
+                    if (dateParts.length >= 1) {
+                        const [d, m, y] = dateParts[0].split('/');
+                        const timestamp = new Date(`${y}-${m}-${d}T${dateParts[1] || '00:00:00'}`).getTime();
+
+                        if (!isNaN(timestamp)) {
+                            const diff = now - timestamp;
+                            for (let key in periods) {
+                                if (diff <= periods[key]) {
+                                    stats[key].count++;
+                                    stats[key].sum += amount;
+                                }
+                            }
+                        }
                     }
                 }
             }
         });
 
-        const popupBoxWithDraw = document.createElement('div');
-        popupBoxWithDraw.style.position = 'fixed';
-        popupBoxWithDraw.style.top = '10px';
-        popupBoxWithDraw.style.right = '10px';
-        popupBoxWithDraw.style.padding = '10px';
-        popupBoxWithDraw.style.backgroundColor = 'white';
-        popupBoxWithDraw.style.border = '2px solid black';
-        popupBoxWithDraw.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
-        popupBoxWithDraw.style.zIndex = '10000';
-        popupBoxWithDraw.style.fontFamily = 'Arial, sans-serif';
-        popupBoxWithDraw.style.fontSize = '16px';
-        popupBoxWithDraw.style.display = 'flex';
-        popupBoxWithDraw.style.flexDirection = 'column';
-        popupBoxWithDraw.style.alignItems = 'center';
-        popupBoxWithDraw.style.borderRadius = '10px';
+        let container = document.getElementById('mini-withdraw-stats');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'mini-withdraw-stats';
+            container.style = `position: fixed; top: 20px; right: 20px; z-index: 10001; background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px); color: rgb(26, 32, 44); border-radius: 12px; font-size: 14px;
+            font-family: Inter, sans-serif; box-shadow: rgba(0, 0, 0, 0.1) 0px 10px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.5); min-width: 280px; overflow: hidden;`;
+            document.body.appendChild(container);
 
-        const text = document.createElement('div');
-        text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}₴</b></center>`;
-        popupBoxWithDraw.appendChild(text);
+            let isDragging = false;
+            let offsetX, offsetY;
 
-        document.body.appendChild(popupBoxWithDraw);
+            container.addEventListener('mousedown', (e) => {
+                if (e.target.closest('#stats-header-withdraw')) {
+                    isDragging = true;
+                    offsetX = e.clientX - container.getBoundingClientRect().left;
+                    offsetY = e.clientY - container.getBoundingClientRect().top;
+                    container.style.cursor = 'grabbing';
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                container.style.left = (e.clientX - offsetX) + 'px';
+                container.style.top = (e.clientY - offsetY) + 'px';
+                container.style.right = 'auto';
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                if (container) container.style.cursor = 'default';
+            });
+        }
+
+        const updateView = (periodKey) => {
+            const data = stats[periodKey];
+            const avg = data.count > 0 ? (data.sum / data.count).toFixed(2) : "0.00";
+
+            container.innerHTML = `
+            <div id="stats-header-withdraw" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: move; user-select: none;">
+                <b style="font-size: 13px; color: #2d3748;">Статистика виплат (Closed)</b>
+                <div id="withdraw-stats-toggle" style="cursor: pointer; padding: 2px 8px; font-size: 18px; color: #64748b; font-weight: bold;">−</div>
+            </div>
+            <div id="withdraw-tabs-bar" style="display: flex; gap: 4px; padding: 8px 12px; background: #f0f0f0;">
+                ${Object.keys(periods).map(key => {
+                    const label = key === '30d' ? '30 днів' : key === '3m' ? '3 міс' : key === '6m' ? '6 міс' : 'Рік';
+                    const isActive = key === periodKey;
+                    return `<button class="withdraw-period-btn" data-key="${key}" style="padding: 5px 10px; cursor: pointer; border: none;
+                        background: ${isActive ? '#fff' : 'transparent'}; color: ${isActive ? '#3498db' : '#7f8c8d'};
+                        font-weight: ${isActive ? 'bold' : 'normal'}; border-radius: 6px; font-size: 12px; transition: 0.2s;
+                        box-shadow: ${isActive ? 'rgba(0, 0, 0, 0.1) 0px 2px 5px' : 'none'};">${label}</button>`;
+                }).join('')}
+            </div>
+            <div id="withdraw-stats-body" style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; color: #e67e22; font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #f0f0f0;">
+                    <span>Активні (Pend):</span>
+                    <span>${activeAmount.toLocaleString('ru-RU')}₴</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Кількість:</span>
+                    <span style="font-weight: 600;">${data.count}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Загальна сума:</span>
+                    <span style="font-weight: 600;">${data.sum.toLocaleString('ru-RU')}₴</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
+                    <span style="color: #1e293b; font-weight: bold;">AVG:</span>
+                    <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${avg}₴</span>
+                </div>
+            </div>
+            `;
+
+            container.querySelectorAll('.withdraw-period-btn').forEach(btn => {
+                btn.onclick = () => updateView(btn.getAttribute('data-key'));
+            });
+
+            const toggleBtn = container.querySelector('#withdraw-stats-toggle');
+            const tabsBar = container.querySelector('#withdraw-tabs-bar');
+            const body = container.querySelector('#withdraw-stats-body');
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                const hidden = body.style.display === 'none';
+                body.style.display = hidden ? 'flex' : 'none';
+                tabsBar.style.display = hidden ? 'flex' : 'none';
+                toggleBtn.textContent = hidden ? '−' : '+';
+            };
+        };
+
+        updateView('30d');
     }
 
     function calculatePendingAmountUSA() {
@@ -7951,12 +8054,25 @@ ${fraud.manager === managerName ? `
         updateButton.form.submit();
     }
 
+    function compareVersions(v1, v2) {
+        const a = String(v1).split('.').map(Number);
+        const b = String(v2).split('.').map(Number);
+        const len = Math.max(a.length, b.length);
+        for (let i = 0; i < len; i++) {
+            const x = a[i] || 0;
+            const y = b[i] || 0;
+            if (x > y) return 1;
+            if (x < y) return -1;
+        }
+        return 0;
+    }
+
     async function checkForUpdates() {
         try {
             const response = await fetch(`${API_BASE_URL}/api/version`);
             const data = await response.json();
 
-            if (data.version && currentVersion !== data.version) {
+            if (data.version && compareVersions(currentVersion, data.version) < 0) {
                 const style = document.createElement("style");
                 style.textContent = `
                 #update-icon {

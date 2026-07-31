@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.1
+// @version      7.2.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -24,6 +24,7 @@
 // @match        https://admin.firesevens.com/*
 // @match        https://admin.dexyplay.com/*
 // @match        https://admin.spintime.app/*
+// @match        https://admin.coinsmania.com/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -69,7 +70,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.1";
+    const currentVersion = "7.2.2";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -86,7 +87,6 @@
 
     const sharedStorageKey = 'highlightRulesShared';
     const languageKey = 'language';
-    const ndfDisplayKey = 'ndfDisplay';
     const reminderBlinkKey = 'reminderDisplayBlinkKey';
     const lastSeenArticleIdKey = 'lastSeenArticleId';
     const amountDisplayKey = 'amountDisplay';
@@ -577,9 +577,7 @@
                 );
                 return `<b>${label}:</b> <b ${style}>${displayValue}</b> | `;
             };
-            let textToInsert =
-                `${date} в ${time} ${t.checked}/${initials}<br>` +
-                `<b>РayOut: <span style="color:${colorPA}">${TotalPA}</span></b> | `;
+            let textToInsert = `<b>РayOut: <span style="color:${colorPA}">${TotalPA}</span></b> | `;
             textToInsert += createEntry(t.balance, Balance, config.minBalance);
             textToInsert += createEntry(t.pending, totalPending, config.minPending);
             textToInsert += createEntry(t.safe, safeBalance, 4200);
@@ -771,20 +769,20 @@
     }
 
     function getDateFromField() {
-        const newList = document.querySelector('[data-antifraud-list] [data-comment-edit]');
-        if (newList) {
-            const content = newList.innerText;
-            const firstLine = content.split('\n')[0];
-            const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
-            const dateMatch = firstLine.match(dateRegex);
-            return dateMatch ? dateMatch[0] : null;
+        const firstAntifraudItem = document.querySelector('td[data-toggle-antifraud-item]');
+        if (firstAntifraudItem) {
+            const footer = firstAntifraudItem.querySelector('footer');
+            if (footer) {
+                return parseDateFromFooter(footer.innerText);
+            }
         }
 
-        const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
-        const firstLine = content.split('\n')[0];
-        const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
-        const dateMatch = firstLine.match(dateRegex);
-        return dateMatch ? dateMatch[0] : null;
+        const oldElement = document.getElementById("gateway-method-description-visible-antifraud_manager");
+        if (oldElement) {
+            return parseDateFromFooter(oldElement.innerText);
+        }
+
+        return null;
     }
 
     function correctData(dateString) {
@@ -926,12 +924,6 @@
             label.appendChild(document.createTextNode(labelText));
             return label;
         };
-
-        settingsPopup.appendChild(
-            createCheckboxWithLabel('Показувати НДФЛ', GM_getValue(ndfDisplayKey, true), (e) => {
-                GM_setValue(ndfDisplayKey, e.target.checked);
-            })
-        );
 
         settingsPopup.appendChild(
             createCheckboxWithLabel('Округляти баланси', GM_getValue(amountDisplayKey, true), (e) => {
@@ -1150,13 +1142,13 @@
             </div>
             <div id="withdraw-tabs-bar" style="display: flex; gap: 4px; padding: 8px 12px; background: #f0f0f0;">
                 ${Object.keys(periods).map(key => {
-                    const label = key === '30d' ? '30 днів' : key === '3m' ? '3 міс' : key === '6m' ? '6 міс' : 'Рік';
-                    const isActive = key === periodKey;
-                    return `<button class="withdraw-period-btn" data-key="${key}" style="padding: 5px 10px; cursor: pointer; border: none;
+                const label = key === '30d' ? '30 днів' : key === '3m' ? '3 міс' : key === '6m' ? '6 міс' : 'Рік';
+                const isActive = key === periodKey;
+                return `<button class="withdraw-period-btn" data-key="${key}" style="padding: 5px 10px; cursor: pointer; border: none;
                         background: ${isActive ? '#fff' : 'transparent'}; color: ${isActive ? '#3498db' : '#7f8c8d'};
                         font-weight: ${isActive ? 'bold' : 'normal'}; border-radius: 6px; font-size: 12px; transition: 0.2s;
                         box-shadow: ${isActive ? 'rgba(0, 0, 0, 0.1) 0px 2px 5px' : 'none'};">${label}</button>`;
-                }).join('')}
+            }).join('')}
             </div>
             <div id="withdraw-stats-body" style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
                 <div style="display: flex; justify-content: space-between; color: #e67e22; font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #f0f0f0;">
@@ -4587,8 +4579,8 @@ ${fraud.manager === managerName ? `
         const initials = GM_getValue(initialsKey, '');
         const language = GM_getValue(languageKey, 'російська');
         const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой/${initials}<br>`
-        : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
+        ? `Проверен антифрод менеджером`
+        : `Перевірений антифрод менеджером`;
 
         return textToInsert;
     }
@@ -4675,38 +4667,13 @@ ${fraud.manager === managerName ? `
                 icon: 'success',
                 title: 'Успішно!',
                 text: 'Користувач позначений як переглянутий'
-            }).then(() => location.reload());  // <-- reload тут
+            }).then(() => location.reload());
         })
             .catch(() => Swal.fire({
             icon: 'error',
             title: 'Помилка!',
             text: 'Не вдалося надіслати дані.'
         }));
-    }
-
-    function handlePendingPlusButtonClick(TotalPA) {
-        const date = getCurrentDate();
-        const time = getCurrentTime();
-        const initials = GM_getValue('initialsKey', '');
-        const language = GM_getValue(languageKey, 'російська');
-        const colorPA = getColor(TotalPA);
-        const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
-        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
-        insertTextIntoField(textToInsert);
-    }
-
-    function handlePendingMinusButtonClick(TotalPA) {
-        const date = getCurrentDate();
-        const time = getCurrentTime();
-        const initials = GM_getValue('initialsKey', '');
-        const language = GM_getValue(languageKey, 'російська');
-        const colorPA = getColor(TotalPA)
-
-        const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
-        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РayOut: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
-        insertTextIntoField(textToInsert);
     }
 
     function createProjectContainer(project, projectUrl) {
@@ -6954,36 +6921,123 @@ ${fraud.manager === managerName ? `
         button.addEventListener('click', () => {
             const content = field.innerHTML;
             const lines = content.split('<br>');
-            const firstLine = lines[0];
-            const secondLine = lines[1];
-            const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
+            const secondLine = lines[1] || '';
 
-            if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
-                const dataToInsert = {
-                    date: currentDate,
-                    url: url,
-                    project: project,
-                    playerID: playerID,
-                    initials: initials,
-                    comment: content.replace(/\r?\n/g, ""),
-                };
-                if (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) {
-                    dataToInsert.autopayment = 1;
-                } else {
-                    dataToInsert.autopayment = 0;
-                }
-                console.log(dataToInsert)
-                sendDataToServer(dataToInsert, token)
-                    .then(response => {
-                    console.log('Data sent successfully:', response);
-                })
-                    .catch(err => {
-                    console.error('Error sending data:', err);
-                });
-            } else {
-                console.log("The first line of the comment does not contain today's date or correct initials.");
+            const dataToInsert = {
+                date: currentDate,
+                url: url,
+                project: project,
+                playerID: playerID,
+                initials: initials,
+                comment: content.replace(/\r?\n/g, ""),
+                autopayment: 0,
+            };
+
+            sendDataToServer(dataToInsert, token)
+                .then(response => {
+                console.log('Data sent successfully:', response);
+            })
+                .catch(err => {
+                console.error('Error sending data:', err);
+            });
+        });
+    }
+
+    function initCommentEditTracker() {
+        let currentEditingRow = null;
+
+        document.addEventListener('click', (event) => {
+            const editLink = event.target.closest('a[data-comments-edit]');
+            if (editLink) {
+                currentEditingRow = editLink.closest('td');
             }
         });
+
+        document.addEventListener('click', (event) => {
+            const saveBtn = event.target.closest('button[data-antifraud-edit-popup]');
+            if (saveBtn && currentEditingRow) {
+                handleCommentEdit(currentEditingRow);
+                currentEditingRow = null;
+            }
+        });
+    }
+
+    function handleCommentEdit(rowElement) {
+        const editor = rowElement.querySelector('.antifraud-comment-editor');
+        if (!editor) return;
+
+        const commentId = editor.getAttribute('data-comment-edit');
+        const content = editor.innerHTML;
+
+        const footerText = rowElement.querySelector('footer')?.textContent || '';
+        const parsedDate = parseDateFromFooter(footerText);
+
+        const initials = GM_getValue(initialsKey, '');
+        const playerID = getPlayerID();
+        const project = getProject();
+        const url = window.location.href;
+
+        const lines = content.split('<br>');
+        const secondLine = lines[1] || '';
+        const autopayment = (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) ? 1 : 0;
+
+        const dataToUpdate = {
+            commentId: commentId,
+            date: parsedDate,
+            url: url,
+            project: project,
+            playerID: playerID,
+            initials: initials,
+            comment: content.replace(/\r?\n/g, ""),
+            autopayment: autopayment
+        };
+
+        console.log('Дані для оновлення:', dataToUpdate);
+
+        sendDataToServer(dataToUpdate, token)
+            .then(response => {
+            console.log('Edit data sent successfully:', response);
+        })
+            .catch(err => {
+            console.error('Error sending edit data:', err);
+        });
+    }
+
+    function parseDateFromFooter(text) {
+        const monthMap = {
+            'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
+            'июля': '07', 'августа': '08', 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
+            'січня': '01', 'лютого': '02', 'березня': '03', 'квітня': '04', 'травня': '05', 'червня': '06',
+            'липня': '07', 'серпня': '08', 'вересня': '09', 'жовтня': '10', 'листопада': '11', 'грудня': '12',
+            'january': '01', 'february': '02', 'march': '03', 'april': '04', 'may': '05', 'june': '06',
+            'july': '07', 'august': '08', 'september': '09', 'october': '10', 'november': '11', 'december': '12',
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        };
+
+        const cleanText = text.toLowerCase().replace(/&nbsp;/g, ' ');
+
+        const matchDMY = cleanText.match(/(\d{1,2})\s+([a-zа-яіїєґ]+)\s+(\d{4})/i);
+        if (matchDMY) {
+            const day = matchDMY[1].padStart(2, '0');
+            const monthStr = matchDMY[2];
+            const year = matchDMY[3];
+            const month = monthMap[monthStr];
+            if (month) return `${day}.${month}.${year}`;
+        }
+
+        const matchMDY = cleanText.match(/([a-zа-я]+)\s+(\d{1,2}),?\s+(\d{4})/i);
+        if (matchMDY) {
+            const monthStr = matchMDY[1];
+            const day = matchMDY[2].padStart(2, '0');
+            const year = matchMDY[3];
+            const month = monthMap[monthStr];
+            if (month) return `${day}.${month}.${year}`;
+        }
+
+        const matchNumeric = cleanText.match(/(\d{2}\.\d{2}\.\d{4})/);
+        if (matchNumeric) return matchNumeric[1];
+
+        return getCurrentDate();
     }
 
     async function sendDataToServer(data, accessToken) {
@@ -7794,39 +7848,6 @@ ${fraud.manager === managerName ? `
             playerCards.forEach(card => processPlayerCard(card, firstThreeLetters, ownerCards, oneWeekAgo));
         }, 2000);
     };
-
-    function checkAutoPayment() {
-        const checkbox = document.getElementById('Players_enabled_autopayouts');
-        if (!checkbox) return console.error('Checkbox element not found.');
-
-        let currentValue = checkbox.checked;
-
-        if (!currentValue) return;
-
-        const checkInterval = setInterval(() => {
-            const newValue = checkbox.checked;
-            if (!newValue) {
-
-
-                const time = getCurrentTime();
-                const currentLanguage = GM_getValue(languageKey, 'російська');
-
-                const fieldDate = getDateFromField();
-                const today = getCurrentDate();
-
-                let insertText = '';
-                if (currentLanguage === 'українська') {
-                    insertText = `Вимкнув автовиплату в ${time}`;
-                } else {
-                    insertText = `Отключил автовыплату в ${time}`;
-                }
-                insertTextToComment(insertText, true);
-                clearInterval(checkInterval);
-            }
-        }, 500);
-
-        window.addEventListener('beforeunload', () => clearInterval(checkInterval));
-    }
 
     function checkBonusButton() {
         const checkbox = document.getElementById('Players_no_bonus');
@@ -11722,13 +11743,13 @@ ${fraud.manager === managerName ? `
                 document.addEventListener('keydown', handleShortcut);
                 handlePopup();
                 createCheckIPButton();
-                checkAutoPayment();
                 checkBonusButton();
                 goToGoogleSheet();
                 addAgeToBirthdate();
                 addPibRow();
                 checkCardFunction();
                 setupModalHandler();
+                initCommentEditTracker();
                 sendPlayerSeenInfo();
                 const isFullNumberCardsEnabled = GM_getValue(fullNumberCardDisplayKey, true);
                 if (isFullNumberCardsEnabled) {

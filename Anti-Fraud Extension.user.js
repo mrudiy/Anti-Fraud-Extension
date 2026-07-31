@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.2
+// @version      7.2.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -70,7 +70,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.2";
+    const currentVersion = "7.2.3";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -5387,50 +5387,53 @@ ${fraud.manager === managerName ? `
 
     function insertTextToCommentNew(textToInsert, shouldUpdate, newField) {
         const addButton = document.querySelector('[data-antifraud-add]');
+        let htmlContent = newField.innerHTML.trim();
 
-        let lines = newField.innerHTML.trim().split('<br>');
-
-        if (lines.length <= 1) {
+        if (!htmlContent) {
             const checkButton = document.getElementById('check-button');
             if (!checkButton) {
                 console.warn('Button with id "check-button" not found.');
                 return;
             }
             checkButton.click();
-            lines = newField.innerHTML.trim().split('<br>');
-            if (lines.length <= 1) {
-                console.warn('Not enough lines to process the second line.');
+            htmlContent = newField.innerHTML.trim();
+            if (!htmlContent) {
+                console.warn('Field is still empty after check.');
                 return;
             }
         }
 
-        let secondLine = lines[1];
-        let lastPipeIndex = secondLine.lastIndexOf('|');
+        let lastPipeIndex = htmlContent.lastIndexOf('|');
         let foundValidIndex = false;
 
         while (lastPipeIndex !== -1) {
-            const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
-            const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+            const beforePipe = htmlContent.slice(0, lastPipeIndex).trim();
+            const afterPipe = htmlContent.slice(lastPipeIndex + 1).trim();
+
             const beforeMatch = beforePipe.match(/\d{4}$/);
             const afterMatch = afterPipe.match(/^\d{2}/);
+
             if (!(beforeMatch && afterMatch)) {
-                const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
-                const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
-                const updatedSecondLine = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
-                lines[1] = updatedSecondLine;
-                newField.innerHTML = lines.join('<br>');
+                const validBeforePipe = htmlContent.slice(0, lastPipeIndex + 1);
+                const validAfterPipe = htmlContent.slice(lastPipeIndex + 1).trim();
+
+                newField.innerHTML = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
+
                 newField.dispatchEvent(new Event('input', { bubbles: true }));
+
                 if (shouldUpdate && addButton) {
                     addButton.click();
                 }
+
                 foundValidIndex = true;
                 break;
             }
-            lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+
+            lastPipeIndex = htmlContent.lastIndexOf('|', lastPipeIndex - 1);
         }
 
         if (!foundValidIndex) {
-            console.warn('Valid "|" not found in the second line.');
+            console.warn('Valid "|" not found anywhere in the text.');
         }
     }
 

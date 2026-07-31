@@ -779,7 +779,11 @@
 
         const oldElement = document.getElementById("gateway-method-description-visible-antifraud_manager");
         if (oldElement) {
-            return parseDateFromFooter(oldElement.innerText);
+            const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
+            const firstLine = content.split('\n')[0];
+            const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
+            const dateMatch = firstLine.match(dateRegex);
+            return dateMatch ? dateMatch[0] : null;
         }
 
         return null;

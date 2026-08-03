@@ -150,6 +150,35 @@
         "грудня": "12", "декабря": "12"
     };
 
+    const UA_PROJECTS = [
+        'admin.betking.com.ua',
+        'admin.777.ua',
+        'admin.vegas.ua'
+    ];
+
+    const USA_PROJECTS = [
+        'admin.funrize.com',
+        'admin.nolimitcoins.com',
+        'admin.taofortune.com',
+        'admin.funzcity.com',
+        'admin.fortunewheelz.com',
+        'admin.jackpotrabbit.com',
+        'admin.scarletsands.com',
+        'admin.sweepshark.com',
+        'admin.stormrush.com',
+        'admin.mrgoodwin.com',
+        'admin.playtana.com',
+        'admin.vegasway.com',
+        'admin.firesevens.com',
+        'admin.sweepico.com',
+        'admin.dexyplay.com',
+        'admin.spintime.app'
+    ];
+
+    const EU_PROJECTS = [
+        'admin.wildwinz.com'
+    ];
+
     const defaultRules = [
         { text: 'Ввод средств', color: '#7cfc00' },
         { text: 'Вывод средств', color: '#f0e68c' },
@@ -4582,11 +4611,18 @@ ${fraud.manager === managerName ? `
         const time = getCurrentTime();
         const initials = GM_getValue(initialsKey, '');
         const language = GM_getValue(languageKey, 'російська');
-        const textToInsert = language === 'російська'
-        ? `Проверен антифрод менеджером`
-        : `Перевірений антифрод менеджером`;
 
-        return textToInsert;
+        const isUaProject = UA_PROJECTS.some(domain => location.hostname.includes(domain));
+
+        if (isUaProject) {
+            return language === 'російська'
+                ? `Проверен антифрод менеджером`
+            : `Перевірений антифрод менеджером`;
+        } else {
+            return language === 'російська'
+                ? `${date} в ${time} проверен антифрод командой/${initials}<br>`
+            : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
+        }
     }
 
     function clickUpdateButton() {

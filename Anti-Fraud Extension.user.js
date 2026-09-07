@@ -69,7 +69,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.3";
+    const currentVersion = "7.2.4";
 
     let popupBox;
     const currentUrl = window.location.href;

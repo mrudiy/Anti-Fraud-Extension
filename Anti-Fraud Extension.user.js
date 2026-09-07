@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.3
+// @version      7.2.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -25,7 +25,6 @@
 // @match        https://admin.dexyplay.com/*
 // @match        https://admin.spintime.app/*
 // @match        https://admin.coinsmania.com/*
-// @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
@@ -610,6 +609,15 @@
             textToInsert += createEntry(t.balance, Balance, config.minBalance);
             textToInsert += createEntry(t.pending, totalPending, config.minPending);
             textToInsert += createEntry(t.safe, safeBalance, 4200);
+
+            // WildWinz: перед рядком додається той самий автоматичний коментар,
+            // що й на інших не-UA проєктах — дата, точний час і менеджер з налаштувань.
+            // buildAntifraudComment() уже повертає потрібний формат, тому нічого нового
+            // тут не вигадуємо. На UA-проєктах ця гілка не виконується.
+            if (isWildWinz()) {
+                textToInsert = buildAntifraudComment() + textToInsert;
+            }
+
             insertTextIntoField(textToInsert);
         };
 
@@ -681,19 +689,63 @@
                 button.innerHTML = '<i class="fa fa-eye"></i> Під нагляд';
                 button.onclick = async (event) => {
                     event.preventDefault();
-                    const comment = await Swal.fire({
-                        title: 'Введіть коментар',
-                        input: 'text',
-                        inputPlaceholder: 'Ваш коментар',
+
+                    // Той самий набір полів, що і в списку "Під наглядом":
+                    // пріоритет, дата й точний час нагадування, коментар.
+                    const defaultNext = watchFormatDate(watchAddDays(new Date(), watchDefaultReviewDays()));
+
+                    const result = await Swal.fire({
+                        title: 'Під нагляд',
+                        html: `
+                <div id="watch-form">
+                    <label>Пріоритет</label>
+                    <select id="swal-page-priority">${watchPriorityOptions('normal')}</select>
+                    <label>Кому видно запис</label>
+                    <select id="swal-page-team">${watchTeamOptions(getDefaultWatchTeam())}</select>
+                    <label>Нагадати — дата (порожньо: без нагадування)</label>
+                    <input id="swal-page-date" value="${defaultNext}" placeholder="ДД.ММ.РРРР" />
+                    <label>Нагадати — час (порожньо: у будь-який момент цього дня)</label>
+                    <input id="swal-page-time" type="time" value="" />
+                    <label>Коментар</label>
+                    <textarea id="swal-page-text" rows="3" placeholder="Що саме перевіряти"></textarea>
+                </div>
+            `,
                         showCancelButton: true,
                         confirmButtonText: 'Додати',
                         cancelButtonText: 'Скасувати',
-                    }).then(result => result.value);
+                        focusConfirm: false,
+                        preConfirm: () => {
+                            const priority = document.getElementById('swal-page-priority').value;
+                            const dateRaw = document.getElementById('swal-page-date').value.trim();
+                            const timeRaw = document.getElementById('swal-page-time').value.trim();
+                            const text = document.getElementById('swal-page-text').value;
 
-                    if (comment) {
+                            if (!dateRaw && timeRaw) {
+                                Swal.showValidationMessage('Вкажіть дату для часу нагадування');
+                                return false;
+                            }
+
+                            const combined = watchJoinDateTime(dateRaw, timeRaw);
+                            if (dateRaw && !watchParseDate(combined)) {
+                                Swal.showValidationMessage('Формат: ДД.ММ.РРРР та ГГ:ХХ');
+                                return false;
+                            }
+
+                            return buildWatchComment({
+                                priority,
+                                team: document.getElementById('swal-page-team').value,
+                                nextReview: dateRaw ? watchParseDate(combined) : null,
+                                nextReviewHasTime: !!timeRaw,
+                                lastChecked: null,
+                                text
+                            });
+                        }
+                    });
+
+                    if (result.isConfirmed && result.value) {
                         const playerId = getPlayerID();
                         const url = window.location.href;
-                        await addFraud(playerId, url, comment);
+                        await addFraud(playerId, url, result.value);
                         location.reload();
                     }
                 };
@@ -769,17 +821,30 @@
                 }).format(new Date(data.date)).replace(',', '')
 
                 addFraudPageButton(true, data.fraud_id);
+                const watchMeta = parseWatchComment(data.comment);
+                const watchPriority = WATCH_PRIORITIES[watchMeta.priority];
+                const watchDue = watchDueState(watchMeta);
+
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-warning';
-                alertDiv.style.backgroundColor = '#6a0dad';
+                // Критичні записи виділяються червоним, решта — стандартним фіолетовим.
+                alertDiv.style.backgroundColor = watchMeta.priority === 'critical' ? '#b71c1c' : '#6a0dad';
                 alertDiv.style.color = '#fff';
-                alertDiv.style.borderColor = '#5a00a2';
-                console.log(data)
+                alertDiv.style.borderColor = watchMeta.priority === 'critical' ? '#7f0000' : '#5a00a2';
+
+                const dueNote = {
+                    overdue: `<br><strong>Перевірка:</strong> прострочена (${watchFormatWhen(watchMeta.nextReview, watchMeta.nextReviewHasTime)})`,
+                    soon: `<br><strong>Перевірка:</strong> скоро, о ${watchFormatTime(watchMeta.nextReview)}`,
+                    today: `<br><strong>Перевірка:</strong> сьогодні${watchMeta.nextReviewHasTime ? `, о ${watchFormatTime(watchMeta.nextReview)}` : ''}`,
+                    future: `<br><strong>Наступна перевірка:</strong> ${watchFormatWhen(watchMeta.nextReview, watchMeta.nextReviewHasTime)}`,
+                    none: ''
+                }[watchDue];
+
                 alertDiv.innerHTML = `
-                <strong>Увага!</strong> Користувач під наглядом.
+                <strong>Увага!</strong> Користувач під наглядом. <strong>[${watchPriority.label}]</strong>
                 <br><strong>Менеджер:</strong> ${data.manager_name}
-                <br><strong>Коментар:</strong> ${data.comment || 'Немає коментарів'}
-                <br><strong>Дата:</strong> ${formattedDate}
+                <br><strong>Коментар:</strong> ${watchMeta.text || 'Немає коментарів'}
+                <br><strong>Дата:</strong> ${formattedDate}${dueNote}
             `;
 
                 const table = document.querySelector('.detail-view.table.table-striped');
@@ -973,6 +1038,21 @@
                 GM_setValue(fullNumberCardDisplayKey, e.target.checked);
             })
         );
+
+        // Через скільки днів нагадати про перевірку гравця під наглядом.
+        const watchIntervalWrap = document.createElement('div');
+        watchIntervalWrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0;';
+        watchIntervalWrap.innerHTML = `
+            <label style="flex:1;">Нагляд: інтервал перевірки (днів)</label>
+            <input type="number" min="1" max="90" id="watch-interval-input"
+                   value="${GM_getValue(WATCH_INTERVAL_KEY, 3)}"
+                   style="width:64px;padding:4px;border:1px solid #d5dbe0;border-radius:4px;" />
+        `;
+        watchIntervalWrap.querySelector('#watch-interval-input').addEventListener('change', (e) => {
+            const value = parseInt(e.target.value, 10);
+            if (!isNaN(value) && value > 0) GM_setValue(WATCH_INTERVAL_KEY, value);
+        });
+        settingsPopup.appendChild(watchIntervalWrap);
 
         if (managerData.status === 'Admin') {
             settingsPopup.appendChild(
@@ -2585,342 +2665,946 @@
     }
 
 
+    // ==================== Список під наглядом (нагляд 2.0) ====================
+    //
+    // Пріоритет, дата наступної перевірки та дата останньої перевірки зберігаються
+    // у полі "коментар" у вигляді компактних тегів, бо API приймає лише
+    // player_id / url / comment. Завдяки цьому пріоритет автоматично бачать усі
+    // менеджери — спільний критичний список працює без змін на бекенді.
+    //
+    //   [!!]            — критичний
+    //   [!]             — звичайний
+    //   [@ДД.ММ.РРРР]   — наступна перевірка
+    //   [v ДД.ММ.РРРР]  — остання перевірка
+    //
+    const WATCH_ACK_KEY = 'watchAcknowledgements';
+    const WATCH_INTERVAL_KEY = 'watchDefaultReviewDays';
+    const WATCH_POLL_MS = 5 * 60 * 1000;
+    let WATCH_CACHE = [];
+    let WATCH_FILTER = null;   // null — без фільтра за станом
+    let WATCH_TEAM_FILTER = null;   // null -> підставиться команда менеджера
+    let WATCH_PAGE = 1;
+    const WATCH_PAGE_SIZE_KEY = 'watchPageSize';
+
+    function getWatchPageSize() {
+        const value = parseInt(GM_getValue(WATCH_PAGE_SIZE_KEY, 20), 10);
+        return [20, 50, 100, 0].includes(value) ? value : 20;
+    }
+
+    function getActiveWatchTeam() {
+        if (!WATCH_TEAM_FILTER) WATCH_TEAM_FILTER = 'ALL';
+        return WATCH_TEAM_FILTER;
+    }
+    let WATCH_SEARCH = '';
+    let WATCH_POLL_TIMER = null;
+
+    // Команда, якій належить запис. Зберігається тегом у коментарі, як і пріоритет,
+    // бо API приймає лише player_id / url / comment.
+    //   [#UA]  — команда UA
+    //   [#US]  — команда USA
+    //   [#BET] — команда Betting
+    //   без тега — загальний запис, видимий усім
+    const WATCH_TEAMS = {
+        GEN: { key: 'GEN', tag: '',       label: 'Загальний — усі команди', short: 'Загальний' },
+        UA:  { key: 'UA',  tag: '[#UA]',  label: 'UA — лише команда UA',     short: 'UA' },
+        US:  { key: 'US',  tag: '[#US]',  label: 'USA — лише команда USA',   short: 'USA' },
+        BET: { key: 'BET', tag: '[#BET]', label: 'Betting — лише Betting',   short: 'Betting' }
+    };
+
+    const WATCH_NOTIFICATIONS_OFF_KEY = 'watchNotificationsOff';
+
+    function watchNotificationsDisabled() {
+        return GM_getValue(WATCH_NOTIFICATIONS_OFF_KEY, false) === true;
+    }
+
+    // Відповідність команди в профілі менеджера до розділу списку:
+    //   Betting   -> Betting
+    //   Financial -> UA
+    //   Product   -> USA
+    const TEAM_BY_MANAGER_TEAM = {
+        'Betting': 'BET',
+        'Financial': 'UA',
+        'Product': 'US'
+    };
+
+    function watchTeamOfManagerTeam(managerTeam) {
+        return TEAM_BY_MANAGER_TEAM[String(managerTeam || '').trim()] || null;
+    }
+
+    // Команди, записи яких бачить поточний менеджер. Визначається його власною
+    // командою в профілі, а не проєктом, на якому він зараз працює.
+    function getViewerTeams() {
+        const teams = new Set(['GEN']);
+        const own = watchTeamOfManagerTeam(managerData && managerData.team);
+        if (own) teams.add(own);
+        // Менеджер без команди бачить усі розділи, щоб нічого не загубити.
+        if (!own) { teams.add('UA'); teams.add('US'); teams.add('BET'); }
+        return teams;
+    }
+
+    // Команда запису визначається ВИКЛЮЧНО тим, що менеджер обрав при створенні.
+    // Немає тега — запис загальний і його бачать усі команди. Ніяких припущень
+    // за автором: раніше команда бралася з /api/users, а цей ендпоінт доступний
+    // не всім, тому записи помилково ставали загальними.
+    function getEntryTeam(entry) {
+        const team = entry && entry.meta && entry.meta.team;
+        return WATCH_TEAMS[team] ? team : 'GEN';
+    }
+
+    // Один список: або ALL (усе), або одна конкретна команда. Двох одночасно немає.
+    function watchTeamFilterMarkup() {
+        return `
+            <select id="watch-team-filter" title="Команда" style="padding:5px 8px;border:1px solid #d5dbe0;border-radius:16px;font-size:13px;color:#37474f;">
+                <option value="ALL">Усі</option>
+                <option value="UA">UA</option>
+                <option value="US">USA</option>
+                <option value="BET">Betting</option>
+            </select>`;
+    }
+
+    function watchTeamOptions(selected) {
+        return Object.values(WATCH_TEAMS)
+            .map(t => `<option value="${t.key}" ${t.key === selected ? 'selected' : ''}>${t.label}</option>`)
+            .join('');
+    }
+
+    // Команда за замовчуванням у формі додавання: своя, якщо вона однозначна.
+    function getDefaultWatchTeam() {
+        return watchTeamOfManagerTeam(managerData && managerData.team) || 'GEN';
+    }
+
+    const WATCH_PRIORITIES = {
+        critical: { key: 'critical', tag: '[!!]', label: 'Критичний', color: '#c62828', bg: '#fdecea', order: 0 },
+        normal:   { key: 'normal',   tag: '[!]',  label: 'Звичайний', color: '#ef6c00', bg: '#fff6e8', order: 1 },
+        low:      { key: 'low',      tag: '',     label: 'Низький',   color: '#546e7a', bg: '#f4f6f7', order: 2 }
+    };
+
+    const watchPad = n => String(n).padStart(2, '0');
+    const watchFormatDate = d => (d ? `${watchPad(d.getDate())}.${watchPad(d.getMonth() + 1)}.${d.getFullYear()}` : '');
+    const watchFormatTime = d => (d ? `${watchPad(d.getHours())}:${watchPad(d.getMinutes())}` : '');
+    const watchStartOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const watchAddDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const watchIsSameDay = (a, b) => watchStartOfDay(a).getTime() === watchStartOfDay(b).getTime();
+
+    // Повна позначка часу нагадування: з точним часом, якщо його вказано.
+    const watchFormatWhen = (d, hasTime) =>
+        (d ? (hasTime ? `${watchFormatDate(d)} ${watchFormatTime(d)}` : watchFormatDate(d)) : '');
+
+    // Приймає "ДД.ММ.РРРР" та "ДД.ММ.РРРР ГГ:ХХ".
+    function watchParseDate(value) {
+        const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[\sT]+(\d{1,2}):(\d{2}))?$/.exec(String(value || '').trim());
+        if (!m) return null;
+        const d = new Date(
+            Number(m[3]), Number(m[2]) - 1, Number(m[1]),
+            m[4] === undefined ? 0 : Number(m[4]),
+            m[5] === undefined ? 0 : Number(m[5]), 0, 0
+        );
+        if (isNaN(d.getTime())) return null;
+        if (m[4] !== undefined && (Number(m[4]) > 23 || Number(m[5]) > 59)) return null;
+        return d;
+    }
+
+    // Чи містить рядок час, а не лише дату.
+    function watchValueHasTime(value) {
+        return /^\d{1,2}\.\d{1,2}\.\d{4}[\sT]+\d{1,2}:\d{2}$/.test(String(value || '').trim());
+    }
+
+    // Збирає дату й час із двох полів форми в один рядок.
+    function watchJoinDateTime(dateValue, timeValue) {
+        const date = String(dateValue || '').trim();
+        const time = String(timeValue || '').trim();
+        if (!date) return '';
+        return time ? `${date} ${time}` : date;
+    }
+
+    function watchEscape(text) {
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Розбирає коментар на теги та звичайний текст.
+    function parseWatchComment(raw) {
+        let text = String(raw || '');
+        let priority = 'low';
+        if (/\[!!\]/.test(text)) priority = 'critical';
+        else if (/\[!\]/.test(text)) priority = 'normal';
+
+        // Час у тегу необов'язковий: [@20.08.2026] або [@20.08.2026 14:30]
+        const teamMatch = /\[#(UA|US|BET)\]/i.exec(text);
+        const nextMatch = /\[@\s*(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)\]/.exec(text);
+        const doneMatch = /\[\s*(?:v|✓)\s*(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)\]/.exec(text);
+
+        text = text
+            .replace(/\[#(?:UA|US|BET)\]/gi, '')
+            .replace(/\[!!\]|\[!\]/g, '')
+            .replace(/\[@\s*\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?\]/g, '')
+            .replace(/\[\s*(?:v|✓)\s*\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?\]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        return {
+            priority,
+            team: teamMatch ? teamMatch[1].toUpperCase() : 'GEN',
+            teamTagged: !!teamMatch,
+            nextReview: nextMatch ? watchParseDate(nextMatch[1]) : null,
+            nextReviewHasTime: nextMatch ? watchValueHasTime(nextMatch[1]) : false,
+            lastChecked: doneMatch ? watchParseDate(doneMatch[1]) : null,
+            text
+        };
+    }
+
+    function buildWatchComment(meta) {
+        const parts = [];
+        const priority = WATCH_PRIORITIES[meta.priority] || WATCH_PRIORITIES.low;
+        if (priority.tag) parts.push(priority.tag);
+
+        const team = WATCH_TEAMS[meta.team] || WATCH_TEAMS.GEN;
+        if (team.tag) parts.push(team.tag);
+        if (meta.nextReview) parts.push(`[@${watchFormatWhen(meta.nextReview, meta.nextReviewHasTime)}]`);
+        if (meta.lastChecked) parts.push(`[v ${watchFormatDate(meta.lastChecked)}]`);
+        const text = String(meta.text || '').trim();
+        if (text) parts.push(text);
+        return parts.join(' ');
+    }
+
+    // Скільки хвилин до нагадування вважати "скоро".
+    const WATCH_SOON_MINUTES = 60;
+
+    function watchDueState(meta) {
+        if (!meta || !meta.nextReview) return 'none';
+        const now = new Date();
+
+        // Якщо вказано точний час — порівнюємо з точністю до хвилини.
+        if (meta.nextReviewHasTime) {
+            const diffMinutes = (meta.nextReview.getTime() - now.getTime()) / 60000;
+            if (diffMinutes <= 0) return 'overdue';
+            if (diffMinutes <= WATCH_SOON_MINUTES) return 'soon';
+            return watchIsSameDay(meta.nextReview, now) ? 'today' : 'future';
+        }
+
+        const today = watchStartOfDay(now);
+        const due = watchStartOfDay(meta.nextReview);
+        if (due < today) return 'overdue';
+        if (due.getTime() === today.getTime()) return 'today';
+        return 'future';
+    }
+
+    // Локальне "прийнято на цю зміну" — не змінює чужі записи на сервері.
+    function getWatchAcks() {
+        try { return JSON.parse(GM_getValue(WATCH_ACK_KEY, '{}')) || {}; }
+        catch (e) { return {}; }
+    }
+    function setWatchAck(id, on) {
+        const acks = getWatchAcks();
+        if (on) acks[id] = watchFormatDate(new Date());
+        else delete acks[id];
+        GM_setValue(WATCH_ACK_KEY, JSON.stringify(acks));
+    }
+    function isWatchAcked(id) {
+        return getWatchAcks()[id] === watchFormatDate(new Date());
+    }
+
+    // Індикатор загорається лише коли час перевірки вже настав (прострочено).
+    // Ані критичний пріоритет сам по собі, ані "сьогодні"/"скоро" не світять —
+    // інакше іконка горіла б задовго до потрібного моменту.
+    function watchNeedsAttention(entry) {
+        if (watchNotificationsDisabled()) return false;
+        if (isWatchAcked(entry.id)) return false;
+        if (!isWatchEntryVisible(entry)) return false;
+        return watchDueState(entry.meta) === 'overdue';
+    }
+
+    function watchDefaultReviewDays() {
+        const value = parseInt(GM_getValue(WATCH_INTERVAL_KEY, 3), 10);
+        return isNaN(value) || value < 1 ? 3 : value;
+    }
+
+    // Список нагляду однаковий для всіх вкладок, тому тримаємо його в спільному
+    // кеші. Інакше кожна відкрита вкладка (а їх буває десятки) щоразу тягне з
+    // сервера всі записи й сповільнює завантаження сторінки.
+    const WATCH_CACHE_KEY = 'watchEntriesCache';
+    const WATCH_CACHE_TTL_MS = 2 * 60 * 1000;
+
+    function readWatchCache() {
+        try {
+            const raw = JSON.parse(GM_getValue(WATCH_CACHE_KEY, 'null'));
+            if (!raw || !Array.isArray(raw.items)) return null;
+            if (Date.now() - raw.savedAt > WATCH_CACHE_TTL_MS) return null;
+            return raw.items;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeWatchCache(items) {
+        try {
+            GM_setValue(WATCH_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items: items }));
+        } catch (e) { /* кеш не критичний */ }
+    }
+
+    function hydrateWatchEntries(list) {
+        WATCH_CACHE = (Array.isArray(list) ? list : []).map(item => ({
+            ...item,
+            meta: parseWatchComment(item.comment)
+        }));
+        return WATCH_CACHE;
+    }
+
+    // force = true — коли користувач сам відкрив список і чекає свіжі дані.
+    async function fetchWatchEntries(force) {
+        if (!force) {
+            const cached = readWatchCache();
+            if (cached) return hydrateWatchEntries(cached);
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/frauds`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error(`Failed to fetch frauds: ${response.statusText}`);
+
+        const list = await response.json();
+        writeWatchCache(list);
+        return hydrateWatchEntries(list);
+    }
+
+    function watchAttentionCount(entries) {
+        return (entries || []).filter(watchNeedsAttention).length;
+    }
+
+    // ---- Індикатор на іконці ока ----
+    async function updateWatchIndicator() {
+        const icon = document.getElementById('af-watch-icon');
+        if (!icon) return;
+        // У фонових вкладках не працюємо: там оновлення все одно не видно.
+        if (typeof document.hidden === 'boolean' && document.hidden) return;
+        try {
+            const entries = await fetchWatchEntries(false);
+            const count = watchAttentionCount(entries);
+            let badge = icon.querySelector('.af-watch-badge');
+
+            if (count > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'af-watch-badge';
+                    icon.appendChild(badge);
+                }
+                badge.textContent = count > 99 ? '99+' : String(count);
+
+                // Блимає, якщо серед прострочених є критичні.
+                const criticalOverdue = entries.some(e => watchNeedsAttention(e) && e.meta.priority === 'critical');
+                icon.classList.toggle('af-watch-pulse', criticalOverdue);
+                icon.classList.toggle('af-watch-attention', !criticalOverdue);
+                icon.title = `Нагляд — ${count} прострочено`;
+            } else {
+                if (badge) badge.remove();
+                icon.classList.remove('af-watch-pulse', 'af-watch-attention');
+                icon.title = 'Нагляд';
+            }
+        } catch (error) {
+            console.warn('Не вдалося оновити індикатор нагляду:', error);
+        }
+    }
+
+    // Перерахунок стану з кешу — без запиту до сервера. Потрібен, щоб нагадування
+    // з точним часом спрацьовувало вчасно, а не раз на кілька хвилин.
+    function refreshWatchIndicatorFromCache() {
+        const icon = document.getElementById('af-watch-icon');
+        if (!icon) return;
+
+        const count = watchAttentionCount(WATCH_CACHE);
+        let badge = icon.querySelector('.af-watch-badge');
+
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'af-watch-badge';
+                icon.appendChild(badge);
+            }
+            badge.textContent = count > 99 ? '99+' : String(count);
+
+            const urgent = WATCH_CACHE.some(e => watchNeedsAttention(e) && e.meta.priority === 'critical');
+            icon.classList.toggle('af-watch-pulse', urgent);
+            icon.classList.toggle('af-watch-attention', !urgent);
+            icon.title = `Нагляд — ${count} прострочено`;
+        } else {
+            if (badge) badge.remove();
+            icon.classList.remove('af-watch-pulse', 'af-watch-attention');
+            icon.title = 'Нагляд';
+        }
+
+        // Якщо список відкрито — оновлюємо й його, щоб статуси не застигали.
+        if (document.getElementById('watch-list')) renderWatchList();
+    }
+
+    function startWatchPolling() {
+        if (WATCH_POLL_TIMER) return;
+        // Перше оновлення відкладаємо, щоб не сповільнювати завантаження сторінки.
+        setTimeout(updateWatchIndicator, 4000);
+        WATCH_POLL_TIMER = setInterval(updateWatchIndicator, WATCH_POLL_MS);
+    }
+
+    // ---- Стилі ----
+    GM_addStyle(`
+        #af-watch-icon { position: relative; }
+        .af-watch-badge {
+            position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px;
+            padding: 0 4px; border-radius: 8px; background: #c62828; color: #fff;
+            font-size: 10px; line-height: 16px; text-align: center; font-weight: 700;
+            box-shadow: 0 0 0 2px rgba(255,255,255,.9);
+        }
+        .af-watch-attention { color: #ef6c00 !important; }
+        .af-watch-pulse { color: #c62828 !important; animation: afWatchPulse 1.4s ease-in-out infinite; }
+        @keyframes afWatchPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .45; transform: scale(1.18); }
+        }
+        #watch-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .watch-tab {
+            border: 1px solid #d5dbe0; background: #fff; border-radius: 16px; padding: 5px 12px;
+            cursor: pointer; font-size: 13px; color: #37474f;
+        }
+        .watch-tab:hover { background: #eceff1; }
+        .watch-tab.active { background: #37474f; border-color: #37474f; color: #fff; }
+        .watch-tab .watch-tab-count { font-weight: 700; margin-left: 4px; }
+        #watch-search {
+            flex: 1; min-width: 160px; padding: 6px 10px; border: 1px solid #d5dbe0;
+            border-radius: 4px; font-size: 13px;
+        }
+        #watch-table { width: 100%; border-collapse: collapse; }
+        #watch-table th, #watch-table td { padding: 8px 10px; border: 1px solid #e0e0e0; text-align: left; font-size: 13px; vertical-align: top; }
+        #watch-table th { background: #f2f4f5; font-weight: 700; position: sticky; top: 0; z-index: 1; }
+        #watch-table tr:hover td { background: #f7f9fa; }
+        .watch-row-critical td { background: ${WATCH_PRIORITIES.critical.bg}; }
+        /* Прострочені — явно червоні, щоб не губились у списку. */
+        .watch-row-overdue td { background: #ffe3e0 !important; }
+        .watch-row-overdue td:first-child { box-shadow: inset 4px 0 0 #c62828; }
+        .watch-row-overdue .watch-due-overdue { text-transform: uppercase; }
+        .watch-chip {
+            display: inline-block; padding: 1px 7px; border-radius: 10px;
+            font-size: 11px; font-weight: 700; white-space: nowrap;
+        }
+        .watch-due-overdue { color: #c62828; font-weight: 700; }
+        .watch-due-soon { color: #e65100; font-weight: 700; }
+        .watch-due-today { color: #ef6c00; font-weight: 700; }
+        .watch-due-future { color: #546e7a; }
+        .watch-action { cursor: pointer; margin-right: 8px; font-size: 15px; }
+        .watch-action-edit { color: #43a047; }
+        .watch-action-delete { color: #e53935; }
+        .watch-action-check { color: #1e88e5; }
+        .watch-action-ack { color: #8e24aa; }
+        .watch-empty { padding: 18px; text-align: center; color: #78909c; }
+        #watch-footer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; color: #546e7a; }
+        #watch-footer select { padding: 3px 6px; border: 1px solid #d5dbe0; border-radius: 4px; font-size: 13px; }
+        .watch-page-btn {
+            border: 1px solid #d5dbe0; background: #fff; border-radius: 4px;
+            padding: 2px 9px; cursor: pointer; font-size: 14px; color: #37474f;
+        }
+        .watch-page-btn:hover:not(:disabled) { background: #eceff1; }
+        .watch-page-btn:disabled { opacity: .4; cursor: default; }
+        .watch-mine-flag { color: #1e88e5; font-weight: 700; }
+        #watch-form { display: flex; flex-direction: column; gap: 10px; padding: 16px; max-width: 460px; margin: 0 auto; }
+        #watch-form input, #watch-form select, #watch-form textarea {
+            padding: 9px; border: 1px solid #d5dbe0; border-radius: 4px; font-size: 14px; width: 100%;
+            font-family: inherit;
+        }
+        #watch-form label { font-size: 12px; color: #546e7a; margin-bottom: -6px; }
+        .watch-primary-btn {
+            background: #43a047; color: #fff; border: none; padding: 10px 20px;
+            cursor: pointer; border-radius: 5px; font-size: 15px;
+        }
+        .watch-primary-btn:hover { background: #388e3c; }
+        #add-fraud-btn {
+            background: #43a047; color: #fff; border: none; padding: 10px 20px; cursor: pointer;
+            border-radius: 5px; font-size: 15px; margin-top: 16px; display: block; margin-left: auto; margin-right: auto;
+        }
+        #add-fraud-btn:hover { background: #388e3c; }
+    `);
+
+    // ---- Головне вікно ----
     function createFraudPopup() {
         const content = `
-        <table id="my-frauds-table-popup">
-            <thead>
-                <tr>
-                    <th>Дата</th>
-                    <th>Проєкт</th>
-                    <th>ID</th>
-                    <th>Менеджер</th>
-                    <th>Коментар</th>
-                    <th>Дії</th>
-                </tr>
-            </thead>
-            <tbody id="my-frauds-list"></tbody>
-        </table>
-
-        <table id="common-frauds-table-popup">
-            <thead>
-                <tr>
-                    <th>Дата</th>
-                    <th>Проєкт</th>
-                    <th>ID</th>
-                    <th>Менеджер</th>
-                    <th>Коментар</th>
-                </tr>
-            </thead>
-            <tbody id="common-frauds-list"></tbody>
-        </table>
-
+        <div id="watch-toolbar">
+            <button class="watch-tab" data-filter="overdue">Прострочені<span class="watch-tab-count" data-count="overdue"></span></button>
+            <button class="watch-tab" data-filter="critical">Критичні<span class="watch-tab-count" data-count="critical"></span></button>
+            <button class="watch-tab" data-filter="mine">Мої<span class="watch-tab-count" data-count="mine"></span></button>
+            ${watchTeamFilterMarkup()}
+            <input type="text" id="watch-search" placeholder="Пошук: ID, проєкт, менеджер, коментар…" />
+            <button class="watch-tab" id="watch-notifications-toggle"></button>
+        </div>
+        <div id="watch-table-wrap">
+            <table id="watch-table">
+                <thead>
+                    <tr>
+                        <th style="width:96px;">Пріоритет</th>
+                        <th style="width:78px;">Команда</th>
+                        <th style="width:86px;">Додано</th>
+                        <th style="width:110px;">Проєкт</th>
+                        <th style="width:90px;">ID</th>
+                        <th style="width:140px;">Менеджер</th>
+                        <th style="width:104px;">Перевірка</th>
+                        <th>Коментар</th>
+                        <th style="width:104px;">Дії</th>
+                    </tr>
+                </thead>
+                <tbody id="watch-list"></tbody>
+            </table>
+        </div>
+        <div id="watch-footer">
+            <span id="watch-shown"></span>
+            <span style="flex:1;"></span>
+            <button class="watch-page-btn" id="watch-prev">‹</button>
+            <span id="watch-page-info"></span>
+            <button class="watch-page-btn" id="watch-next">›</button>
+            <label style="margin-left:10px;">Показувати:
+                <select id="watch-page-size">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="0">Усі</option>
+                </select>
+            </label>
+        </div>
         <button id="add-fraud-btn">Під нагляд</button>
     `;
 
-        const style = document.createElement('style');
-        style.textContent = `
-        /* Стилі для таблиць у попапі */
-        #my-frauds-table-popup, #common-frauds-table-popup {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        #my-frauds-table-popup th, #my-frauds-table-popup td,
-        #common-frauds-table-popup th, #common-frauds-table-popup td {
-            padding: 12px;
-            border: 1px solid #ddd;
-            text-align: left;
-        }
-        #my-frauds-table-popup th, #common-frauds-table-popup th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
-            background-color: #f1f1f1;
-        }
-        .delete-fraud {
-            background-color: #f44336;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-            border-radius: 3px;
-        }
-        .delete-fraud:hover {
-            background-color: #c62828;
-        }
-        .edit-fraud {
-    background-color: #FFA500; /* Оранжевый цвет для кнопки */
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    cursor: pointer;
-    border-radius: 3px;
-}
-
-.edit-fraud:hover {
-    background-color: #FF8C00; /* Темнее при наведении */
-}
-        #add-fraud-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-top: 20px;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        #add-fraud-btn:hover {
-            background-color: #45a049;
-        }
-    `;
-        document.head.appendChild(style);
-
-        loadFrauds();
         createPopup('fraud-popup', 'Під наглядом', content);
 
-        document.getElementById('add-fraud-btn').addEventListener('click', createAddFraudPopup);
+        const popup = document.getElementById('fraud-popup');
+        if (!popup) return;
+
+        popup.querySelectorAll('.watch-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Повторний клік знімає фільтр — тоді показуються всі записи команди.
+                WATCH_FILTER = (WATCH_FILTER === tab.dataset.filter) ? null : tab.dataset.filter;
+                WATCH_PAGE = 1;
+                renderWatchList();
+            });
+        });
+
+        const teamFilter = popup.querySelector('#watch-team-filter');
+        if (teamFilter) {
+            teamFilter.value = getActiveWatchTeam();
+            teamFilter.addEventListener('change', () => {
+                WATCH_TEAM_FILTER = teamFilter.value;
+                WATCH_PAGE = 1;
+                renderWatchList();
+            });
+        }
+
+        const notificationsToggle = popup.querySelector('#watch-notifications-toggle');
+        if (notificationsToggle) {
+            const paint = () => {
+                const off = watchNotificationsDisabled();
+                notificationsToggle.innerHTML = off
+                    ? '<i class="fa fa-bell-slash"></i> Сповіщення вимкнено'
+                    : '<i class="fa fa-bell"></i> Сповіщення увімкнено';
+                notificationsToggle.style.background = off ? '#c62828' : '#fff';
+                notificationsToggle.style.color = off ? '#fff' : '#37474f';
+                notificationsToggle.style.borderColor = off ? '#c62828' : '#d5dbe0';
+                notificationsToggle.title = off
+                    ? 'Індикатор на оці не блиматиме й не показуватиме лічильник'
+                    : 'Вимкнути всі нагадування про нагляд';
+            };
+            paint();
+            notificationsToggle.addEventListener('click', () => {
+                GM_setValue(WATCH_NOTIFICATIONS_OFF_KEY, !watchNotificationsDisabled());
+                paint();
+                renderWatchList();
+                updateWatchIndicator();
+            });
+        }
+
+        const search = popup.querySelector('#watch-search');
+        if (search) {
+            search.addEventListener('input', () => {
+                WATCH_SEARCH = search.value.trim().toLowerCase();
+                WATCH_PAGE = 1;
+                renderWatchList();
+            });
+        }
+
+        const pageSize = popup.querySelector('#watch-page-size');
+        if (pageSize) {
+            pageSize.value = String(getWatchPageSize());
+            pageSize.addEventListener('change', () => {
+                GM_setValue(WATCH_PAGE_SIZE_KEY, parseInt(pageSize.value, 10));
+                WATCH_PAGE = 1;
+                renderWatchList();
+            });
+        }
+
+        const prevButton = popup.querySelector('#watch-prev');
+        if (prevButton) prevButton.addEventListener('click', () => {
+            if (WATCH_PAGE > 1) { WATCH_PAGE--; renderWatchList(); }
+        });
+
+        const nextButton = popup.querySelector('#watch-next');
+        if (nextButton) nextButton.addEventListener('click', () => {
+            WATCH_PAGE++;
+            renderWatchList();
+        });
+
+        const addButton = popup.querySelector('#add-fraud-btn');
+        if (addButton) addButton.addEventListener('click', createAddFraudPopup);
+
+        loadFrauds();
     }
 
-
     async function loadFrauds() {
-
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/frauds`, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch frauds: ${response.statusText}`);
-            }
-
-            const frauds = await response.json();
-            const myFraudsList = document.getElementById('my-frauds-list');
-            const commonFraudsList = document.getElementById('common-frauds-list');
-            const managerName = managerData.name;
-
-            if (!myFraudsList || !commonFraudsList) {
-                console.error('Required elements not found in the DOM.');
-                return;
-            }
-
-            myFraudsList.innerHTML = '';
-            commonFraudsList.innerHTML = '';
-
-            const style = document.createElement('style');
-            style.textContent = `
-        #my-frauds-table-popup, #common-frauds-table-popup {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        #my-frauds-table-popup th, #my-frauds-table-popup td,
-        #common-frauds-table-popup th, #common-frauds-table-popup td {
-            padding: 12px;
-            border: 1px solid #ddd;
-            text-align: left;
-        }
-        #my-frauds-table-popup th, #common-frauds-table-popup th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
-            background-color: #f1f1f1;
-        }
-.delete-fraud, .edit-fraud {
-    cursor: pointer;
-    margin-right: 10px;
-    font-size: 18px;
-}
-
-.delete-fraud {
-    color: #f44336;
-}
-
-.delete-fraud:hover {
-    color: #c62828;
-}
-
-.edit-fraud {
-    color: #4CAF50;
-}
-
-.edit-fraud:hover {
-    color: #388E3C;
-}
-
-        #add-fraud-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-top: 20px;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        #add-fraud-btn:hover {
-            background-color: #45a049;
-        }
-    `;
-
-            frauds.forEach(fraud => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                <td>${new Date(fraud.date_added).toLocaleDateString()}</td>
-                <td>${fraud.project}</td>
-                <td><a href="${fraud.url}" target="_blank">${fraud.player_id}</a></td>
-                <td>${fraud.manager}</td>
-                <td>${fraud.comment || ''}</td>
-${fraud.manager === managerName ? `
-    <td>
-        <i class="fa fa-pencil edit-fraud" title="Редагувати"></i>
-        <i class="fa fa-trash delete-fraud" title="Видалити"></i>
-    </td>
-` : ''}
-            `;
-
-                if (fraud.manager === managerName) {
-                    myFraudsList.appendChild(row);
-                    const deleteButton = row.querySelector('.delete-fraud');
-                    const editButton = row.querySelector('.edit-fraud');
-
-                    if (deleteButton) {
-                        deleteButton.addEventListener('click', () => deleteFraud(fraud.id));
-                    }
-
-                    if (editButton) {
-                        editButton.addEventListener('click', () => editFraud(fraud.id, fraud.comment));
-                    }
-
-                } else {
-                    commonFraudsList.appendChild(row);
-                }
-            });
+            // Користувач відкрив список — беремо свіжі дані, не з кешу.
+            await fetchWatchEntries(true);
         } catch (error) {
             console.error('Error:', error);
         }
+
+        renderWatchList();
+        updateWatchIndicator();
     }
 
+    // Запис бачить лише своя команда; загальні записи бачать усі.
+    function isWatchEntryVisible(entry) {
+        const team = getEntryTeam(entry);
+        if (team === 'GEN') return true;
+        return getViewerTeams().has(team);
+    }
+
+    function watchFilterEntries(entries) {
+        const managerName = managerData.name;
+        const team = getActiveWatchTeam();
+        // ALL — усі записи. Обрана команда — лише її записи, без загальних:
+        // загальні мають власний сенс і показуються в ALL.
+        let list = team === 'ALL'
+            ? entries.slice()
+            : entries.filter(e => getEntryTeam(e) === team);
+
+        if (WATCH_FILTER === 'mine') list = list.filter(e => e.manager === managerName);
+        else if (WATCH_FILTER === 'critical') list = list.filter(e => e.meta.priority === 'critical');
+        else if (WATCH_FILTER === 'overdue') list = list.filter(e => watchDueState(e.meta) === 'overdue');
+        // WATCH_FILTER === null -> без фільтра за станом
+
+        if (WATCH_SEARCH) {
+            list = list.filter(e => [e.player_id, e.project, e.manager, e.meta.text]
+                .some(v => String(v || '').toLowerCase().includes(WATCH_SEARCH)));
+        }
+
+        const dueRank = { overdue: 0, soon: 1, today: 2, future: 3, none: 4 };
+        list.sort((a, b) => {
+            const pa = WATCH_PRIORITIES[a.meta.priority].order;
+            const pb = WATCH_PRIORITIES[b.meta.priority].order;
+            if (pa !== pb) return pa - pb;
+            const da = dueRank[watchDueState(a.meta)];
+            const db = dueRank[watchDueState(b.meta)];
+            if (da !== db) return da - db;
+            return new Date(b.date_added) - new Date(a.date_added);
+        });
+
+        return list;
+    }
+
+    function renderWatchList() {
+        const body = document.getElementById('watch-list');
+        if (!body) return;
+
+        const managerName = managerData.name;
+        // Лічильники — по обраній команді.
+        const activeTeam = getActiveWatchTeam();
+        const visible = activeTeam === 'ALL'
+            ? WATCH_CACHE
+            : WATCH_CACHE.filter(e => getEntryTeam(e) === activeTeam);
+
+        const counts = {
+            all: visible.length,
+            mine: visible.filter(e => e.manager === managerName).length,
+            critical: visible.filter(e => e.meta.priority === 'critical').length,
+            overdue: visible.filter(e => watchDueState(e.meta) === 'overdue').length
+        };
+
+        document.querySelectorAll('#watch-toolbar .watch-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.filter === WATCH_FILTER);
+        });
+        document.querySelectorAll('#watch-toolbar [data-count]').forEach(el => {
+            const value = counts[el.dataset.count];
+            el.textContent = value ? ` ${value}` : '';
+        });
+
+        const allEntries = watchFilterEntries(WATCH_CACHE);
+
+        // Малюємо лише поточну сторінку: побудова кількох сотень рядків
+        // помітно гальмує сторінку.
+        const pageSize = getWatchPageSize();
+        const totalPages = pageSize ? Math.max(1, Math.ceil(allEntries.length / pageSize)) : 1;
+        if (WATCH_PAGE > totalPages) WATCH_PAGE = totalPages;
+        if (WATCH_PAGE < 1) WATCH_PAGE = 1;
+
+        const start = pageSize ? (WATCH_PAGE - 1) * pageSize : 0;
+        const entries = pageSize ? allEntries.slice(start, start + pageSize) : allEntries;
+
+        const shownLabel = document.getElementById('watch-shown');
+        if (shownLabel) {
+            shownLabel.textContent = allEntries.length
+                ? `Показано ${start + 1}–${start + entries.length} з ${allEntries.length}`
+                : 'Записів немає';
+        }
+        const pageInfo = document.getElementById('watch-page-info');
+        if (pageInfo) pageInfo.textContent = pageSize ? `${WATCH_PAGE} / ${totalPages}` : '';
+        const prevBtn = document.getElementById('watch-prev');
+        if (prevBtn) prevBtn.disabled = !pageSize || WATCH_PAGE <= 1;
+        const nextBtn = document.getElementById('watch-next');
+        if (nextBtn) nextBtn.disabled = !pageSize || WATCH_PAGE >= totalPages;
+
+        body.innerHTML = '';
+
+        if (!entries.length) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="8" class="watch-empty">Записів немає</td>';
+            body.appendChild(row);
+            return;
+        }
+
+        entries.forEach(entry => {
+            const priority = WATCH_PRIORITIES[entry.meta.priority];
+            const due = watchDueState(entry.meta);
+            const isMine = entry.manager === managerName;
+            const acked = isWatchAcked(entry.id);
+
+            const dueLabels = {
+                overdue: `<span class="watch-due-overdue">Прострочено<br>${watchFormatWhen(entry.meta.nextReview, entry.meta.nextReviewHasTime)}</span>`,
+                soon: `<span class="watch-due-soon">Скоро<br>${watchFormatTime(entry.meta.nextReview)}</span>`,
+                today: `<span class="watch-due-today">Сьогодні${entry.meta.nextReviewHasTime ? `<br>${watchFormatTime(entry.meta.nextReview)}` : ''}</span>`,
+                future: `<span class="watch-due-future">${watchFormatWhen(entry.meta.nextReview, entry.meta.nextReviewHasTime).replace(' ', '<br>')}</span>`,
+                none: '<span class="watch-due-future">—</span>'
+            };
+
+            const row = document.createElement('tr');
+            if (entry.meta.priority === 'critical') row.classList.add('watch-row-critical');
+            if (due === 'overdue') row.classList.add('watch-row-overdue');
+            if (acked) row.style.opacity = '.55';
+
+            const lastChecked = entry.meta.lastChecked
+                ? `<div style="color:#78909c;font-size:11px;">Перевірено: ${watchFormatDate(entry.meta.lastChecked)}</div>`
+                : '';
+
+            const actions = isMine
+                ? `<i class="fa fa-check watch-action watch-action-check" title="Перевірено — перенести наступну перевірку"></i>
+                   <i class="fa fa-pencil watch-action watch-action-edit" title="Редагувати"></i>
+                   <i class="fa fa-trash watch-action watch-action-delete" title="Видалити"></i>`
+                : `<i class="fa ${acked ? 'fa-undo' : 'fa-bell-slash'} watch-action watch-action-ack"
+                      title="${acked ? 'Повернути нагадування' : 'Прийнято — не нагадувати сьогодні'}"></i>`;
+
+            row.innerHTML = `
+                <td><span class="watch-chip" style="background:${priority.bg};color:${priority.color};">${priority.label}</span></td>
+                <td><span class="watch-chip" style="background:#eceff1;color:#37474f;">${(WATCH_TEAMS[getEntryTeam(entry)] || WATCH_TEAMS.GEN).short}</span></td>
+                <td>${entry.date_added ? new Date(entry.date_added).toLocaleDateString() : ''}</td>
+                <td>${watchEscape(entry.project)}</td>
+                <td><a href="${watchEscape(entry.url)}" target="_blank">${watchEscape(entry.player_id)}</a></td>
+                <td>${watchEscape(entry.manager)}${isMine ? ' <span class="watch-mine-flag">(я)</span>' : ''}</td>
+                <td>${dueLabels[due]}</td>
+                <td>${watchEscape(entry.meta.text) || '<span style="color:#b0bec5;">—</span>'}${lastChecked}</td>
+                <td>${actions}</td>
+            `;
+
+            const checkBtn = row.querySelector('.watch-action-check');
+            if (checkBtn) checkBtn.addEventListener('click', () => markWatchChecked(entry));
+
+            const editBtn = row.querySelector('.watch-action-edit');
+            if (editBtn) editBtn.addEventListener('click', () => editFraud(entry.id, entry.comment));
+
+            const deleteBtn = row.querySelector('.watch-action-delete');
+            if (deleteBtn) deleteBtn.addEventListener('click', () => deleteFraud(entry.id));
+
+            const ackBtn = row.querySelector('.watch-action-ack');
+            if (ackBtn) ackBtn.addEventListener('click', () => {
+                setWatchAck(entry.id, !acked);
+                refreshWatchIndicatorFromCache();
+            });
+
+            body.appendChild(row);
+        });
+    }
+
+    async function saveWatchComment(fraudId, comment) {
+        const response = await fetch(`${API_BASE_URL}/api/edit_fraud/${fraudId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ comment: comment })
+        });
+        return response.json();
+    }
+
+    // Позначає запис перевіреним і переносить наступну перевірку.
+    async function markWatchChecked(entry) {
+        const days = watchDefaultReviewDays();
+        const next = watchAddDays(new Date(), days);
+
+        // Зберігаємо час нагадування, якщо його було задано.
+        if (entry.meta.nextReviewHasTime && entry.meta.nextReview) {
+            next.setHours(entry.meta.nextReview.getHours(), entry.meta.nextReview.getMinutes(), 0, 0);
+        }
+
+        const meta = {
+            ...entry.meta,
+            team: entry.meta.team || 'GEN',
+            lastChecked: new Date(),
+            nextReview: next,
+            nextReviewHasTime: !!entry.meta.nextReviewHasTime
+        };
+        try {
+            const data = await saveWatchComment(entry.id, buildWatchComment(meta));
+            if (data && data.success) loadFrauds();
+            else Swal.fire('Помилка!', (data && data.message) || 'Не вдалося зберегти.', 'error');
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
+        }
+    }
+
+    function watchPriorityOptions(selected) {
+        return Object.values(WATCH_PRIORITIES)
+            .map(p => `<option value="${p.key}" ${p.key === selected ? 'selected' : ''}>${p.label}</option>`)
+            .join('');
+    }
 
     function editFraud(fraudId, currentComment) {
-
+        const meta = parseWatchComment(currentComment);
 
         Swal.fire({
-            title: 'Редагувати коментар',
-            input: 'textarea',
-            inputValue: currentComment,
+            title: 'Редагувати нагляд',
+            html: `
+                <div id="watch-form">
+                    <label>Пріоритет</label>
+                    <select id="swal-watch-priority">${watchPriorityOptions(meta.priority)}</select>
+                    <label>Кому видно запис</label>
+                    <select id="swal-watch-team">${watchTeamOptions(meta.team || 'GEN')}</select>
+                    <label>Нагадати — дата (порожньо: без нагадування)</label>
+                    <input id="swal-watch-next" value="${watchFormatDate(meta.nextReview)}" placeholder="ДД.ММ.РРРР" />
+                    <label>Нагадати — час (порожньо: у будь-який момент цього дня)</label>
+                    <input id="swal-watch-time" type="time" value="${meta.nextReviewHasTime ? watchFormatTime(meta.nextReview) : ''}" />
+                    <label>Коментар</label>
+                    <textarea id="swal-watch-text" rows="3">${watchEscape(meta.text)}</textarea>
+                </div>
+            `,
             showCancelButton: true,
             confirmButtonText: 'Зберегти',
-            preConfirm: (newComment) => {
-                return fetch(`${API_BASE_URL}/api/edit_fraud/${fraudId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ comment: newComment })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                    if (data.success) {
-                        Swal.fire('Готово!', 'Коментар оновлено.', 'success');
-                        loadFrauds();
-                    } else {
-                        Swal.fire('Помилка!', data.message, 'error');
-                    }
-                })
-                    .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
+            cancelButtonText: 'Скасувати',
+            focusConfirm: false,
+            preConfirm: () => {
+                const priority = document.getElementById('swal-watch-priority').value;
+                const dateRaw = document.getElementById('swal-watch-next').value.trim();
+                const timeRaw = document.getElementById('swal-watch-time').value.trim();
+                const text = document.getElementById('swal-watch-text').value;
+
+                if (!dateRaw && timeRaw) {
+                    Swal.showValidationMessage('Вкажіть дату для часу нагадування');
+                    return false;
+                }
+
+                const combined = watchJoinDateTime(dateRaw, timeRaw);
+                if (dateRaw && !watchParseDate(combined)) {
+                    Swal.showValidationMessage('Формат: ДД.ММ.РРРР та ГГ:ХХ');
+                    return false;
+                }
+
+                const comment = buildWatchComment({
+                    priority,
+                    team: document.getElementById('swal-watch-team').value,
+                    nextReview: dateRaw ? watchParseDate(combined) : null,
+                    nextReviewHasTime: !!timeRaw,
+                    lastChecked: meta.lastChecked,
+                    text
                 });
+
+                return saveWatchComment(fraudId, comment)
+                    .then(data => {
+                        if (!data || !data.success) throw new Error((data && data.message) || 'Помилка збереження');
+                        return data;
+                    })
+                    .catch(error => {
+                        Swal.showValidationMessage(error.message || 'Щось пішло не так!');
+                    });
+            }
+        }).then(result => {
+            if (result.isConfirmed && result.value) {
+                Swal.fire('Готово!', 'Запис оновлено.', 'success');
+                loadFrauds();
             }
         });
     }
 
-
     function createAddFraudPopup() {
+        // Автопідстановка з відкритої сторінки гравця.
+        let suggestedId = '';
+        try { suggestedId = (typeof getPlayerID === 'function' && getPlayerID()) || ''; } catch (e) { suggestedId = ''; }
+        const suggestedUrl = /players/.test(window.location.href) ? window.location.href : '';
+        const defaultNext = watchFormatDate(watchAddDays(new Date(), watchDefaultReviewDays()));
+
         const content = `
-        <div id="add-fraud-form">
-            <input type="text" id="fraud-player-id" placeholder="ID клієнта" required />
-            <input type="text" id="fraud-url" placeholder="Посилання" required />
-            <input type="text" id="fraud-comment" placeholder="Коментар" />
-            <button id="add-fraud-confirm-btn">Додати</button>
+        <div id="watch-form">
+            <label>ID клієнта</label>
+            <input type="text" id="fraud-player-id" value="${watchEscape(suggestedId)}" placeholder="ID клієнта" required />
+            <label>Посилання</label>
+            <input type="text" id="fraud-url" value="${watchEscape(suggestedUrl)}" placeholder="Посилання" required />
+            <label>Пріоритет</label>
+            <select id="fraud-priority">${watchPriorityOptions('normal')}</select>
+            <label>Кому видно запис</label>
+            <select id="fraud-team">${watchTeamOptions(getDefaultWatchTeam())}</select>
+            <label>Нагадати — дата (порожньо: без нагадування)</label>
+            <input type="text" id="fraud-next" value="${defaultNext}" placeholder="ДД.ММ.РРРР" />
+            <label>Нагадати — час (порожньо: у будь-який момент цього дня)</label>
+            <input type="time" id="fraud-next-time" value="" />
+            <label>Коментар</label>
+            <textarea id="fraud-comment" rows="3" placeholder="Що саме перевіряти"></textarea>
+            <button id="add-fraud-confirm-btn" class="watch-primary-btn">Додати</button>
         </div>
     `;
-
-        const style = document.createElement('style');
-        style.textContent = `
-        #add-fraud-form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 20px;
-            max-width: 400px;
-            margin: 0 auto;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        #add-fraud-form input {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-            width: 100%;
-        }
-        #add-fraud-form input:focus {
-            border-color: #4CAF50;
-            outline: none;
-        }
-        #add-fraud-confirm-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            border-radius: 5px;
-            font-size: 16px;
-            transition: background-color 0.3s;
-        }
-        #add-fraud-confirm-btn:hover {
-            background-color: #45a049;
-        }
-    `;
-        document.head.appendChild(style);
 
         createPopup('add-fraud-popup', 'Додати під нагляд', content);
 
         document.getElementById('add-fraud-confirm-btn').addEventListener('click', async () => {
-            const playerId = document.getElementById('fraud-player-id').value;
-            const url = document.getElementById('fraud-url').value;
-            const comment = document.getElementById('fraud-comment').value;
+            const playerId = document.getElementById('fraud-player-id').value.trim();
+            const url = document.getElementById('fraud-url').value.trim();
+            const priority = document.getElementById('fraud-priority').value;
+            const dateRaw = document.getElementById('fraud-next').value.trim();
+            const timeRaw = document.getElementById('fraud-next-time').value.trim();
+            const text = document.getElementById('fraud-comment').value;
+
+            if (!playerId || !url) {
+                Swal.fire('Увага', 'Вкажіть ID клієнта та посилання.', 'warning');
+                return;
+            }
+            if (!dateRaw && timeRaw) {
+                Swal.fire('Увага', 'Вкажіть дату для часу нагадування.', 'warning');
+                return;
+            }
+
+            const combined = watchJoinDateTime(dateRaw, timeRaw);
+            if (dateRaw && !watchParseDate(combined)) {
+                Swal.fire('Увага', 'Формат: ДД.ММ.РРРР та ГГ:ХХ', 'warning');
+                return;
+            }
+
+            const comment = buildWatchComment({
+                priority,
+                team: document.getElementById('fraud-team').value,
+                nextReview: dateRaw ? watchParseDate(combined) : null,
+                nextReviewHasTime: !!timeRaw,
+                lastChecked: null,
+                text
+            });
 
             await addFraud(playerId, url, comment);
-            document.getElementById('add-fraud-popup').remove();
+            const popup = document.getElementById('add-fraud-popup');
+            if (popup) popup.remove();
             loadFrauds();
         });
     }
 
-
     async function addFraud(playerId, url, comment) {
-
-
         try {
             const response = await fetch(`${API_BASE_URL}/api/add_fraud`, {
                 method: 'POST',
@@ -2949,8 +3633,6 @@ ${fraud.manager === managerName ? `
     }
 
     async function deleteFraud(fraudId) {
-
-
         try {
             const response = await fetch(`${API_BASE_URL}/api/delete_fraud/${fraudId}`, {
                 method: 'DELETE',
@@ -2973,7 +3655,6 @@ ${fraud.manager === managerName ? `
             console.error('Error:', error);
         }
     }
-
 
     async function registerUser(username, password, managerName, status, team, workHours, performanceGoal) {
         try {
@@ -3980,16 +4661,99 @@ ${fraud.manager === managerName ? `
         return '0.00';
     }
 
+    // Ставить курсор у самий кінець поля, щоб одразу можна було друкувати далі.
+    function placeCaretAtEnd(field) {
+        if (!field) return;
+        try {
+            field.focus();
+
+            if (typeof field.selectionStart === 'number') {
+                // Звичайне поле вводу / textarea
+                const end = field.value.length;
+                field.setSelectionRange(end, end);
+                return;
+            }
+
+            const selection = window.getSelection();
+            if (!selection || typeof document.createRange !== 'function') return;
+
+            const range = document.createRange();
+            range.selectNodeContents(field);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            if (typeof field.scrollTop === 'number') field.scrollTop = field.scrollHeight;
+        } catch (e) {
+            /* курсор — не критично, текст уже вставлено */
+        }
+    }
+
+    // Автоматичний коментар (дата, час, менеджер) завжди стоїть першим рядком.
+    const AUTO_COMMENT_LINE_RE = /^\s*(\d{1,2}\.\d{1,2}\.\d{4})\s+в\s+\d{1,2}:\d{2}\s+(?:проверен антифрод|перевірено антифрод)/i;
+
+    // Рядок належить САМЕ поточній перевірці лише тоді, коли його дата — сьогоднішня.
+    // Інакше це шапка старого коментаря, і новий запис має стати над ним.
+    function isTodaysAutoComment(line) {
+        const match = AUTO_COMMENT_LINE_RE.exec(String(line || '').replace(/<[^>]+>/g, '').trim());
+        return !!match && match[1] === getCurrentDate();
+    }
+
     function insertTextIntoField(text) {
+        const CARET = '<span id="af-caret-marker"></span>';
+
+        // Новий коментар має бути ЗВЕРХУ, над старими. Якщо перший рядок — це
+        // автоматичний коментар цієї ж перевірки, вставляємо відразу після нього,
+        // інакше — на самий початок поля.
+        const buildHtml = existingHtml => {
+            const existing = (existingHtml || '').trim();
+            if (!existing) return text + CARET;
+
+            const separator = /<br\s*\/?>/i;
+            const firstBreak = existing.search(separator);
+
+            if (firstBreak !== -1) {
+                const firstLine = existing.slice(0, firstBreak);
+                const rest = existing.slice(firstBreak);
+                if (isTodaysAutoComment(firstLine)) {
+                    return `${firstLine}<br>${text}${CARET}${rest}`;
+                }
+            } else if (isTodaysAutoComment(existing)) {
+                return `${existing}<br>${text}${CARET}`;
+            }
+
+            return `${text}${CARET}<br>${existing}`;
+        };
+
+        const applyCaret = field => {
+            const marker = field.querySelector ? field.querySelector('#af-caret-marker') : null;
+            if (!marker) {
+                placeCaretAtEnd(field);
+                return;
+            }
+            try {
+                const anchor = document.createTextNode('\u200B');
+                marker.parentNode.replaceChild(anchor, marker);
+
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.setStartAfter(anchor);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            } catch (e) {
+                placeCaretAtEnd(field);
+            }
+        };
+
         const newField = document.querySelector(
             'div[contenteditable="true"][id^="antifraud-input-"]'
         );
         if (newField) {
             newField.focus();
-            newField.innerHTML = text + '<br>' + newField.innerHTML;
-            newField.dispatchEvent(
-                new Event('input', { bubbles: true })
-            );
+            newField.innerHTML = buildHtml(newField.innerHTML);
+            newField.dispatchEvent(new Event('input', { bubbles: true }));
+            applyCaret(newField);
             return;
         }
         const oldField = document.querySelector(
@@ -3999,12 +4763,12 @@ ${fraud.manager === managerName ? `
             const pattern = /.*?(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2})?.*?Автовиплати відключено антифрод командою.*?(\d{2}:\d{2})?.*?(?=<br>|<\/[^>]+>|$)/gi;
             oldField.innerHTML = oldField.innerHTML.replace(pattern, '').trim();
             oldField.focus();
-            oldField.innerHTML = text + '<br>' + oldField.innerHTML;
-            oldField.dispatchEvent(
-                new Event('input', { bubbles: true })
-            );
+            oldField.innerHTML = buildHtml(oldField.innerHTML);
+            oldField.dispatchEvent(new Event('input', { bubbles: true }));
+            applyCaret(oldField);
         }
     }
+
     let isProfitButtonClicked = false;
 
     function formatAmount(balance) {
@@ -4194,10 +4958,14 @@ ${fraud.manager === managerName ? `
 
             const fraudIcon = createFraudIcon();
             const searchIcon = createSearchIcon();
+            const documentsIcon = createDocumentsIcon();
+            const financeIcon = createFinanceTabsIcon();
             const adminIcon = await createAdminIcon();
 
             iconRow.appendChild(fraudIcon);
             iconRow.appendChild(searchIcon);
+            iconRow.appendChild(documentsIcon);
+            iconRow.appendChild(financeIcon);
 
             if (adminIcon) {
                 iconRow.appendChild(adminIcon);
@@ -4361,6 +5129,43 @@ ${fraud.manager === managerName ? `
             padding: '10px 0'
         });
 
+        // WildWinz: Prognose, KYC і Passport там завжди порожні ("---", "Док. не найден"),
+        // тому показуємо лише те, що справді має значення. Приховані елементи лишаються
+        // в DOM, щоб код, який їх заповнює, не падав. UA/USA беруть розмітку нижче.
+        if (isWildWinz()) {
+            mainText.innerHTML = `
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Full Money</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+        </div>
+
+            <div id="all-button-container">
+                <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
+                    All
+                </button>
+            </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Pending</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>
+        </div>
+
+        <div></div>
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Total</strong><br>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
+        </div>
+        <div></div>
+
+        <div style="display: none;">
+            <span id="prognos-inout-target"></span>
+            <span id="verification-provider-target"></span>
+            <span id="current-document-target"></span>
+        </div>
+    `;
+            return mainText;
+        }
+
         mainText.innerHTML = `
         <div style="font-size: 12px;">
             <strong style="color: #666;">Full Money</strong><br>
@@ -4457,10 +5262,31 @@ ${fraud.manager === managerName ? `
 
     function createFraudIcon() {
         const icon = document.createElement('div');
+        icon.id = 'af-watch-icon';
         icon.innerHTML = '<i class="fa fa-eye"></i>';
         applyStyles(icon, { ...NAV_ICON_STYLES });
         icon.title = 'Нагляд';
         icon.onclick = createFraudPopup;
+        // Показує лічильник записів, що потребують уваги, і блимає за критичних.
+        setTimeout(startWatchPolling, 0);
+        return icon;
+    }
+
+    function createDocumentsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-id-card-o"></i>';
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+        icon.title = 'Відкрити всі документи гравця';
+        icon.onclick = openPlayerDocuments;
+        return icon;
+    }
+
+    function createFinanceTabsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-exchange"></i>';
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+        icon.title = 'Депозити, виплати, лог балансу, лог транзакцій';
+        icon.onclick = openFinanceTabs;
         return icon;
     }
 
@@ -4606,6 +5432,10 @@ ${fraud.manager === managerName ? `
         return diffDays < 7;
     }
 
+    function isWildWinz() {
+        return window.location.hostname.includes('wildwinz');
+    }
+
     function buildAntifraudComment() {
         const date = getCurrentDate();
         const time = getCurrentTime();
@@ -4639,9 +5469,32 @@ ${fraud.manager === managerName ? `
         const btn = document.querySelector('.btn-update-comment-antifraud_manager');
         if (btn) {
             btn.click();
-        } else {
-            console.warn('[Antifraud] Кнопку "Обновить" не знайдено');
+            return;
         }
+
+        // Новий редактор коментаря (WildWinz): шукаємо його власну кнопку збереження
+        // поруч із полем. На UA-проєктах сюди не доходить — там кнопка вище знайдена.
+        const newField = document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+        if (newField) {
+            const scope = newField.closest('td') || newField.parentElement;
+            const buttons = scope
+                ? Array.from(scope.querySelectorAll('button, input[type="button"], input[type="submit"], a.btn'))
+                : [];
+            const byText = pattern => buttons.find(el =>
+                pattern.test((el.value || el.textContent || '').trim()));
+
+            // Спершу власна кнопка редактора ("Додати"/"Добавить"), і лише потім інші —
+            // інакше можна натиснути сусідню "Обновить" від іншого поля коментаря.
+            const saveBtn = byText(/додати|добавить/i)
+                || byText(/зберегти|сохранить|оновити|обновить/i);
+
+            if (saveBtn) {
+                saveBtn.click();
+                return;
+            }
+        }
+
+        console.warn('[Antifraud] Кнопку "Обновить" не знайдено');
     }
 
     function setAntifraudComment(text) {
@@ -4656,17 +5509,39 @@ ${fraud.manager === managerName ? `
             const existingText = textarea.value;
             textarea.value = text + '<br>' + existingText;
         }
+
+        // Запасний шлях лише для проєктів зі новим редактором коментаря (WildWinz):
+        // там старих полів немає, тому автоматичний коментар нікуди не потрапляв.
+        // На UA-проєктах ця гілка не виконується — поведінка там незмінна.
+        if (!visibleDiv && !textarea) {
+            const newField = document.querySelector(
+                'div[contenteditable="true"][id^="antifraud-input-"]'
+            );
+            if (newField) {
+                const existing = newField.innerHTML.trim();
+                newField.innerHTML = existing ? `${text}<br>${existing}` : text;
+                newField.dispatchEvent(new Event('input', { bubbles: true }));
+                placeCaretAtEnd(newField);
+            }
+        }
     }
 
     function handleCleanButtonClick() {
         const commentDate = getAntifraudCommentDate();
         const hasRecentComment = isCommentWithin7Days(commentDate);
+
+        // На UA-проєктах галочка лише позначає гравця переглянутим і потрапляє
+        // в статистику — автоматичний коментар туди не додається.
+        const isUaProject = UA_PROJECTS.some(domain => location.hostname.includes(domain));
+
         const dataToInsert = {
             date: getCurrentDate(),
             url: window.location.href,
             project: getProject(),
             playerID: getPlayerID(),
-            initials: GM_getValue('initialsKey', ''),
+            // Тут був рядок 'initialsKey' замість самої константи, тому в статистику
+            // йшли порожні ініціали й пропрацювання не зараховувалось менеджеру.
+            initials: GM_getValue(initialsKey, ''),
             comment: `Переглянутий в ${getCurrentTime()}`
         };
 
@@ -4680,7 +5555,7 @@ ${fraud.manager === managerName ? `
                 if (result.isConfirmed) {
                     sendDataToServer(dataToInsert, token)
                         .then(() => {
-                        clickUpdateButton();
+                        if (!isUaProject) clickUpdateButton();
                         Swal.fire({
                             icon: 'success',
                             title: 'Успішно!',
@@ -4697,12 +5572,14 @@ ${fraud.manager === managerName ? `
             return;
         }
 
-        const newComment = buildAntifraudComment();
-        setAntifraudComment(newComment);
+        if (!isUaProject) {
+            const newComment = buildAntifraudComment();
+            setAntifraudComment(newComment);
+        }
 
         sendDataToServer(dataToInsert, token)
             .then(() => {
-            clickUpdateButton();
+            if (!isUaProject) clickUpdateButton();
             Swal.fire({
                 icon: 'success',
                 title: 'Успішно!',
@@ -4937,6 +5814,12 @@ ${fraud.manager === managerName ? `
             '777': 'https://admin.777.ua/players/playersItems/search/',
             'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
         };
+
+        // WildWinz не пов'язаний з UA-проєктами: картки 777/King там завжди порожні.
+        if (isWildWinz()) {
+            container.innerHTML = '';
+            return;
+        }
 
         initializeCurrentPlayerCards();
         const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
@@ -5341,6 +6224,7 @@ ${fraud.manager === managerName ? `
         'https://admin.vegas.ua/',
         'https://admin.betking.com.ua/'
     ];
+
 
     function insertTextToComment(textToInsert, shouldUpdate) {
         const newField = document.querySelector(
@@ -6278,13 +7162,29 @@ ${fraud.manager === managerName ? `
             const displayCardsSet = new Set();
             let totalPending = 0;
 
+            // Колонки на WildWinz зсунуті (є зайва "Country"), тому їхні номери
+            // визначаємо за заголовками таблиці. UA/USA працюють як раніше.
+            let wwSumColumn = 6;
+            let wwDetailsColumn = 11;
+            if (isWildWinz()) {
+                const headerRow = Array.from(doc.querySelectorAll('tr')).find(r => r.querySelector('th'));
+                if (headerRow) {
+                    Array.from(headerRow.querySelectorAll('th')).forEach((th, i) => {
+                        const title = (th.textContent || '').trim();
+                        if (/^(sum|сумма|сума)$/i.test(title)) wwSumColumn = i + 1;
+                        if (/(payment details|реквизит|реквізит)/i.test(title)) wwDetailsColumn = i + 1;
+                    });
+                }
+            }
+            const detailsColumn = isWildWinz() ? wwDetailsColumn : 10;
+
             doc.querySelectorAll('tr').forEach(row => {
-                const cardLabelSpecific = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
+                const cardLabelSpecific = row.querySelector(`td:nth-child(${detailsColumn}) span.label[style="background-color: #8D8A8E"]`);
                 if (cardLabelSpecific?.textContent.trim()) {
                     displayCardsSet.add(cardLabelSpecific.textContent.trim());
                 }
 
-                const cardLabel = row.querySelector('td:nth-child(10)');
+                const cardLabel = row.querySelector(`td:nth-child(${detailsColumn})`);
                 if (cardLabel?.textContent.trim()) {
                     allCardsSet.add(cardLabel.textContent.trim());
                 }
@@ -6293,8 +7193,17 @@ ${fraud.manager === managerName ? `
                     const statusSpan = row.querySelector('span.label');
                     const status = statusSpan?.textContent.trim();
                     if (['pending', 'review', 'on_hold'].includes(status)) {
-                        const amountText = row.querySelector('td:nth-child(5) code')?.textContent.trim().replace('UAH', '').replace(',', '.') || '0';
-                        totalPending += parseFloat(amountText) || 0;
+                        if (isWildWinz()) {
+                            // На WildWinz у таблиці є зайва колонка "Country", через яку
+                            // сума зсунута з 5-ї на 6-ту позицію. UA/USA не чіпаємо.
+                            const wwCell = row.querySelector(`td:nth-child(${wwSumColumn}) code`)
+                                || row.querySelector(`td:nth-child(${wwSumColumn})`);
+                            const wwMatch = (wwCell?.textContent || '').match(/-?\d[\d\s.,]*/);
+                            totalPending += wwMatch ? (parseFloat(wwMatch[0].replace(/\s/g, '').replace(',', '.')) || 0) : 0;
+                        } else {
+                            const amountText = row.querySelector('td:nth-child(5) code')?.textContent.trim().replace('UAH', '').replace(',', '.') || '0';
+                            totalPending += parseFloat(amountText) || 0;
+                        }
                     }
                 }
             });
@@ -7210,6 +8119,8 @@ ${fraud.manager === managerName ? `
                 MonthPA: inOutData?.monthInOut ?? '−',
                 TotalPA: inOutData?.totalInOut ?? '−',
                 Balance: getBalance(),
+                // Без цього баланс сейфа не враховувався у розрахунках віджета.
+                SafeBalance: getInnerBalanceValue(),
                 NDFL: balanceData?.balance_after ?? '0'
             };
 
@@ -9570,6 +10481,151 @@ ${fraud.manager === managerName ? `
         targetTd.appendChild(disableButton[0]);
     }
 
+    // Текст підпису чекбокса в розділі "Блокировки".
+    function getCheckboxLabelText(checkbox) {
+        if (!checkbox) return '';
+        const parts = [];
+
+        const wrappingLabel = checkbox.closest ? checkbox.closest('label') : null;
+        if (wrappingLabel) parts.push(wrappingLabel.textContent || '');
+
+        if (checkbox.id) {
+            const forLabel = document.querySelector(`label[for="${checkbox.id}"]`);
+            if (forLabel) parts.push(forLabel.textContent || '');
+        }
+
+        if (checkbox.parentElement) parts.push(checkbox.parentElement.textContent || '');
+        if (checkbox.nextSibling && checkbox.nextSibling.textContent) parts.push(checkbox.nextSibling.textContent);
+
+        return parts.join(' ').replace(/\s+/g, ' ').trim();
+    }
+
+    // Шукає конкретний чекбокс блокування за підписом, з запасним пошуком за name.
+    function findRestrictedCheckbox(checkboxes, labelPattern, namePattern) {
+        let found = Array.from(checkboxes).find(cb => labelPattern.test(getCheckboxLabelText(cb)));
+        if (!found) found = Array.from(checkboxes).find(cb => namePattern.test(cb.name || ''));
+        return found || null;
+    }
+
+    // Окрема кнопка: вимкнути лише офери (ліміт 0) і поставити дві галочки —
+    // "Promo Offers заблокированы" та "PopUp Ads заблокирован".
+    function disableOffersOnlyUSA() {
+        const project = getProject();
+
+        const baseHeaders = {
+            accept: "*/*",
+            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+            "cache-control": "no-cache",
+            pragma: "no-cache",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-requested-with": "XMLHttpRequest"
+        };
+
+        const baseConfig = {
+            referrer: `https://admin.${project}.com/players/playersItems/update/${userId}/`,
+            referrerPolicy: "strict-origin-when-cross-origin",
+            method: "POST",
+            mode: "cors",
+            credentials: "include"
+        };
+
+        const targetTr = Array.from(document.querySelectorAll('tr'))
+            .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
+        const targetTd = targetTr?.querySelector('td');
+        if (!targetTd) return;
+
+        const offersButton = $('<input>', {
+            type: 'button',
+            value: 'Вимкнути офери',
+            class: 'btn btn-xs btn-warning',
+            css: { 'margin-right': '10px' }
+        }).on('click', e => {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'question',
+                title: 'Вимкнути офери?',
+                html: 'Ліміт оферів буде встановлено на 0,<br>' +
+                      'а в "Блокировки" буде відмічено<br><b>Promo Offers</b> і <b>PopUp Ads</b>.',
+                showCancelButton: true,
+                cancelButtonText: 'Відміна',
+                confirmButtonText: 'Так',
+                preConfirm: async () => {
+                    try {
+                        const allCheckboxes = document.querySelectorAll(
+                            '.toggle-restricted-features-info-container input[type="checkbox"]');
+
+                        if (!allCheckboxes.length) {
+                            throw new Error('Не знайдено розділ "Блокировки". Відкрийте його ("Показать") і спробуйте ще раз.');
+                        }
+
+                        const promoOffers = findRestrictedCheckbox(
+                            allCheckboxes, /promo\s*offers/i, /promo.*offer.*block/i);
+                        const popupAds = findRestrictedCheckbox(
+                            allCheckboxes, /pop\s*-?\s*up\s*ads/i, /pop.?up.*ad.*block/i);
+
+                        const missing = [];
+                        if (!promoOffers) missing.push('Promo Offers');
+                        if (!popupAds) missing.push('PopUp Ads');
+                        if (missing.length) {
+                            throw new Error(`Не знайдено чекбокс: ${missing.join(', ')}`);
+                        }
+
+                        // 1. Ліміт оферів = 0
+                        const limitResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changePromoOfferLimitPerDay/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                                body: `playerId=${userId}&offerLimit=0`
+                            }
+                        ).then(res => res.json());
+
+                        if (!limitResponse.success) throw new Error(limitResponse.message || 'Помилка зміни ліміту оферів');
+
+                        // 2. Зберігаємо поточний стан усіх блокувань і вмикаємо лише дві потрібні,
+                        //    щоб не зачепити інші активності гравця.
+                        const featuresToBlock = { playerId: userId };
+                        allCheckboxes.forEach(checkbox => {
+                            if (checkbox.name) featuresToBlock[checkbox.name] = !!checkbox.checked;
+                        });
+                        featuresToBlock[promoOffers.name] = true;
+                        featuresToBlock[popupAds.name] = true;
+
+                        const featuresResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/json" },
+                                body: JSON.stringify(featuresToBlock)
+                            }
+                        ).then(res => res.json());
+
+                        if (!featuresResponse.success) throw new Error(featuresResponse.message || 'Помилка збереження блокувань');
+
+                        const currentLanguage = GM_getValue(languageKey, 'російська');
+                        const insertText = currentLanguage === 'українська'
+                            ? 'Відключив оффери'
+                            : 'Отключил офферы';
+                        insertTextToComment(insertText, true);
+
+                        Swal.fire({ icon: 'success', title: 'Офери вимкнено', width: '250px' })
+                            .then(() => location.reload());
+                    } catch (error) {
+                        Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
+                    }
+                }
+            });
+        });
+
+        targetTd.appendChild(offersButton[0]);
+    }
+
     let previousValues = {
         moneyFromOfferPercentage: 0,
         activityMoneyPercentage: 0,
@@ -9905,6 +10961,8 @@ ${fraud.manager === managerName ? `
 
             container.removeChild(loader);
             container.innerHTML = formatProfitOutput(mainResult, relatedResults, totalProfit, projectLinks, totalPending, winnings);
+            // Кнопка "відкрити всі знайдені акаунти" — лише на USA-проєктах.
+            if (isUsaProject()) addOpenRelatedProjectsButton(container);
 
             container.querySelectorAll('.clickable').forEach(element => {
                 element.addEventListener('click', () => {
@@ -9922,6 +10980,345 @@ ${fraud.manager === managerName ? `
             container.removeChild(loader);
             container.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
         }
+    }
+
+    // ============ Швидке відкриття вкладок гравця ============
+
+    // Відкриває підготовлений список посилань. Виклик має бути синхронним усередині
+    // обробника кліку, інакше блокувальник спливаючих вікон відхилить вкладки.
+    function openLinksInTabs(links) {
+        let blocked = 0;
+        links.forEach((link, index) => {
+            const win = window.open(link.url, '_blank');
+            if (!win) blocked++;
+            else if (index === links.length - 1) win.blur ? window.focus() : null;
+        });
+        return blocked;
+    }
+
+    function notifyBlockedTabs(blocked, total) {
+        if (!blocked) return;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Вкладки заблоковано',
+            html: `Браузер заблокував ${blocked} із ${total} вкладок.<br>` +
+                  'Дозвольте спливаючі вікна для цього сайту, щоб відкривати все одразу.'
+        });
+    }
+
+    // Фінансові вкладки гравця: депозити, виплати, лог балансу, лог транзакцій.
+    // Базова адреса поточної адмінки. Не використовуємо ProjectUrl: там перелічені
+    // лише деякі проєкти, а решта підставляє admin.default.ua і вкладки відкривались
+    // не туди. Поточний хост завжди правильний.
+    function getAdminBaseUrl() {
+        return `${window.location.protocol}//${window.location.host}/`;
+    }
+
+    // Внутрішній id гравця з адреси картки: /players/playersItems/update/364684/
+    function getInternalPlayerId() {
+        const match = /\/players\/playersItems\/(?:update|balanceLog|transactionLog|view)\/(\d+)/i
+            .exec(window.location.pathname);
+        if (match) return match[1];
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        const numeric = parts.filter(p => /^\d+$/.test(p));
+        return numeric.length ? numeric[numeric.length - 1] : '';
+    }
+
+    function buildFinanceTabLinks() {
+        const base = getAdminBaseUrl();
+        const login = (typeof getPlayerID === 'function' ? getPlayerID() : '') || '';
+        const internalId = getInternalPlayerId();
+        const links = [];
+
+        if (login && login !== '0.00') {
+            links.push({
+                title: 'Депозити',
+                url: `${base}payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=${encodeURIComponent(login)}`
+            });
+            links.push({
+                title: 'Виплати',
+                url: `${base}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${encodeURIComponent(login)}`
+            });
+        }
+
+        if (internalId) {
+            links.push({ title: 'Лог балансу', url: `${base}players/playersItems/balanceLog/${internalId}/` });
+            links.push({ title: 'Лог транзакцій', url: `${base}players/playersItems/transactionLog/${internalId}/` });
+        }
+
+        return links;
+    }
+
+    function openFinanceTabs() {
+        const links = buildFinanceTabLinks();
+        if (!links.length) {
+            Swal.fire('Не вдалося', 'Не вдалося визначити гравця на цій сторінці.', 'warning');
+            return;
+        }
+        notifyBlockedTabs(openLinksInTabs(links), links.length);
+    }
+
+    // Документи гравця. Пряме посилання на розділ документів у скрипті не задано,
+    // тому посилання шукаються на самій сторінці гравця: файли зображень/PDF та
+    // вкладки чи посилання, у яких згадуються документи.
+    const DOCUMENT_FILE_RE = /\.(jpe?g|png|gif|webp|bmp|tiff?|pdf|heic)(\?|#|$)/i;
+    // Службові посилання сітки документів: сортування, пагінація, фільтри.
+    // Вони містять слово "document", але ведуть на ту саму сторінку гравця —
+    // саме через них картка акаунта відкривалась багато разів.
+    const DOCUMENT_SERVICE_RE = /(_sort=|[?&]sort=|[?&]page=|[?&]ajax=|per-page=|_pjax=)/i;
+
+    // Картинки інтерфейсу — не документи. Сюди ж потрапляють логотипи проєктів,
+    // які сам віджет підставляє як {домен}/img/{проєкт}.png у блоці "Related Projects".
+    const NON_DOCUMENT_RE = new RegExp(
+        '(^|/)(img|images|assets|static|theme|themes|css|js|dist|build|public)/' +
+        '|logo|favicon|sprite|icon|avatar|banner|flag|placeholder|no-?photo|no-?image|blank|spacer',
+        'i'
+    );
+
+    // Шлях, який справді вказує на документ гравця.
+    const DOCUMENT_PATH_RE = /(document|upload|verif|passport|scan|kyc|attach|selfie|photo)/i;
+
+    function collectDocumentLinks() {
+        const found = new Map();
+        const currentPath = window.location.pathname;
+
+        const add = (url, title) => {
+            if (!url) return;
+            let parsed;
+            try { parsed = new URL(url, window.location.origin); }
+            catch (e) { return; }
+
+            const absolute = parsed.href;
+            if (/^javascript:/i.test(absolute) || absolute.endsWith('#')) return;
+            // Ніколи не відкриваємо ту саму сторінку, на якій ми зараз.
+            if (parsed.pathname === currentPath) return;
+            if (DOCUMENT_SERVICE_RE.test(absolute)) return;
+            // Логотипи, іконки та інша графіка інтерфейсу.
+            if (NON_DOCUMENT_RE.test(parsed.pathname)) return;
+
+            if (!found.has(absolute)) {
+                found.set(absolute, { url: absolute, title: (title || '').trim() || 'Документ' });
+            }
+        };
+
+        // Відкриваємо лише справжні файли документів: зображення та PDF.
+        document.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            if (DOCUMENT_FILE_RE.test(href)) add(href, a.textContent || a.title);
+        });
+
+        // Мініатюри: беремо посилання на оригінал, інакше сам src.
+        document.querySelectorAll('img[src]').forEach(img => {
+            const anchor = img.closest ? img.closest('a') : null;
+            const parentHref = anchor ? anchor.getAttribute('href') || '' : '';
+            if (parentHref && DOCUMENT_FILE_RE.test(parentHref)) {
+                add(parentHref, img.alt);
+                return;
+            }
+            // Окрема картинка вважається документом лише тоді, коли шлях це підтверджує.
+            // Інакше сюди потрапляє вся графіка сторінки, зокрема логотипи проєктів.
+            const src = img.getAttribute('src') || '';
+            if (DOCUMENT_FILE_RE.test(src) && DOCUMENT_PATH_RE.test(src)) {
+                add(src, img.alt);
+            }
+        });
+
+        // Прев'ю у lightbox-віджетах зберігають адресу файлу в data-атрибутах.
+        document.querySelectorAll('[data-src], [data-original], [data-href], [data-image]').forEach(el => {
+            ['data-src', 'data-original', 'data-href', 'data-image'].forEach(attr => {
+                const value = el.getAttribute(attr) || '';
+                if (DOCUMENT_FILE_RE.test(value)) add(value, el.getAttribute('alt') || el.title);
+            });
+        });
+
+        return Array.from(found.values());
+    }
+
+    function openPlayerDocuments() {
+        const links = collectDocumentLinks();
+
+        if (!links.length) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Документів не знайдено',
+                html: 'На цій сторінці не знайдено посилань на документи.<br>' +
+                      'Відкрийте картку гравця й спробуйте ще раз.'
+            });
+            return;
+        }
+
+        // Багато документів — спершу підтвердження, щоб не відкрити десятки вкладок.
+        if (links.length > 8) {
+            Swal.fire({
+                icon: 'question',
+                title: `Відкрити ${links.length} вкладок?`,
+                showCancelButton: true,
+                confirmButtonText: 'Відкрити',
+                cancelButtonText: 'Скасувати'
+            }).then(result => {
+                if (result.isConfirmed) notifyBlockedTabs(openLinksInTabs(links), links.length);
+            });
+            return;
+        }
+
+        notifyBlockedTabs(openLinksInTabs(links), links.length);
+    }
+
+    // USA-проєкти: усі .com/.app, окрім WildWinz. Українські (777.ua, vegas.ua,
+    // betking.com.ua) відсіюються за доменом .ua.
+    function isUsaProject() {
+        const host = window.location.hostname.toLowerCase();
+        if (host.endsWith('.ua')) return false;
+        if (host.includes('wildwinz')) return false;
+        return host.endsWith('.com') || host.endsWith('.app');
+    }
+
+    // ============ Відкрити всі знайдені акаунти гравця ============
+    // Посилання беруться з блоку "Related Projects" у віджеті — це саме ті акаунти,
+    // які скрипт уже знайшов і показав.
+    function collectRelatedProjectLinks(container) {
+        const scope = container || document;
+        const links = [];
+        const seen = new Set();
+
+        scope.querySelectorAll('.related-projects a.project-link, a.project-link').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            if (!href || href === '#') return;
+            let absolute;
+            try { absolute = new URL(href, window.location.origin).href; }
+            catch (e) { return; }
+            if (seen.has(absolute)) return;
+            seen.add(absolute);
+            links.push({ url: absolute, title: (a.textContent || '').trim() || 'Акаунт' });
+        });
+
+        return links;
+    }
+
+    function addOpenRelatedProjectsButton(container) {
+        if (!container || container.querySelector('#open-related-projects-btn')) return;
+
+        const links = collectRelatedProjectLinks(container);
+        if (!links.length) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'profit-section';
+        wrapper.style.cssText = 'text-align:center;margin-top:6px;';
+
+        const button = document.createElement('button');
+        button.id = 'open-related-projects-btn';
+        button.type = 'button';
+        button.textContent = `Відкрити всі акаунти (${links.length})`;
+        button.style.cssText =
+            'background:#1e88e5;color:#fff;border:none;border-radius:4px;padding:6px 12px;' +
+            'cursor:pointer;font-size:12px;width:100%;';
+        button.title = 'Відкрити всі знайдені акаунти гравця в нових вкладках';
+        button.onmouseenter = () => { button.style.background = '#1565c0'; };
+        button.onmouseleave = () => { button.style.background = '#1e88e5'; };
+
+        button.addEventListener('click', () => {
+            const current = collectRelatedProjectLinks(container);
+            if (!current.length) {
+                Swal.fire('Немає акаунтів', 'Пов’язаних акаунтів не знайдено.', 'info');
+                return;
+            }
+            // Багато вкладок — спершу підтвердження.
+            if (current.length > 8) {
+                Swal.fire({
+                    icon: 'question',
+                    title: `Відкрити ${current.length} вкладок?`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Відкрити',
+                    cancelButtonText: 'Скасувати'
+                }).then(result => {
+                    if (result.isConfirmed) notifyBlockedTabs(openLinksInTabs(current), current.length);
+                });
+                return;
+            }
+            notifyBlockedTabs(openLinksInTabs(current), current.length);
+        });
+
+        wrapper.appendChild(button);
+        container.appendChild(wrapper);
+    }
+
+    // ============ Коментар "Mark as blocked" (лише USA-проєкти) ============
+    // Галочку "Mark as blocked" менеджер ставить сам. Кнопка лише додає коментар,
+    // бо дата та ім'я вже підставляються автоматичним коментарем вище.
+
+    // Чекбокс "Mark as blocked" у розділі "Статус для базы".
+    function findMarkAsBlockedCheckbox() {
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        return Array.from(checkboxes).find(cb => {
+            const label = getCheckboxLabelText(cb);
+            return /mark\s*as\s*blocked/i.test(label) || /mark.*blocked/i.test(cb.name || '');
+        }) || null;
+    }
+
+    function addBadStatusCommentButton() {
+        if (document.getElementById('bad-status-comment-btn')) return;
+
+        const checkbox = findMarkAsBlockedCheckbox();
+        if (!checkbox) return;
+
+        const host = checkbox.parentElement;
+        if (!host) return;
+
+        const button = document.createElement('button');
+        button.id = 'bad-status-comment-btn';
+        button.type = 'button';
+        button.textContent = 'Додати коментар';
+        button.title = GM_getValue(languageKey, 'російська') === 'російська'
+            ? 'Додати коментар "Mark as blocked для базы"'
+            : 'Додати коментар "Mark as blocked для бази"';
+        button.style.cssText =
+            'margin-left:10px;padding:2px 10px;font-size:11px;line-height:18px;' +
+            'color:#fff;background:#d32f2f;border:none;border-radius:3px;cursor:pointer;' +
+            'vertical-align:middle;';
+        button.onmouseenter = () => { button.style.background = '#b71c1c'; };
+        button.onmouseleave = () => { button.style.background = '#d32f2f'; };
+
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            try {
+                // Текст залежить від обраної мови віджета, як і решта автокоментарів.
+                const isRussian = GM_getValue(languageKey, 'російська') === 'російська';
+                const text = isRussian ? 'Mark as blocked для базы' : 'Mark as blocked для бази';
+                insertTextToComment(`<b><span style="color: #ff0000;">${text}</span></b>`, true);
+
+                const original = button.textContent;
+                button.textContent = 'Додано ✔';
+                button.style.background = '#2e7d32';
+                setTimeout(() => {
+                    button.textContent = original;
+                    button.style.background = '#d32f2f';
+                }, 1500);
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
+            }
+        });
+
+        host.appendChild(button);
+    }
+
+    // Розділ "Статус для базы" розгортається кнопкою "Показать", тому чекбокса
+    // на момент завантаження сторінки ще немає — чекаємо на його появу.
+    function watchForBadStatusSection() {
+        if (!isUsaProject()) return;
+
+        addBadStatusCommentButton();
+
+        let pending = null;
+        const observer = new MutationObserver(() => {
+            if (document.getElementById('bad-status-comment-btn')) return;
+            if (pending) return;
+            pending = setTimeout(() => {
+                pending = null;
+                addBadStatusCommentButton();
+            }, 300);
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     function createIcon(iconClass, positionStyles, title, onClick) {
@@ -10019,7 +11416,11 @@ ${fraud.manager === managerName ? `
 
             popupBox.appendChild(createOldSettingsIcon());
             popupBox.appendChild(createOldStatisticIcon());
-            popupBox.appendChild(createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup()));
+            const watchIcon = createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup());
+            // Без цього id індикатор (лічильник і блимання) не мав до чого прикріпитись.
+            watchIcon.id = 'af-watch-icon';
+            popupBox.appendChild(watchIcon);
+            startWatchPolling();
 
             const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
                 createReminderPopup();
@@ -10030,6 +11431,12 @@ ${fraud.manager === managerName ? `
                 reminderIcon.classList.add('blinking');
             }
             popupBox.appendChild(reminderIcon);
+
+            // Швидке відкриття документів та фінансових вкладок гравця.
+            popupBox.appendChild(createIcon('fa-id-card-o', { top: '70px', left: '10px' },
+                'Відкрити всі документи гравця', () => openPlayerDocuments()));
+            popupBox.appendChild(createIcon('fa-exchange', { top: '100px', left: '10px' },
+                'Відкрити депозити, виплати, лог балансу і лог транзакцій', () => openFinanceTabs()));
 
             await addAdminIcon(popupBox);
 
@@ -11822,6 +13229,8 @@ ${fraud.manager === managerName ? `
                 analyzeTransaction();
                 buttonToSave();
                 disablePromoOffersUSA();
+                disableOffersOnlyUSA();
+                watchForBadStatusSection();
                 checkUserInFraudList();
                 addPibRow();
                 sendPlayerSeenInfo();

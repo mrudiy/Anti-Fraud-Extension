@@ -25,6 +25,7 @@
 // @match        https://admin.dexyplay.com/*
 // @match        https://admin.spintime.app/*
 // @match        https://admin.coinsmania.com/*
+// @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
@@ -4709,6 +4710,13 @@
             const existing = (existingHtml || '').trim();
             if (!existing) return text + CARET;
 
+            // Якщо вставляємо цілий новий блок із власною шапкою (дата/час/менеджер),
+            // він має стати НАД усім попереднім, а не всередину старого запису.
+            const firstInsertedLine = String(text).split(/<br\s*\/?>/i)[0];
+            if (isTodaysAutoComment(firstInsertedLine)) {
+                return `${text}${CARET}<br>${existing}`;
+            }
+
             const separator = /<br\s*\/?>/i;
             const firstBreak = existing.search(separator);
 
@@ -5526,13 +5534,107 @@
         }
     }
 
+    // Чи є взагалі якийсь коментар антифрод-менеджера.
+    //
+    // Важливо: на UA-проєктах збережений коментар НЕ лишається в полі вводу —
+    // інтерфейс переносить його нижче, у список збережених записів
+    // (td[data-toggle-antifraud-item]). Якщо дивитись лише на поле вводу,
+    // воно виглядає порожнім, і чек щоразу додавав би новий коментар.
+    // Тому перевіряємо і поле вводу, і список уже збережених коментарів.
+    function readCommentText(element) {
+        if (!element) return '';
+        const raw = typeof element.value === 'string' && element.value.trim()
+            ? element.value
+            : (element.innerHTML || element.textContent || '');
+        return String(raw)
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/\u200B/g, '')
+            .trim();
+    }
+
+    function hasSavedAntifraudComment() {
+        // UA: збережені коментарі лежать окремими блоками під полем вводу.
+        const savedItems = document.querySelectorAll('[data-toggle-antifraud-item]');
+        for (const item of savedItems) {
+            // Підпис автора з датою (footer) не рахуємо за текст коментаря.
+            const clone = item.cloneNode ? item.cloneNode(true) : null;
+            if (clone && clone.querySelectorAll) {
+                clone.querySelectorAll('footer').forEach(footer => footer.remove());
+            }
+            if (readCommentText(clone || item)) return true;
+        }
+
+        // Запасний спосіб: розмітка списку коментарів на різних проєктах
+        // відрізняється, але кожен збережений коментар має підпис автора (footer).
+        // Шукаємо їх у тому ж блоці, де стоїть поле вводу.
+        const input = document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]')
+            || document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const scope = input && typeof input.closest === 'function'
+            ? (input.closest('td') || input.parentElement)
+            : null;
+
+        if (scope && typeof scope.querySelectorAll === 'function') {
+            const footers = scope.querySelectorAll('footer');
+            for (const footer of footers) {
+                if ((footer.textContent || '').trim()) return true;
+            }
+        }
+
+        return false;
+    }
+
+    function antifraudCommentIsEmpty() {
+        if (hasSavedAntifraudComment()) return false;
+
+        const fields = [
+            document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]'),
+            document.getElementById('gateway-method-description-visible-antifraud_manager'),
+            document.getElementById('PlayersComments_comment_antifraud_manager')
+        ];
+
+        for (const field of fields) {
+            if (readCommentText(field)) return false;
+        }
+        return true;
+    }
+
+    // Шаблонний коментар, який ставиться, коли поле порожнє.
+    // Дата, час і хто перевіряв підставляються в момент натискання "чек".
+    // Для менеджера Betting команда вказується одразу після слова "командой":
+    // "проверен антифрод командой Betting/Ярослав Гайдук" — так читається природніше,
+    // ніж приписка в кінці рядка.
+    function buildTemplateCheckComment() {
+        const language = GM_getValue(languageKey, 'російська');
+        const isUaProject = UA_PROJECTS.some(domain => location.hostname.includes(domain));
+
+        // На UA систему сама підписує коментар автором і датою, тому дублювати
+        // їх у тексті не потрібно — лишається тільки сам факт перевірки.
+        if (isUaProject) {
+            return language === 'російська'
+                ? 'Проверено антифрод менеджером'
+                : 'Перевірено антифрод менеджером';
+        }
+
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const manager = String(GM_getValue(initialsKey, '') || '').trim();
+        const team = managerData && managerData.team === 'Betting' ? ' Betting' : '';
+        const author = manager ? `/${manager}` : '';
+
+        return language === 'російська'
+            ? `${date} в ${time} проверен антифрод командой${team}${author}`
+            : `${date} в ${time} перевірено антифрод командою${team}${author}`;
+    }
+
     function handleCleanButtonClick() {
         const commentDate = getAntifraudCommentDate();
         const hasRecentComment = isCommentWithin7Days(commentDate);
 
-        // На UA-проєктах галочка лише позначає гравця переглянутим і потрапляє
-        // в статистику — автоматичний коментар туди не додається.
-        const isUaProject = UA_PROJECTS.some(domain => location.hostname.includes(domain));
+        // Правило першого коментаря, однакове для UA, USA і WildWinz:
+        // поле порожнє -> ставимо шаблонний коментар; уже щось є -> нічого не додаємо.
+        const needsTemplateComment = antifraudCommentIsEmpty();
 
         const dataToInsert = {
             date: getCurrentDate(),
@@ -5555,7 +5657,7 @@
                 if (result.isConfirmed) {
                     sendDataToServer(dataToInsert, token)
                         .then(() => {
-                        if (!isUaProject) clickUpdateButton();
+                        if (needsTemplateComment) clickUpdateButton();
                         Swal.fire({
                             icon: 'success',
                             title: 'Успішно!',
@@ -5572,14 +5674,13 @@
             return;
         }
 
-        if (!isUaProject) {
-            const newComment = buildAntifraudComment();
-            setAntifraudComment(newComment);
+        if (needsTemplateComment) {
+            setAntifraudComment(buildTemplateCheckComment());
         }
 
         sendDataToServer(dataToInsert, token)
             .then(() => {
-            if (!isUaProject) clickUpdateButton();
+            if (needsTemplateComment) clickUpdateButton();
             Swal.fire({
                 icon: 'success',
                 title: 'Успішно!',
@@ -7405,6 +7506,119 @@
         selectElement.appendChild(option);
         selectElement.value = '35000';
         selectElement.dispatchEvent(new Event('change'));
+    }
+
+    // ============ Balance Log: автоматично 10 000 записів (лише USA-проєкти) ============
+    // Стара setPageSize1k() ставила 500 попри назву — саме тому журнал завжди
+    // відкривався з 500 записами. Нова логіка ізольована й нічого іншого не чіпає.
+
+    const BALANCE_LOG_PAGE_SIZE = '10000';
+    const BALANCE_LOG_REDIRECT_KEY = 'afBalanceLogPageSizeApplied';
+    let balanceLogPageSizeApplied = false;
+
+    function isUsaBalanceLogPage() {
+        const host = (window.location.hostname || '').toLowerCase();
+        // USA — усі домени, крім українських. Не прив'язуємось до конкретного проєкту.
+        const isUsaHost = !host.endsWith('.ua') && (host.endsWith('.com') || host.endsWith('.app'));
+        return isUsaHost && /\/players\/playersItems\/balanceLog\//i.test(window.location.pathname);
+    }
+
+    function currentBalanceLogPageSize() {
+        try {
+            return new URLSearchParams(window.location.search).get('newPageSize');
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Виставляє значення в самому селекті й повідомляє сторінку, щоб таблиця
+    // перезавантажилась її власним обробником.
+    function applyBalanceLogPageSize(select) {
+        if (!select || balanceLogPageSizeApplied) return false;
+
+        const hasOption = Array.from(select.options || [])
+            .some(option => String(option.value) === BALANCE_LOG_PAGE_SIZE);
+
+        if (!hasOption) {
+            const option = document.createElement('option');
+            option.value = BALANCE_LOG_PAGE_SIZE;
+            option.text = BALANCE_LOG_PAGE_SIZE;
+            select.appendChild(option);
+        }
+
+        if (String(select.value) === BALANCE_LOG_PAGE_SIZE) {
+            balanceLogPageSizeApplied = true;
+            return true;
+        }
+
+        select.value = BALANCE_LOG_PAGE_SIZE;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Якщо сторінка слухає подію через jQuery — дублюємо і там.
+        try {
+            if (typeof window.jQuery === 'function') {
+                window.jQuery(select).val(BALANCE_LOG_PAGE_SIZE).trigger('change');
+            }
+        } catch (e) { /* необов'язково */ }
+
+        balanceLogPageSizeApplied = true;
+        return true;
+    }
+
+    // Запасний шлях: сам параметр в адресі. Виконується один раз за вкладку,
+    // тому зациклитись не може.
+    function redirectBalanceLogWithPageSize() {
+        try {
+            const marker = BALANCE_LOG_REDIRECT_KEY + ':' + window.location.pathname;
+            if (sessionStorage.getItem(marker)) return;
+            sessionStorage.setItem(marker, '1');
+
+            const url = new URL(window.location.href);
+            url.searchParams.set('newPageSize', BALANCE_LOG_PAGE_SIZE);
+            url.searchParams.set('page', '1');
+            window.location.replace(url.toString());
+        } catch (e) {
+            console.warn('[BalanceLog] Не вдалося застосувати розмір сторінки:', e);
+        }
+    }
+
+    function setBalanceLogPageSize() {
+        if (!isUsaBalanceLogPage()) return;
+
+        // Уже відкрито з потрібним розміром — лише синхронізуємо вигляд селекта.
+        if (currentBalanceLogPageSize() === BALANCE_LOG_PAGE_SIZE) {
+            const ready = document.getElementById('newPageSize');
+            if (ready) applyBalanceLogPageSize(ready);
+            return;
+        }
+
+        const existing = document.getElementById('newPageSize');
+        if (existing) {
+            applyBalanceLogPageSize(existing);
+            return;
+        }
+
+        // Селект може з'явитися пізніше (динамічний інтерфейс) — чекаємо на нього.
+        let settled = false;
+        const observer = new MutationObserver(() => {
+            const select = document.getElementById('newPageSize');
+            if (!select || settled) return;
+            settled = true;
+            observer.disconnect();
+            applyBalanceLogPageSize(select);
+        });
+
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        // Якщо селект так і не з'явився — застосовуємо через адресу сторінки.
+        setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            observer.disconnect();
+            if (!document.getElementById('newPageSize')) redirectBalanceLogWithPageSize();
+            else applyBalanceLogPageSize(document.getElementById('newPageSize'));
+        }, 8000);
     }
 
     function setPageSize1k() {
@@ -10924,6 +11138,521 @@
         });
     }
 
+    // ============ Person Prognose InOut (лише USA-проєкти) ============
+    // Person InOut = сума фактичних depositsminuswithdrawals по всіх акаунтах персони.
+    // Person Prognose InOut = те саме, але з урахуванням грошей, які зараз лежать
+    // на кожному акаунті: profit - pending - balance (та сама формула, що й для
+    // одного гравця у formatProfitOutput).
+    //
+    // Усі запити — фонові, через GM_xmlhttpRequest, як це вже робить getProjectProfit.
+    // Жодних вкладок чи вікон не відкривається. Запускається ТІЛЬКИ по кнопці.
+
+    const PERSON_PROGNOSE_CONCURRENCY = 5;
+
+    // Підписи рядка з балансом у зведеній таблиці гравця. Різні проєкти можуть
+    // називати його по-різному, тому перевіряємо кілька варіантів.
+    // Гроші гравця можуть лежати на Entries, Bonus Entries або Winnings —
+    // тому баланс збираємо з усіх трьох складових, які вдалося знайти.
+    const BALANCE_COMPONENT_LABELS = [
+        'winnings', 'виграш', 'выигрыш',
+        'entries', 'ентрі',
+        'bonus entries', 'bonus_entries'
+    ];
+
+    const BALANCE_ROW_LABELS = [
+        'balance', 'баланс', 'full money', 'total balance', 'current balance'
+    ].concat(BALANCE_COMPONENT_LABELS);
+
+    function isBalanceComponentLabel(label) {
+        const clean = String(label || '').trim().toLowerCase().replace(/[:\s]+$/, '');
+        if (!clean) return null;
+        if (/^bonus\s*entries$/.test(clean)) return 'bonusEntries';
+        if (/^entries$/.test(clean)) return 'entries';
+        if (/^(winnings|виграш|выигрыш)$/.test(clean)) return 'winnings';
+        return null;
+    }
+
+    function parseMoneyValue(text) {
+        if (!text) return 0;
+        const match = String(text).replace(/\s/g, '').match(/-?\d+(?:[.,]\d+)?/);
+        return match ? parseFloat(match[0].replace(',', '.')) || 0 : 0;
+    }
+
+    // Баланс у зведеній таблиці гравця, якщо він там взагалі є.
+    function extractBalanceFromDetail(doc) {
+        const table = doc ? doc.querySelector('.detail-view') : null;
+        if (!table) return { value: 0, found: false, parts: {} };
+
+        let result = { value: 0, found: false, parts: {} };
+        table.querySelectorAll('tr').forEach(row => {
+            if (result.found) return;
+            const label = (row.querySelector('th')?.textContent || '').trim().toLowerCase();
+            if (!label) return;
+            if (BALANCE_ROW_LABELS.some(candidate => label === candidate || label.startsWith(candidate))) {
+                const value = parseMoneyValue(row.querySelector('td')?.textContent);
+                result = { value, found: true, parts: { balance: value } };
+            }
+        });
+        return result;
+    }
+
+    function getProjectHostForPrognose(project) {
+        const domains = { 'spintime': 'spintime.app' };
+        return domains[String(project).toLowerCase()] || `${project}.com`;
+    }
+
+    // Баланс може бути поданий двома способами:
+    //  1) рядками "Entries / Bonus Entries / Winnings" на картці гравця;
+    //  2) колонками з тими самими назвами в таблиці списку гравців.
+    // Перевіряємо обидва варіанти.
+    function extractBalanceFromRows(doc) {
+        const parts = {};
+        let total = 0;
+        let found = false;
+
+        (doc ? doc.querySelectorAll('tr') : []).forEach(row => {
+            const label = row.querySelector('th') || row.querySelector('td');
+            if (!label) return;
+
+            const key = isBalanceComponentLabel(label.textContent);
+            if (!key || parts[key] !== undefined) return;
+
+            const cells = row.querySelectorAll('td');
+            const valueCell = cells[cells.length - 1];
+            if (!valueCell) return;
+
+            const raw = (valueCell.textContent || '').trim();
+            if (!raw || /^n\/?a$/i.test(raw)) return;
+
+            const value = parseMoneyValue(raw);
+            parts[key] = value;
+            total += value;
+            found = true;
+        });
+
+        return { value: total, found, parts };
+    }
+
+    function extractBalanceFromPlayersGrid(doc) {
+        const tables = doc ? doc.querySelectorAll('table') : [];
+        for (const table of tables) {
+            const headerCells = Array.from(table.querySelectorAll('th'));
+            if (!headerCells.length) continue;
+
+            const columns = {};
+            headerCells.forEach((cell, index) => {
+                const key = isBalanceComponentLabel(cell.textContent);
+                if (key && columns[key] === undefined) columns[key] = index;
+            });
+            if (!Object.keys(columns).length) continue;
+
+            const rows = Array.from(table.querySelectorAll('tr'))
+                .filter(row => row.querySelectorAll('td').length);
+            if (!rows.length) continue;
+
+            const cells = rows[0].querySelectorAll('td');
+            const parts = {};
+            let total = 0;
+            let found = false;
+
+            Object.keys(columns).forEach(key => {
+                const cell = cells[columns[key]];
+                if (!cell) return;
+                const raw = (cell.textContent || '').trim();
+                if (!raw || /^n\/?a$/i.test(raw)) return;
+                const value = parseMoneyValue(raw);
+                parts[key] = value;
+                total += value;
+                found = true;
+            });
+
+            if (found) return { value: total, found: true, parts };
+        }
+        return { value: 0, found: false, parts: {} };
+    }
+
+    function extractBalanceFromDocument(doc) {
+        const byRows = extractBalanceFromRows(doc);
+        if (byRows.found) return byRows;
+        return extractBalanceFromPlayersGrid(doc);
+    }
+
+    // Баланс акаунта. Використовуємо той самий пошук за номером, що вже працює
+    // у віджеті: адмінка сама переадресовує на картку гравця, де є Winnings/Entries.
+    function fetchAccountBalance(project, id) {
+        const host = getProjectHostForPrognose(project);
+        const searchUrl = `https://admin.${host}/players/playersItems/search/`;
+
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: searchUrl,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `PlayersSearchForm[number]=${encodeURIComponent(id)}`,
+                onload: response => {
+                    try {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        const balance = extractBalanceFromDocument(doc);
+                        if (!balance.found) {
+                            console.debug(`[Person Prognose] ${project} (${id}): баланс не знайдено`,
+                                { finalUrl: response.finalUrl });
+                        }
+                        resolve(balance);
+                    } catch (e) {
+                        resolve({ value: 0, found: false, parts: {} });
+                    }
+                },
+                onerror: () => resolve({ value: 0, found: false, parts: {} })
+            });
+        });
+    }
+
+    // Три джерела для одного акаунта. Раніше вони виконувались послідовно
+    // (сводка -> виплати -> баланс), через що розрахунок був утричі довшим.
+    // Тепер запити йдуть паралельно — кількість звернень та сама, час менший.
+
+    function fetchAccountDeposits(project, id) {
+        const host = getProjectHostForPrognose(project);
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: `https://admin.${host}/players/playersDetail/index/`,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+${getTomorrowDate()}+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
+                onload: response => {
+                    try {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        let deposits = 0;
+                        const table = doc.querySelector('.detail-view');
+                        if (table) {
+                            table.querySelectorAll('tr').forEach(row => {
+                                if ((row.querySelector('th')?.textContent || '').trim() === 'Deposits Total') {
+                                    deposits = parseMoneyValue(row.querySelector('td')?.textContent);
+                                }
+                            });
+                        }
+                        resolve({ deposits, balance: extractBalanceFromDetail(doc), ok: true });
+                    } catch (e) {
+                        resolve({ deposits: 0, balance: { found: false }, ok: false });
+                    }
+                },
+                onerror: () => resolve({ deposits: 0, balance: { found: false }, ok: false })
+            });
+        });
+    }
+
+    function fetchAccountPayments(project, id) {
+        const host = getProjectHostForPrognose(project);
+        const url = `https://admin.${host}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
+
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                onload: response => {
+                    let withdrawals = 0;
+                    let pending = 0;
+                    try {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        const table = doc.querySelector('.items.table.table-striped.table-hover');
+                        if (table) {
+                            table.querySelectorAll('tr').forEach(row => {
+                                const cells = row.querySelectorAll('td');
+                                if (cells.length < 12) return;
+                                const status = cells[1].querySelector('.label')?.textContent.trim();
+                                const gateway = cells[11].textContent.trim();
+                                const amount = parseMoneyValue(cells[6].textContent);
+                                // Ті самі правила, що й у Person InOut.
+                                if (status === 'closed' && gateway !== 'Другое') withdrawals += amount;
+                                if (status === 'pending') pending += amount;
+                            });
+                        }
+                        resolve({ withdrawals, pending, ok: true });
+                    } catch (e) {
+                        resolve({ withdrawals: 0, pending: 0, ok: false });
+                    }
+                },
+                onerror: () => resolve({ withdrawals: 0, pending: 0, ok: false })
+            });
+        });
+    }
+
+    async function getProjectPrognose(project, id) {
+        const [detail, payments, searchBalance] = await Promise.all([
+            fetchAccountDeposits(project, id),
+            fetchAccountPayments(project, id),
+            fetchAccountBalance(project, id)
+        ]);
+
+        if (!detail.ok && !payments.ok) {
+            return { project, id, deposits: 0, withdrawals: 0, pending: 0,
+                balance: 0, balanceFound: false, balanceParts: {}, profit: 0, failed: true };
+        }
+
+        // Баланс зі зведеної таблиці має пріоритет, якщо він там є.
+        const balance = detail.balance && detail.balance.found ? detail.balance : searchBalance;
+
+        return {
+            project, id,
+            deposits: detail.deposits,
+            withdrawals: payments.withdrawals,
+            pending: payments.pending,
+            balance: balance.value || 0,
+            balanceFound: !!balance.found,
+            balanceParts: balance.parts || {},
+            profit: detail.deposits - payments.withdrawals,
+            failed: false
+        };
+    }
+
+    // Обмежуємо кількість одночасних запитів, щоб не навантажувати адмінку.
+    async function runWithLimit(items, limit, worker, onProgress) {
+        const results = new Array(items.length);
+        let index = 0;
+        let done = 0;
+
+        async function next() {
+            while (index < items.length) {
+                const current = index++;
+                results[current] = await worker(items[current]);
+                done++;
+                if (onProgress) onProgress(done, items.length);
+            }
+        }
+
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
+        return results;
+    }
+
+    // Результат зберігається на час сесії, щоб повторне відкриття вікна
+    // не запускало важкий розрахунок наново.
+    let PERSON_PROGNOSE_CACHE = null;
+
+    GM_addStyle(`
+        #person-prognose-popup .pp-toolbar {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+        }
+        #person-prognose-popup .pp-run {
+            background: #6a1b9a; color: #fff; border: none; border-radius: 4px;
+            padding: 7px 16px; cursor: pointer; font-size: 13px;
+        }
+        #person-prognose-popup .pp-run:hover:not(:disabled) { background: #4a148c; }
+        #person-prognose-popup .pp-run:disabled { opacity: .6; cursor: default; }
+        #person-prognose-popup .pp-hint { font-size: 12px; color: #78909c; }
+        #person-prognose-popup .pp-progress {
+            height: 4px; background: #eceff1; border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+        }
+        #person-prognose-popup .pp-progress-bar {
+            height: 100%; width: 0; background: #6a1b9a; transition: width .2s ease;
+        }
+        #person-prognose-table { width: 100%; border-collapse: collapse; }
+        #person-prognose-table th, #person-prognose-table td {
+            padding: 7px 10px; border: 1px solid #e0e0e0; font-size: 13px; text-align: right;
+        }
+        #person-prognose-table th { background: #f2f4f5; font-weight: 700; text-align: right; }
+        #person-prognose-table th:first-child,
+        #person-prognose-table td:first-child { text-align: left; }
+        #person-prognose-table tr:hover td { background: #f7f9fa; }
+        #person-prognose-table tfoot td { font-weight: 700; background: #f2f4f5; border-top: 2px solid #cfd8dc; }
+        #person-prognose-table .pp-current td { background: #eef4ff; }
+        #person-prognose-table .pp-unknown { color: #ef6c00; font-size: 11px; }
+        #person-prognose-popup .pp-note { margin-top: 10px; font-size: 12px; color: #ef6c00; }
+        #person-prognose-popup .pp-empty { padding: 20px; text-align: center; color: #78909c; }
+    `);
+
+    function formatPrognoseMoney(value) {
+        return `<span style="color:${getBalanceColor(value)}">${value.toFixed(2)}$</span>`;
+    }
+
+    function renderPersonPrognoseTable(data) {
+        const rows = data.filter(item => item && !item.failed);
+        const failed = data.filter(item => item && item.failed);
+
+        if (!rows.length) {
+            return '<div class="pp-empty">Не вдалося отримати дані по жодному акаунту</div>';
+        }
+
+        const partLabels = { winnings: 'Winnings', entries: 'Entries', bonusEntries: 'Bonus Entries', balance: 'Balance' };
+
+        const totals = rows.reduce((acc, item) => {
+            acc.deposits += item.deposits;
+            acc.withdrawals += item.withdrawals;
+            acc.pending += item.pending;
+            acc.balance += item.balance;
+            acc.profit += item.profit;
+            acc.prognose += item.profit - item.pending - item.balance;
+            return acc;
+        }, { deposits: 0, withdrawals: 0, pending: 0, balance: 0, profit: 0, prognose: 0 });
+
+        const body = rows.map(item => {
+            const prognose = item.profit - item.pending - item.balance;
+            const name = item.project.charAt(0).toUpperCase() + item.project.slice(1);
+            const parts = Object.keys(item.balanceParts || {})
+                .filter(key => item.balanceParts[key])
+                .map(key => `${partLabels[key] || key}: ${item.balanceParts[key]}`)
+                .join(', ');
+
+            const balanceCell = item.balanceFound
+                ? `${item.balance.toFixed(2)}$${parts ? `<div class="pp-unknown" style="color:#90a4ae;">${parts}</div>` : ''}`
+                : `<span class="pp-unknown">не знайдено</span>`;
+
+            return `
+                <tr class="${item.isCurrent ? 'pp-current' : ''}">
+                    <td>${name}${item.isCurrent ? ' <span style="color:#1e88e5;">(поточний)</span>' : ''}<div style="color:#90a4ae;font-size:11px;">${item.id}</div></td>
+                    <td>${item.deposits.toFixed(2)}$</td>
+                    <td>${item.withdrawals.toFixed(2)}$</td>
+                    <td>${item.pending.toFixed(2)}$</td>
+                    <td>${balanceCell}</td>
+                    <td>${formatPrognoseMoney(item.profit)}</td>
+                    <td>${formatPrognoseMoney(prognose)}</td>
+                </tr>`;
+        }).join('');
+
+        const unknown = rows.filter(item => !item.balanceFound).map(item => item.project);
+        let notes = '';
+        if (unknown.length) {
+            notes += `<div class="pp-note">Баланс не знайдено: ${unknown.join(', ')} — прогноз по цих акаунтах може бути неточним.</div>`;
+        }
+        if (failed.length) {
+            notes += `<div class="pp-note" style="color:#c62828;">Не вдалося отримати: ${failed.map(item => item.project).join(', ')}</div>`;
+        }
+
+        return `
+            <table id="person-prognose-table">
+                <thead>
+                    <tr>
+                        <th>Проєкт</th>
+                        <th>Депозити</th>
+                        <th>Виплати</th>
+                        <th>Pending</th>
+                        <th>Баланс</th>
+                        <th>InOut</th>
+                        <th>Prognose InOut</th>
+                    </tr>
+                </thead>
+                <tbody>${body}</tbody>
+                <tfoot>
+                    <tr>
+                        <td>Разом (${rows.length})</td>
+                        <td>${totals.deposits.toFixed(2)}$</td>
+                        <td>${totals.withdrawals.toFixed(2)}$</td>
+                        <td>${totals.pending.toFixed(2)}$</td>
+                        <td>${totals.balance.toFixed(2)}$</td>
+                        <td>${formatPrognoseMoney(totals.profit)}</td>
+                        <td>${formatPrognoseMoney(totals.prognose)}</td>
+                    </tr>
+                </tfoot>
+            </table>${notes}`;
+    }
+
+    function openPersonPrognosePopup(context) {
+        const content = `
+            <div class="pp-toolbar">
+                <button class="pp-run" id="pp-run">Розрахувати</button>
+                <span class="pp-hint" id="pp-hint">Дані по кожному акаунту завантажуються у фоні</span>
+            </div>
+            <div class="pp-progress"><div class="pp-progress-bar" id="pp-progress"></div></div>
+            <div id="pp-result"></div>
+        `;
+
+        createPopup('person-prognose-popup', 'Person Prognose InOut', content);
+
+        const popup = document.getElementById('person-prognose-popup');
+        if (!popup) return;
+
+        const runButton = popup.querySelector('#pp-run');
+        const hint = popup.querySelector('#pp-hint');
+        const progress = popup.querySelector('#pp-progress');
+        const result = popup.querySelector('#pp-result');
+
+        // Показуємо попередній результат одразу, без повторного розрахунку.
+        if (PERSON_PROGNOSE_CACHE && PERSON_PROGNOSE_CACHE.personId === context.currentId) {
+            result.innerHTML = renderPersonPrognoseTable(PERSON_PROGNOSE_CACHE.data);
+            hint.textContent = `Розраховано о ${PERSON_PROGNOSE_CACHE.time}`;
+            runButton.textContent = 'Перерахувати';
+        }
+
+        runButton.addEventListener('click', async () => {
+            if (runButton.disabled) return;
+            runButton.disabled = true;
+
+            const accounts = [
+                { project: context.currentProject, id: context.currentId, isCurrent: true },
+                ...(context.relatedAccounts || []).map(item => ({ project: item.project, id: item.id }))
+            ];
+
+            hint.textContent = `Опрацьовано 0 з ${accounts.length}`;
+            progress.style.width = '0';
+            result.innerHTML = '';
+
+            try {
+                const data = await runWithLimit(
+                    accounts, PERSON_PROGNOSE_CONCURRENCY,
+                    account => getProjectPrognose(account.project, account.id),
+                    (done, total) => {
+                        hint.textContent = `Опрацьовано ${done} з ${total}`;
+                        progress.style.width = `${Math.round((done / total) * 100)}%`;
+                    }
+                );
+
+                data.forEach((item, index) => {
+                    if (item) item.isCurrent = !!accounts[index].isCurrent;
+                });
+
+                // Для поточного акаунта баланс і pending беремо зі сторінки — вони точні.
+                if (data[0] && !data[0].failed) {
+                    if (typeof context.currentBalance === 'number') {
+                        data[0].balance = context.currentBalance;
+                        data[0].balanceFound = true;
+                        data[0].balanceParts = { balance: context.currentBalance };
+                    }
+                    if (typeof context.currentPending === 'number') data[0].pending = context.currentPending;
+                }
+
+                result.innerHTML = renderPersonPrognoseTable(data);
+                PERSON_PROGNOSE_CACHE = {
+                    personId: context.currentId,
+                    data,
+                    time: new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+                };
+                hint.textContent = `Розраховано о ${PERSON_PROGNOSE_CACHE.time}`;
+                runButton.textContent = 'Перерахувати';
+            } catch (error) {
+                console.error('Person Prognose InOut:', error);
+                result.innerHTML = '<div class="pp-empty" style="color:#c62828;">Помилка розрахунку</div>';
+                hint.textContent = '';
+            } finally {
+                runButton.disabled = false;
+                progress.style.width = '100%';
+            }
+        });
+    }
+
+    // У віджеті лишається лише компактна кнопка, яка відкриває окреме вікно.
+    function addPersonPrognoseButton(container, context) {
+        if (!container || container.querySelector('#person-prognose-btn')) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'profit-section';
+        wrapper.style.cssText = 'text-align:center;margin-top:6px;';
+
+        const button = document.createElement('button');
+        button.id = 'person-prognose-btn';
+        button.type = 'button';
+        button.textContent = 'Person Prognose InOut';
+        button.title = 'Відкрити вікно з прогнозом по всіх акаунтах персони';
+        button.style.cssText =
+            'background:#6a1b9a;color:#fff;border:none;border-radius:4px;padding:6px 12px;' +
+            'cursor:pointer;font-size:12px;width:100%;';
+        button.onmouseenter = () => { button.style.background = '#4a148c'; };
+        button.onmouseleave = () => { button.style.background = '#6a1b9a'; };
+
+        button.addEventListener('click', () => openPersonPrognosePopup(context));
+
+        wrapper.appendChild(button);
+        container.appendChild(wrapper);
+    }
+
     async function fetchProfit(totalPending, winnings, profitButton, container) {
         const loader = document.createElement('div');
         loader.style.cssText = 'border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 10px auto;';
@@ -10962,7 +11691,17 @@
             container.removeChild(loader);
             container.innerHTML = formatProfitOutput(mainResult, relatedResults, totalProfit, projectLinks, totalPending, winnings);
             // Кнопка "відкрити всі знайдені акаунти" — лише на USA-проєктах.
-            if (isUsaProject()) addOpenRelatedProjectsButton(container);
+            if (isUsaProject()) {
+                addOpenRelatedProjectsButton(container);
+                // Person Prognose InOut — рахується лише по кнопці, не автоматично.
+                addPersonPrognoseButton(container, {
+                    currentProject,
+                    currentId: playerID,
+                    relatedAccounts,
+                    currentBalance: parseFloat(winnings) || 0,
+                    currentPending: totalPending
+                });
+            }
 
             container.querySelectorAll('.clickable').forEach(element => {
                 element.addEventListener('click', () => {
@@ -13238,7 +13977,7 @@
                 await activeUrlsManagers();
                 await checkUnreadTlComments(managerData.id)
             } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('playersItems/balanceLog/')) {
-                setPageSize1k()
+                setBalanceLogPageSize();
             } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();

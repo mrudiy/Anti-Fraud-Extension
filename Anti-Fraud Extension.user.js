@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      7.2.5
 // @description  Anti-Fraud Extension
-// @author       Maksym Rudyi
+// @author       Maksym Rudyi & AF team
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.vegas.ua/*

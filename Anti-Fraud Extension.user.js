@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      7.2.5
 // @description  Anti-Fraud Extension
-// @author       Maksym Rudyi
+// @author       Maksym Rudyi & AF team
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.vegas.ua/*
@@ -2697,6 +2697,8 @@
     }
     let WATCH_SEARCH = '';
     let WATCH_POLL_TIMER = null;
+    // Запис, обраний кліком по рядку: на нього діє меню керування нагадуванням.
+    let WATCH_SELECTED_ID = null;
 
     // Команда, якій належить запис. Зберігається тегом у коментарі, як і пріоритет,
     // бо API приймає лише player_id / url / comment.
@@ -2833,13 +2835,20 @@
         // Час у тегу необов'язковий: [@20.08.2026] або [@20.08.2026 14:30]
         const teamMatch = /\[#(UA|US|BET)\]/i.exec(text);
         const nextMatch = /\[@\s*(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)\]/.exec(text);
-        const doneMatch = /\[\s*(?:v|✓)\s*(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)\]/.exec(text);
+        // Перевірка: [v 11.09.2026], [v 11.09.2026 11:42] або [v 11.09.2026 11:42 Петрушенко Едуард]
+        const doneMatch = /\[\s*(?:v|✓)\s*(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)(?:\s+([^\]]*?))?\s*\]/.exec(text);
+        // [mute] — нагадування для цього запису вимкнено для всіх.
+        const muteMatch = /\[mute\]/i.test(text);
+        // Останній редактор (через олівець): [ed 11.09.2026 12:05 Петрушенко Едуард]. Автор — це entry.manager, він не змінюється.
+        const editMatch = /\[\s*ed\s+(\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?)(?:\s+([^\]]*?))?\s*\]/.exec(text);
 
         text = text
             .replace(/\[#(?:UA|US|BET)\]/gi, '')
             .replace(/\[!!\]|\[!\]/g, '')
             .replace(/\[@\s*\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?\]/g, '')
-            .replace(/\[\s*(?:v|✓)\s*\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?\]/g, '')
+            .replace(/\[\s*(?:v|✓)\s*\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?(?:\s+[^\]]*?)?\s*\]/g, '')
+            .replace(/\[mute\]/gi, '')
+            .replace(/\[\s*ed\s+\d{1,2}\.\d{1,2}\.\d{4}(?:[\sT]+\d{1,2}:\d{2})?(?:\s+[^\]]*?)?\s*\]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
 
@@ -2850,6 +2859,11 @@
             nextReview: nextMatch ? watchParseDate(nextMatch[1]) : null,
             nextReviewHasTime: nextMatch ? watchValueHasTime(nextMatch[1]) : false,
             lastChecked: doneMatch ? watchParseDate(doneMatch[1]) : null,
+            lastCheckedHasTime: doneMatch ? watchValueHasTime(doneMatch[1]) : false,
+            lastCheckedBy: doneMatch && doneMatch[2] ? doneMatch[2].trim() : null,
+            lastEditedAt: editMatch ? watchParseDate(editMatch[1]) : null,
+            lastEditor: editMatch && editMatch[2] ? editMatch[2].trim() : null,
+            remindersEnabled: !muteMatch,
             text
         };
     }
@@ -2862,7 +2876,15 @@
         const team = WATCH_TEAMS[meta.team] || WATCH_TEAMS.GEN;
         if (team.tag) parts.push(team.tag);
         if (meta.nextReview) parts.push(`[@${watchFormatWhen(meta.nextReview, meta.nextReviewHasTime)}]`);
-        if (meta.lastChecked) parts.push(`[v ${watchFormatDate(meta.lastChecked)}]`);
+        if (meta.lastChecked) {
+            const by = String(meta.lastCheckedBy || '').replace(/[\[\]]/g, '').trim();
+            parts.push(`[v ${watchFormatWhen(meta.lastChecked, meta.lastCheckedHasTime)}${by ? ' ' + by : ''}]`);
+        }
+        if (meta.remindersEnabled === false) parts.push('[mute]');
+        if (meta.lastEditor) {
+            const ed = String(meta.lastEditor).replace(/[\[\]]/g, '').trim();
+            if (ed) parts.push(`[ed ${watchFormatWhen(meta.lastEditedAt || new Date(), true)} ${ed}]`);
+        }
         const text = String(meta.text || '').trim();
         if (text) parts.push(text);
         return parts.join(' ');
@@ -2910,6 +2932,7 @@
     // інакше іконка горіла б задовго до потрібного моменту.
     function watchNeedsAttention(entry) {
         if (watchNotificationsDisabled()) return false;
+        if (entry.meta && entry.meta.remindersEnabled === false) return false;
         if (isWatchAcked(entry.id)) return false;
         if (!isWatchEntryVisible(entry)) return false;
         return watchDueState(entry.meta) === 'overdue';
@@ -3093,6 +3116,8 @@
         .watch-action-edit { color: #43a047; }
         .watch-action-delete { color: #e53935; }
         .watch-action-check { color: #1e88e5; }
+        /* Чужий запис: перевірити можна, але це не редагування і не право власності. */
+        .watch-action-check-other { color: #f9a825; }
         .watch-action-ack { color: #8e24aa; }
         .watch-empty { padding: 18px; text-align: center; color: #78909c; }
         #watch-footer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; color: #546e7a; }
@@ -3104,6 +3129,26 @@
         .watch-page-btn:hover:not(:disabled) { background: #eceff1; }
         .watch-page-btn:disabled { opacity: .4; cursor: default; }
         .watch-mine-flag { color: #1e88e5; font-weight: 700; }
+        #watch-reminder-edit { padding: 5px 9px; }
+        #watch-reminder-menu {
+            position: fixed; z-index: 100001; min-width: 220px; padding: 6px;
+            background: #fff; border: 1px solid #d5dbe0; border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,.14); font-size: 13px; color: #37474f;
+        }
+        #watch-reminder-menu .watch-menu-head {
+            padding: 4px 8px 6px; font-size: 11px; color: #78909c; border-bottom: 1px solid #eceff1; margin-bottom: 4px;
+        }
+        #watch-reminder-menu .watch-menu-head b { color: #37474f; }
+        #watch-reminder-menu button {
+            display: block; width: 100%; text-align: left; border: none; background: none;
+            padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; color: #37474f;
+        }
+        #watch-reminder-menu button:hover:not(:disabled) { background: #eceff1; }
+        #watch-reminder-menu button:disabled { opacity: .4; cursor: default; }
+        #watch-reminder-menu button i { width: 16px; margin-right: 6px; }
+        #watch-table tr.watch-row-selected td { box-shadow: inset 0 0 0 1px #90a4ae; }
+        .watch-secondary { color: #78909c; font-size: 11px; }
+        .watch-muted-flag { color: #78909c; font-size: 11px; white-space: nowrap; }
         #watch-form { display: flex; flex-direction: column; gap: 10px; padding: 16px; max-width: 460px; margin: 0 auto; }
         #watch-form input, #watch-form select, #watch-form textarea {
             padding: 9px; border: 1px solid #d5dbe0; border-radius: 4px; font-size: 14px; width: 100%;
@@ -3131,6 +3176,7 @@
             <button class="watch-tab" data-filter="mine">Мої<span class="watch-tab-count" data-count="mine"></span></button>
             ${watchTeamFilterMarkup()}
             <input type="text" id="watch-search" placeholder="Пошук: ID, проєкт, менеджер, коментар…" />
+            <button class="watch-tab" id="watch-reminder-edit" title="Керування нагадуванням для обраного запису"><i class="fa fa-pencil"></i></button>
             <button class="watch-tab" id="watch-notifications-toggle"></button>
         </div>
         <div id="watch-table-wrap">
@@ -3175,6 +3221,7 @@
         if (!popup) return;
 
         popup.querySelectorAll('.watch-tab').forEach(tab => {
+            if (tab.id === 'watch-reminder-edit') return; // має власний обробник
             tab.addEventListener('click', () => {
                 // Повторний клік знімає фільтр — тоді показуються всі записи команди.
                 WATCH_FILTER = (WATCH_FILTER === tab.dataset.filter) ? null : tab.dataset.filter;
@@ -3215,6 +3262,12 @@
                 updateWatchIndicator();
             });
         }
+
+        const reminderEdit = popup.querySelector('#watch-reminder-edit');
+        if (reminderEdit) reminderEdit.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleWatchReminderMenu(reminderEdit);
+        });
 
         const search = popup.querySelector('#watch-search');
         if (search) {
@@ -3382,16 +3435,30 @@
             if (entry.meta.priority === 'critical') row.classList.add('watch-row-critical');
             if (due === 'overdue') row.classList.add('watch-row-overdue');
             if (acked) row.style.opacity = '.55';
+            if (String(entry.id) === String(WATCH_SELECTED_ID)) row.classList.add('watch-row-selected');
 
+            // Хто і коли перевіряв: вторинний текст під коментарем.
             const lastChecked = entry.meta.lastChecked
-                ? `<div style="color:#78909c;font-size:11px;">Перевірено: ${watchFormatDate(entry.meta.lastChecked)}</div>`
+                ? `<div class="watch-secondary">Перевірено: ${watchFormatWhen(entry.meta.lastChecked, entry.meta.lastCheckedHasTime)}${entry.meta.lastCheckedBy ? ` · ${watchEscape(watchShortName(entry.meta.lastCheckedBy))}` : ''}</div>`
+                : '';
+            // Автор запису — існуюче поле manager (ніколи не змінюється). Другий рядок —
+            // останній, хто РЕДАГУВАВ запис олівцем, і лише якщо це інша людина.
+            const lastEditor = entry.meta.lastEditor && entry.meta.lastEditor !== entry.manager
+                ? `<div class="watch-secondary" title="Останнє редагування${entry.meta.lastEditedAt ? ': ' + watchFormatWhen(entry.meta.lastEditedAt, true) : ''}">Редагував: ${watchEscape(entry.meta.lastEditor)}</div>`
+                : '';
+            const mutedFlag = entry.meta.remindersEnabled === false
+                ? '<div class="watch-muted-flag" title="Нагадування вимкнено для всіх"><i class="fa fa-bell-slash"></i> Вимкнено</div>'
                 : '';
 
+            // Свій запис: синя галочка, олівець, кошик. Чужий: жовта галочка (лише перевірка,
+            // +1 день), олівець (повне редагування), без кошика — видаляє тільки автор.
             const actions = isMine
                 ? `<i class="fa fa-check watch-action watch-action-check" title="Перевірено — перенести наступну перевірку"></i>
                    <i class="fa fa-pencil watch-action watch-action-edit" title="Редагувати"></i>
                    <i class="fa fa-trash watch-action watch-action-delete" title="Видалити"></i>`
-                : `<i class="fa ${acked ? 'fa-undo' : 'fa-bell-slash'} watch-action watch-action-ack"
+                : `<i class="fa fa-check watch-action watch-action-check watch-action-check-other" title="Перевірено — чужий запис, наступна перевірка +1 день"></i>
+                   <i class="fa fa-pencil watch-action watch-action-edit" title="Редагувати"></i>
+                   <i class="fa ${acked ? 'fa-undo' : 'fa-bell-slash'} watch-action watch-action-ack"
                       title="${acked ? 'Повернути нагадування' : 'Прийнято — не нагадувати сьогодні'}"></i>`;
 
             row.innerHTML = `
@@ -3400,11 +3467,19 @@
                 <td>${entry.date_added ? new Date(entry.date_added).toLocaleDateString() : ''}</td>
                 <td>${watchEscape(entry.project)}</td>
                 <td><a href="${watchEscape(entry.url)}" target="_blank">${watchEscape(entry.player_id)}</a></td>
-                <td>${watchEscape(entry.manager)}${isMine ? ' <span class="watch-mine-flag">(я)</span>' : ''}</td>
-                <td>${dueLabels[due]}</td>
+                <td>${watchEscape(entry.manager)}${isMine ? ' <span class="watch-mine-flag">(я)</span>' : ''}${lastEditor}</td>
+                <td>${dueLabels[due]}${mutedFlag}</td>
                 <td>${watchEscape(entry.meta.text) || '<span style="color:#b0bec5;">—</span>'}${lastChecked}</td>
                 <td>${actions}</td>
             `;
+
+            // Клік по рядку обирає запис для меню керування нагадуванням.
+            row.addEventListener('click', e => {
+                if (e.target.closest('a, .watch-action')) return;
+                WATCH_SELECTED_ID = String(entry.id) === String(WATCH_SELECTED_ID) ? null : entry.id;
+                body.querySelectorAll('tr.watch-row-selected').forEach(r => r.classList.remove('watch-row-selected'));
+                if (WATCH_SELECTED_ID !== null) row.classList.add('watch-row-selected');
+            });
 
             const checkBtn = row.querySelector('.watch-action-check');
             if (checkBtn) checkBtn.addEventListener('click', () => markWatchChecked(entry));
@@ -3440,17 +3515,27 @@
     // Позначає запис перевіреним і переносить наступну перевірку.
     async function markWatchChecked(entry) {
         const days = watchDefaultReviewDays();
-        const next = watchAddDays(new Date(), days);
+        let next = watchAddDays(new Date(), days);
 
         // Зберігаємо час нагадування, якщо його було задано.
         if (entry.meta.nextReviewHasTime && entry.meta.nextReview) {
             next.setHours(entry.meta.nextReview.getHours(), entry.meta.nextReview.getMinutes(), 0, 0);
         }
 
+        // Чужий запис (жовта галочка): рівно +1 календарний день від запланованої дати,
+        // час не змінюємо. Без запланованої дати — звичайний fallback вище.
+        const isOwn = entry.manager === (managerData && managerData.name);
+        if (!isOwn && entry.meta.nextReview) {
+            next = watchAddDays(entry.meta.nextReview, 1);
+        }
+
+        // Лише мета-дані перевірки: автор (manager) і останній редактор ([ed]) не змінюються.
         const meta = {
             ...entry.meta,
             team: entry.meta.team || 'GEN',
             lastChecked: new Date(),
+            lastCheckedHasTime: true,
+            lastCheckedBy: (managerData && managerData.name) || null,
             nextReview: next,
             nextReviewHasTime: !!entry.meta.nextReviewHasTime
         };
@@ -3462,6 +3547,92 @@
             console.error('Error:', error);
             Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
         }
+    }
+
+    // "Петрушенко Едуард" -> "Петрушенко Е."
+    function watchShortName(name) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (parts.length < 2) return parts[0] || '';
+        return `${parts[0]} ${parts[1].charAt(0)}.`;
+    }
+
+    // Зберігає змінені мета-дані запису тим самим механізмом, що й решта дій.
+    async function saveWatchMeta(entry, patch) {
+        const meta = { ...entry.meta, team: entry.meta.team || 'GEN', ...patch };
+        try {
+            const data = await saveWatchComment(entry.id, buildWatchComment(meta));
+            if (data && data.success) loadFrauds();
+            else Swal.fire('Помилка!', (data && data.message) || 'Не вдалося зберегти.', 'error');
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
+        }
+    }
+
+    // Вимкнути/увімкнути нагадування для всіх (зберігається тегом [mute] у коментарі).
+    function setWatchRemindersForAll(entry, enabled) {
+        if (enabled) return saveWatchMeta(entry, { remindersEnabled: true });
+        return Swal.fire({
+            title: 'Вимкнути сповіщення для всіх?',
+            text: `ID ${entry.player_id}: інші менеджери більше не отримуватимуть нагадувань.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Вимкнути',
+            cancelButtonText: 'Скасувати',
+            confirmButtonColor: '#c62828'
+        }).then(result => {
+            if (result.isConfirmed) return saveWatchMeta(entry, { remindersEnabled: false });
+        });
+    }
+
+    // Швидкий перенос нагадування на +1 календарний день (той самий механізм, що й у редагуванні).
+    function postponeWatchOneDay(entry) {
+        const base = entry.meta.nextReview || new Date();
+        return saveWatchMeta(entry, {
+            nextReview: watchAddDays(base, 1),
+            nextReviewHasTime: !!(entry.meta.nextReview && entry.meta.nextReviewHasTime)
+        });
+    }
+
+    function closeWatchReminderMenu() {
+        const menu = document.getElementById('watch-reminder-menu');
+        if (menu) menu.remove();
+        document.removeEventListener('click', closeWatchReminderMenu);
+    }
+
+    function toggleWatchReminderMenu(anchor) {
+        if (document.getElementById('watch-reminder-menu')) { closeWatchReminderMenu(); return; }
+
+        const entry = WATCH_CACHE.find(e => String(e.id) === String(WATCH_SELECTED_ID)) || null;
+        const enabled = !entry || entry.meta.remindersEnabled !== false;
+
+        const menu = document.createElement('div');
+        menu.id = 'watch-reminder-menu';
+        menu.innerHTML = entry
+            ? `<div class="watch-menu-head">Запис: <b>ID ${watchEscape(entry.player_id)}</b> · нагадування ${enabled ? 'увімкнено' : 'вимкнено'}</div>
+               ${enabled
+                   ? '<button data-act="off"><i class="fa fa-bell-slash"></i>Вимкнути для всіх</button>'
+                   : '<button data-act="on"><i class="fa fa-bell"></i>Увімкнути для всіх</button>'}
+               <button data-act="postpone"${entry.meta.nextReview ? '' : ' title="Нагадування не задано — буде встановлено на завтра"'}><i class="fa fa-calendar-plus-o"></i>Перенести на +1 день</button>`
+            : `<div class="watch-menu-head">Оберіть запис у таблиці кліком по рядку</div>
+               <button disabled><i class="fa fa-bell-slash"></i>Вимкнути для всіх</button>
+               <button disabled><i class="fa fa-calendar-plus-o"></i>Перенести на +1 день</button>`;
+
+        const rect = anchor.getBoundingClientRect();
+        menu.style.top = `${rect.bottom + 4}px`;
+        menu.style.left = `${Math.max(8, rect.right - 230)}px`;
+        menu.addEventListener('click', e => e.stopPropagation());
+        document.body.appendChild(menu);
+
+        menu.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', () => {
+            const act = btn.dataset.act;
+            closeWatchReminderMenu();
+            if (act === 'off') setWatchRemindersForAll(entry, false);
+            else if (act === 'on') setWatchRemindersForAll(entry, true);
+            else if (act === 'postpone') postponeWatchOneDay(entry);
+        }));
+
+        setTimeout(() => document.addEventListener('click', closeWatchReminderMenu), 0);
     }
 
     function watchPriorityOptions(selected) {
@@ -3516,6 +3687,13 @@
                     nextReview: dateRaw ? watchParseDate(combined) : null,
                     nextReviewHasTime: !!timeRaw,
                     lastChecked: meta.lastChecked,
+                    lastCheckedHasTime: meta.lastCheckedHasTime,
+                    lastCheckedBy: meta.lastCheckedBy,
+                    remindersEnabled: meta.remindersEnabled,
+                    // Реальне редагування олівцем: фіксуємо останнього редактора.
+                    // Автор запису (entry.manager) при цьому не змінюється.
+                    lastEditor: (managerData && managerData.name) || meta.lastEditor || null,
+                    lastEditedAt: new Date(),
                     text
                 });
 

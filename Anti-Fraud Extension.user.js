@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.5
+// @version      7.2.6
 // @description  Anti-Fraud Extension
-// @author       Maksym Rudyi & AF team
+// @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.vegas.ua/*
@@ -69,7 +69,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.5";
+    const currentVersion = "7.2.6";
 
     let popupBox;
     const currentUrl = window.location.href;

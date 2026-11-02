@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.7
+// @version      7.2.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -85,7 +85,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.7";
+    const currentVersion = "7.2.8";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -1858,20 +1858,35 @@
     function createFindPopUp() {
         const popupId = 'findPopup';
 
+        // На EU-проєктах шукаємо лише між EU-проєктами, на UA — між UA.
+        // На EU замість ІПН (там він порожній) шукаємо за номером документа.
+        const isEu = isEuProject();
+        const searchProjects = isEu
+            ? [
+                {key: 'wildwinz', label: 'WildWinz', url: 'https://admin.wildwinz.com/'},
+                {key: '777royals', label: '777Royals', url: 'https://admin.777royals.com/'}
+            ]
+            : [
+                {key: 'betking', label: 'Betking', url: 'https://admin.betking.com.ua/'},
+                {key: 'vegas', label: 'Vegas', url: 'https://admin.vegas.ua/'},
+                {key: '777', label: '777', url: 'https://admin.777.ua/'}
+            ];
+        const idField = isEu
+            ? {field: 'document', placeholder: 'Номер документа'}
+            : {field: 'inn', placeholder: 'ІПН'};
+
         const content = `
     <div class="search-container">
         <div class="input-group">
             <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
             <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
             <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
-            <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
+            <input type="text" id="searchInnInput" placeholder="${idField.placeholder}" class="search-input">
             <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
             <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
         </div>
         <div class="button-group">
-            <button id="searchBetkingBtn">Betking</button>
-            <button id="searchVegasBtn">Vegas</button>
-            <button id="search777Btn">777</button>
+            ${searchProjects.map(p => `<button id="search-${p.key}-btn" data-project="${p.key}">${p.label}</button>`).join('')}
         </div>
         <div id="searchResults" class="search-results"></div>
     </div>
@@ -1920,17 +1935,25 @@
         transform: translateY(0);
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
-    .find-popup #searchBetkingBtn {
+    .find-popup #search-betking-btn {
         background-color: #e63946;
         color: #ffd60a;
     }
-    .find-popup #searchVegasBtn {
+    .find-popup #search-vegas-btn {
         background-color: #48cae4;
         color: #d00000;
     }
-    .find-popup #search777Btn {
+    .find-popup #search-777-btn {
         background-color: #1d1d1d;
         color: #d00000;
+    }
+    .find-popup #search-wildwinz-btn {
+        background-color: #1d1d1d;
+        color: #2ee6c5;
+    }
+    .find-popup #search-777royals-btn {
+        background-color: #4a148c;
+        color: #ffd60a;
     }
     .find-popup .search-results {
         margin-top: 10px;
@@ -1995,9 +2018,6 @@
         const searchInnInput = document.getElementById('searchInnInput');
         const searchEmailInput = document.getElementById('searchEmailInput');
         const searchNicknameInput = document.getElementById('searchNicknameInput');
-        const searchBetkingBtn = document.getElementById('searchBetkingBtn');
-        const searchVegasBtn = document.getElementById('searchVegasBtn');
-        const search777Btn = document.getElementById('search777Btn');
         const searchResults = document.getElementById('searchResults');
         const ProjectUrl = {
             '777.ua': 'https://admin.777.ua/',
@@ -2007,16 +2027,17 @@
             'com.ua': 'https://admin.betking.com.ua/',
         }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
 
-        searchBetkingBtn.addEventListener('click', () => performSearch('betking'));
-        searchVegasBtn.addEventListener('click', () => performSearch('vegas'));
-        search777Btn.addEventListener('click', () => performSearch('777'));
+        popup.querySelectorAll('.button-group button[data-project]').forEach(btn => {
+            btn.addEventListener('click', () => performSearch(btn.dataset.project));
+        });
 
+        // Enter шукає на поточному проєкті (для UA — betking за замовчуванням, як і раніше).
         searchSurnameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                const project = window.location.hostname.includes('777.ua') ? '777' :
-                    window.location.hostname.includes('vegas.ua') ? 'vegas' :
-                        'betking';
-                performSearch(project);
+                const hostname = window.location.hostname;
+                const current = searchProjects.find(p => hostname.includes(`${p.key}.`))
+                    || searchProjects[0];
+                performSearch(current.key);
             }
         });
 
@@ -2076,12 +2097,7 @@
             const terms = surnameTerm.split(' ').filter(Boolean);
             let bodyData = '';
 
-            const projectUrls = {
-                'betking': 'https://admin.betking.com.ua/',
-                'vegas': 'https://admin.vegas.ua/',
-                '777': 'https://admin.777.ua/'
-            };
-            const projectUrl = projectUrls[project];
+            const projectUrl = searchProjects.find(p => p.key === project)?.url;
             if (!projectUrl) {
                 console.error(`Не удалось определить projectUrl для проекта ${project}`);
                 searchResults.innerHTML = '<p>Помилка: не вдалося визначити домен проекту</p>';
@@ -2099,7 +2115,7 @@
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[phone]=${encodeURIComponent(phoneTerm)}`;
             }
             if (innTerm) {
-                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[inn]=${encodeURIComponent(innTerm)}`;
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[${idField.field}]=${encodeURIComponent(innTerm)}`;
             }
             if (emailTerm) {
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[email]=${encodeURIComponent(emailTerm)}`;
@@ -2107,7 +2123,10 @@
             if (nicknameTerm) {
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[nickname]=${encodeURIComponent(nicknameTerm)}`;
             }
-            bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=&yt0=`;
+            if (idField.field !== 'document' || !innTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=`;
+            }
+            bodyData += '&yt0=';
 
             console.log('Sending search request with body:', bodyData, 'to URL:', searchUrl);
 

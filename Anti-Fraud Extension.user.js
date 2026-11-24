@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.2.8
+// @version      7.3.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -25,14 +25,6 @@
 // @match        https://admin.dexyplay.com/*
 // @match        https://admin.spintime.app/*
 // @match        https://admin.coinsmania.com/*
-// @match        https://admin.jacktopia.com/*
-// @match        https://admin.allsweepz.com/*
-// @match        https://admin.cherrybellcasino.com/*
-// @match        https://admin.mysweepz.com/*
-// @match        https://admin.jumanza.com/*
-// @match        https://admin.prizeville.com/*
-// @match        https://admin.cardrize.com/*
-// @match        https://admin.777royals.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @grant        GM_xmlhttpRequest
@@ -61,14 +53,6 @@
 // @connect      admin.sweepico.com
 // @connect      admin.dexyplay.com
 // @connect      admin.spintime.app
-// @connect      admin.jacktopia.com
-// @connect      admin.allsweepz.com
-// @connect      admin.cherrybellcasino.com
-// @connect      admin.mysweepz.com
-// @connect      admin.jumanza.com
-// @connect      admin.prizeville.com
-// @connect      admin.cardrize.com
-// @connect      admin.777royals.com
 // @connect      api.easypay.ua
 // @connect      cabinet.easypay.ua
 // @connect      ip-api.com
@@ -80,12 +64,12 @@
 // @resource     SWEETALERT2_CSS https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.7.1/sweetalert2.min.css
 // ==/UserScript==
 
-(function () {
+(function() {
     'use strict';
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.2.8";
+    const currentVersion = "7.3.1";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -96,7 +80,6 @@
         '777.ua': 'https://admin.777.ua/',
         'vegas.ua': 'https://admin.vegas.ua/',
         'wildwinz.com': 'https://admin.wildwinz.com/',
-        '777royals.com': 'https://admin.777royals.com/',
         'com.ua': 'https://admin.betking.com.ua/',
     }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
     const initialUrl = window.location.href;
@@ -112,6 +95,751 @@
     const token = GM_getValue('authToken', null);
     let managerData = null;
 
+    //==================== ТЕМИ ІНТЕРФЕЙСУ (ТІЛЬКИ ВІЗУАЛЬНИЙ ШАР) ==================
+    // Тема зберігається тим самим GM-механізмом, що й інші налаштування.
+    // Кожне вікно/панель розширення реєструється як "корінь теми" (registerThemeRoot):
+    // клас теми вішається ТІЛЬКИ на ці корені, тому CSS теми не може торкнутись адмінки.
+    const themeKey = 'interfaceTheme';
+    const AF_THEME_ROOT_CLASS = 'af-widget-root';
+    const AF_THEMES = {
+        normal: { id: 'normal', label: 'Звичайна', className: '' },
+        faceit: { id: 'faceit', label: 'FACEIT', className: 'af-theme-faceit' }
+        // Майбутні теми (CS2, Dead Space, Dota 2...) додаються сюди + окремий CSS-блок під своїм className.
+    };
+    const AF_DEFAULT_THEME = 'normal';
+
+    function isKnownTheme(themeId) {
+        return Object.prototype.hasOwnProperty.call(AF_THEMES, themeId);
+    }
+
+    function getActiveTheme() {
+        const saved = GM_getValue(themeKey, AF_DEFAULT_THEME);
+        return isKnownTheme(saved) ? saved : AF_DEFAULT_THEME;
+    }
+
+    function setActiveTheme(themeId) {
+        const id = isKnownTheme(themeId) ? themeId : AF_DEFAULT_THEME;
+        GM_setValue(themeKey, id);
+        applyTheme(id);
+    }
+
+    function applyThemeToRoot(root, themeId) {
+        if (!root || !root.classList) return;
+        Object.values(AF_THEMES).forEach(t => { if (t.className) root.classList.remove(t.className); });
+        const theme = AF_THEMES[themeId];
+        if (theme && theme.className) root.classList.add(theme.className);
+    }
+
+    function registerThemeRoot(root) {
+        if (!root || !root.classList) return root;
+        root.classList.add(AF_THEME_ROOT_CLASS);
+        applyThemeToRoot(root, getActiveTheme());
+        return root;
+    }
+
+    function applyTheme(themeId) {
+        const id = isKnownTheme(themeId) ? themeId : getActiveTheme();
+        document.querySelectorAll('.' + AF_THEME_ROOT_CLASS).forEach(root => applyThemeToRoot(root, id));
+        document.dispatchEvent(new CustomEvent('af-theme-changed', { detail: { theme: id } }));
+    }
+
+    //==================== FACEIT RANK — ЄДИНЕ ДЖЕРЕЛО ЛОГІКИ РАНГІВ ==================
+    // Чисто презентаційний шар поверх існуючої статистики. Ніяких власних підрахунків обробок.
+    const FACEIT_REFERENCE_TARGET = 80;
+    // Мінімуми рівнів 1..9 для норми 80 (навмисно нелінійно, як ELO-діапазони FACEIT).
+    // Level 10 = рівно норма, Challenger = понад норму.
+    const FACEIT_LEVEL_MINS_80 = [0, 20, 30, 36, 42, 48, 54, 61, 70];
+    const FACEIT_LEVEL_COLORS = ['#9a9a9a', '#36d34a', '#13e540', '#c6df19', '#ffd000', '#ffc400', '#ffad00', '#ff7800', '#ff4d00', '#ed1c24'];
+    const FACEIT_CHALLENGER_COLOR = '#ff174f';
+    const FACEIT_RING_RADIUS = 44;
+    const FACEIT_RING_ARC_DEG = 300; // 60° розрив кільця знизу, як у бейджів FACEIT
+
+    // Та сама норма, що й у блоці "Продуктивність за зміну" (managerData.goal || 80).
+    function getFaceitTarget() {
+        const goal = Number(managerData && managerData.goal);
+        return goal > 0 ? goal : FACEIT_REFERENCE_TARGET;
+    }
+
+    function normalizeFaceitCount(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0) return 0;
+        return Math.floor(n);
+    }
+
+    function getFaceitLevelMins(target) {
+        const t = Number(target) > 0 ? Math.round(Number(target)) : FACEIT_REFERENCE_TARGET;
+        if (t === FACEIT_REFERENCE_TARGET) return FACEIT_LEVEL_MINS_80.slice();
+        // Інша норма: та сама нелінійна пропорція, масштабована під ціль.
+        const mins = [];
+        for (let i = 0; i < FACEIT_LEVEL_MINS_80.length; i++) {
+            let m = Math.round((FACEIT_LEVEL_MINS_80[i] / FACEIT_REFERENCE_TARGET) * t);
+            if (i > 0 && m <= mins[i - 1]) m = mins[i - 1] + 1;
+            mins.push(m);
+        }
+        return mins;
+    }
+
+    function getFaceitRank(processed, target) {
+        const count = normalizeFaceitCount(processed);
+        const goal = Number(target) > 0 ? Math.round(Number(target)) : FACEIT_REFERENCE_TARGET;
+        const mins = getFaceitLevelMins(goal);
+
+        if (count > goal) {
+            return {
+                kind: 'challenger', level: null, key: 'challenger', count, target: goal,
+                min: goal + 1, max: null, nextMin: null, remaining: 0, above: count - goal,
+                progress: 1, color: FACEIT_CHALLENGER_COLOR, title: 'CHALLENGER', short: 'CHALLENGER'
+            };
+        }
+        if (count === goal) {
+            return {
+                kind: 'level', level: 10, key: 'level-10', count, target: goal,
+                min: goal, max: goal, nextMin: null, remaining: 0, above: 0,
+                progress: 1, color: FACEIT_LEVEL_COLORS[9], title: 'LEVEL 10', short: 'LVL 10'
+            };
+        }
+        let idx = 0;
+        for (let i = 0; i < mins.length; i++) if (count >= mins[i]) idx = i;
+        const level = idx + 1;
+        const min = mins[idx];
+        const nextMin = idx + 1 < mins.length ? mins[idx + 1] : goal;
+        const span = Math.max(1, nextMin - min);
+        const progress = Math.min(1, Math.max(0, (count - min) / span));
+        return {
+            kind: 'level', level, key: `level-${level}`, count, target: goal,
+            min, max: nextMin - 1, nextMin, remaining: nextMin - count, above: 0,
+            progress, color: FACEIT_LEVEL_COLORS[idx], title: `LEVEL ${level}`, short: `LVL ${level}`
+        };
+    }
+
+    function getFaceitRankProgress(processed, target) {
+        return getFaceitRank(processed, target).progress;
+    }
+
+    function getFaceitNextLevelText(rank) {
+        if (rank.kind === 'challenger') return `+${rank.above} понад норму`;
+        if (rank.level === 10) return 'Норму виконано';
+        return `До LVL ${rank.level + 1}: ${rank.remaining}`;
+    }
+
+    function getFaceitTooltipLines(rank) {
+        if (rank.kind === 'challenger') return ['Challenger', `${rank.count} processed`, `+${rank.above} понад норму`];
+        if (rank.level === 10) return ['Level 10', `${rank.target} / ${rank.target}`, 'Норму виконано'];
+        return [`Level ${rank.level}`, `${rank.min}–${rank.max} processed`, `До Level ${rank.level + 1}: ${rank.remaining}`];
+    }
+
+    //-------------------- Бейдж рангу (inline SVG, без зовнішніх ресурсів) --------------------
+    let faceitBadgeSeq = 0;
+
+    function faceitArcLength() {
+        return 2 * Math.PI * FACEIT_RING_RADIUS * (FACEIT_RING_ARC_DEG / 360);
+    }
+
+    function buildFaceitLevelSvg(rank, uid) {
+        const circumference = (2 * Math.PI * FACEIT_RING_RADIUS).toFixed(2);
+        const arc = faceitArcLength().toFixed(2);
+        const rotate = `rotate(${90 + (360 - FACEIT_RING_ARC_DEG) / 2} 50 50)`;
+        return `
+<svg class="af-faceit-badge-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="af-fc-${uid}" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#1e1e1e"/>
+      <stop offset="100%" stop-color="#060606"/>
+    </radialGradient>
+    <linearGradient id="af-fr-${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a3a3a"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="49" fill="#0e0e0e"/>
+  <circle cx="50" cy="50" r="48" fill="none" stroke="url(#af-fr-${uid})" stroke-width="1.6"/>
+  <circle class="af-faceit-ring-track" cx="50" cy="50" r="${FACEIT_RING_RADIUS}" fill="none" stroke="#242424" stroke-width="6"
+          stroke-linecap="round" stroke-dasharray="${arc} ${circumference}" transform="${rotate}"/>
+  <circle class="af-faceit-ring-progress" cx="50" cy="50" r="${FACEIT_RING_RADIUS}" fill="none" stroke="${rank.color}" stroke-width="6"
+          stroke-linecap="round" stroke-dasharray="${arc} ${circumference}" stroke-dashoffset="${arc}" transform="${rotate}"/>
+  <circle cx="50" cy="50" r="37.5" fill="#1a1a1a" stroke="#353535" stroke-width="1.4"/>
+  <circle cx="50" cy="50" r="33.5" fill="url(#af-fc-${uid})" stroke="#000" stroke-width="1"/>
+  <text class="af-faceit-level-num" x="50" y="51" text-anchor="middle" dominant-baseline="central"
+        font-family="Inter, Roboto, Arial, Helvetica, sans-serif" font-size="${rank.level === 10 ? 34 : 40}" font-weight="800" fill="${rank.color}">${rank.level}</text>
+</svg>`;
+    }
+
+    function buildFaceitChallengerSvg(rank, uid) {
+        const segments = [];
+        const segCount = 12;
+        for (let i = 0; i < segCount; i++) {
+            const a = (i * 360) / segCount;
+            const fill = i % 2 === 0 ? rank.color : '#a80f36';
+            segments.push(`<path d="M 50 3.5 L 55.5 10.5 L 50 14 L 44.5 10.5 Z" fill="${fill}" transform="rotate(${a} 50 50)"/>`);
+            segments.push(`<rect x="48.6" y="14.5" width="2.8" height="4.5" fill="#3a0a16" transform="rotate(${a + 15} 50 50)"/>`);
+        }
+        return `
+<svg class="af-faceit-badge-svg af-faceit-badge-svg--challenger" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="af-fc-${uid}" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#241016"/>
+      <stop offset="100%" stop-color="#070305"/>
+    </radialGradient>
+  </defs>
+  <circle cx="50" cy="50" r="49" fill="#100407"/>
+  <circle cx="50" cy="50" r="42" fill="none" stroke="${rank.color}" stroke-width="1.2" opacity="0.9"/>
+  ${segments.join('')}
+  <circle cx="50" cy="50" r="36.5" fill="#160609" stroke="#5c1226" stroke-width="1.4"/>
+  <circle cx="50" cy="50" r="32.5" fill="url(#af-fc-${uid})" stroke="#000" stroke-width="1"/>
+  <polygon points="50,24 55.5,44.5 76,50 55.5,55.5 50,76 44.5,55.5 24,50 44.5,44.5" fill="${rank.color}"/>
+  <polygon points="50,33 53,47 67,50 53,53 50,67 47,53 33,50 47,47" fill="#2a0810"/>
+  <polygon points="50,40 52,48 60,50 52,52 50,60 48,52 40,50 48,48" fill="#ffffff" opacity="0.92"/>
+</svg>`;
+    }
+
+    function buildFaceitBadgeMarkup(rank, uid) {
+        const svg = rank.kind === 'challenger' ? buildFaceitChallengerSvg(rank, uid) : buildFaceitLevelSvg(rank, uid);
+        return `${svg}<div class="af-faceit-tooltip" role="tooltip"></div>`;
+    }
+
+    function triggerFaceitRankPulse(el, rank) {
+        const classes = ['af-faceit-pulse', 'af-faceit-pulse--strong', 'af-faceit-pulse--challenger'];
+        classes.forEach(c => el.classList.remove(c));
+        void el.offsetWidth; // перезапуск анімації
+        let cls = 'af-faceit-pulse';
+        if (rank.kind === 'challenger') cls = 'af-faceit-pulse--challenger';
+        else if (rank.level === 10) cls = 'af-faceit-pulse--strong';
+        el.classList.add(cls);
+        if (el._afPulseTimer) clearTimeout(el._afPulseTimer);
+        el._afPulseTimer = setTimeout(() => { classes.forEach(c => el.classList.remove(c)); el._afPulseTimer = null; }, 900);
+    }
+
+    function updateFaceitRankBadge(el, value, options = {}) {
+        if (!el) return null;
+        const rank = getFaceitRank(value, options.target != null ? options.target : getFaceitTarget());
+        const prevKey = el.dataset.afRank || '';
+        if (!el.dataset.afUid) el.dataset.afUid = String(++faceitBadgeSeq);
+        if (prevKey !== rank.key) {
+            el.innerHTML = buildFaceitBadgeMarkup(rank, el.dataset.afUid);
+            el.dataset.afRank = rank.key;
+        }
+        el.dataset.afKind = rank.kind;
+        el.style.setProperty('--af-rank-color', rank.color);
+        el.setAttribute('aria-label', getFaceitTooltipLines(rank).join('. '));
+
+        const ring = el.querySelector('.af-faceit-ring-progress');
+        if (ring) {
+            const arc = faceitArcLength();
+            const offset = arc * (1 - rank.progress);
+            ring.dataset.targetOffset = String(offset);
+            if (prevKey !== rank.key) ring.style.strokeDashoffset = String(arc);
+            requestAnimationFrame(() => requestAnimationFrame(() => { ring.style.strokeDashoffset = String(offset); }));
+        }
+
+        const tooltip = el.querySelector('.af-faceit-tooltip');
+        if (tooltip) tooltip.innerHTML = getFaceitTooltipLines(rank).map(line => `<span>${line}</span>`).join('');
+
+        if (prevKey && prevKey !== rank.key) triggerFaceitRankPulse(el, rank);
+        return rank;
+    }
+
+    function renderFaceitRankBadge(value, options = {}) {
+        const el = document.createElement('div');
+        el.className = 'af-faceit-badge' + (options.className ? ` ${options.className}` : '');
+        if (options.size) el.style.setProperty('--af-badge-size', `${options.size}px`);
+        el.dataset.afUid = String(++faceitBadgeSeq);
+        updateFaceitRankBadge(el, value, options);
+        return el;
+    }
+
+    // Коли тема вмикається, кільця прогресу плавно "наповнюються" з нуля до фактичного значення.
+    function replayFaceitRingAnimations() {
+        document.querySelectorAll('.af-theme-faceit .af-faceit-ring-progress').forEach(ring => {
+            const target = ring.dataset.targetOffset;
+            if (target == null) return;
+            ring.style.strokeDashoffset = String(faceitArcLength());
+            requestAnimationFrame(() => requestAnimationFrame(() => { ring.style.strokeDashoffset = target; }));
+        });
+    }
+    document.addEventListener('af-theme-changed', (e) => {
+        if (e.detail && e.detail.theme === 'faceit') replayFaceitRingAnimations();
+    });
+
+    //-------------------- FACEIT-вигляд блоку "Продуктивність за зміну" --------------------
+    // Створює приховані (у звичайній темі) елементи один раз; значення приходять із renderStats.
+    function mountFaceitProductivityView(popup, managerGoal) {
+        if (!popup || popup.querySelector('#af-faceit-productivity')) return;
+
+        const contentWrapper = popup.querySelector('#stats-content-wrapper');
+        if (contentWrapper) {
+            const view = document.createElement('div');
+            view.id = 'af-faceit-productivity';
+            view.className = 'af-faceit-only';
+            view.innerHTML = `
+            <div class="af-faceit-prod-main">
+                <div class="af-faceit-prod-badge-slot"></div>
+                <div class="af-faceit-prod-info">
+                    <div class="af-faceit-prod-rank" id="af-fp-rank">...</div>
+                    <div class="af-faceit-prod-count">
+                        <span id="af-fp-processed">...</span><span class="af-faceit-prod-sep">/</span><span id="af-fp-goal">${managerGoal}</span>
+                        <span class="af-faceit-prod-pct" id="af-fp-percent"></span>
+                    </div>
+                    <div class="af-faceit-prod-next" id="af-fp-next"></div>
+                </div>
+            </div>
+            <div class="af-faceit-prod-bar" title="Прогрес у межах поточного рівня"><div class="af-faceit-prod-bar-fill" id="af-fp-bar"></div></div>
+            <div class="af-faceit-prod-grid">
+                <div class="af-faceit-stat"><span class="af-faceit-label">Прогноз</span><span class="af-faceit-value"><span id="af-fp-projected">...</span> <small>акаунтів</small></span></div>
+                <div class="af-faceit-stat"><span class="af-faceit-label">Темп</span><span class="af-faceit-value"><span id="af-fp-pace">...</span> <small>ак/год</small></span></div>
+            </div>`;
+            view.querySelector('.af-faceit-prod-badge-slot').appendChild(
+                renderFaceitRankBadge(0, { target: managerGoal, size: 76, className: 'af-faceit-badge--prod' })
+            );
+            contentWrapper.insertBefore(view, contentWrapper.firstChild);
+        }
+
+        const minimalView = popup.querySelector('#stats-minimal-view');
+        if (minimalView) {
+            const mini = renderFaceitRankBadge(0, { target: managerGoal, size: 26, className: 'af-faceit-only af-faceit-badge--mini' });
+            mini.id = 'af-fp-mini';
+            minimalView.insertBefore(mini, minimalView.firstChild);
+        }
+    }
+
+    function updateFaceitProductivityView({ processed, goal, percent, projected, pace }) {
+        const view = document.getElementById('af-faceit-productivity');
+        if (!view) return;
+        const rank = getFaceitRank(processed, goal);
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+        const badge = view.querySelector('.af-faceit-badge--prod');
+        if (badge) updateFaceitRankBadge(badge, processed, { target: goal });
+        const mini = document.getElementById('af-fp-mini');
+        if (mini) updateFaceitRankBadge(mini, processed, { target: goal });
+
+        setText('af-fp-rank', rank.title);
+        setText('af-fp-processed', String(rank.count));
+        setText('af-fp-goal', String(rank.target));
+        setText('af-fp-percent', percent);
+        setText('af-fp-next', getFaceitNextLevelText(rank));
+        setText('af-fp-projected', projected);
+        setText('af-fp-pace', pace);
+
+        view.dataset.afKind = rank.kind;
+        view.style.setProperty('--af-rank-color', rank.color);
+        const bar = document.getElementById('af-fp-bar');
+        if (bar) bar.style.width = `${Math.round(rank.progress * 100)}%`;
+    }
+
+    //-------------------- FACEIT-вигляд "Опрацьовано за період" (попап Статистика) --------------------
+    function getFaceitPeriodLabel(startDate, endDate) {
+        const today = new Date().toISOString().split('T')[0];
+        if (startDate === endDate) return startDate === today ? 'Сьогодні' : startDate;
+        return `${startDate} — ${endDate}`;
+    }
+
+    function updateFaceitPeriodRankView(managers, startDate, endDate) {
+        const view = document.getElementById('af-faceit-period-rank');
+        if (!view) return;
+        const me = Array.isArray(managers) && managerData
+            ? managers.find(m => m && m.name === managerData.name)
+            : null;
+        if (!me) { view.dataset.afEmpty = '1'; return; }
+        delete view.dataset.afEmpty;
+
+        const goal = getFaceitTarget();
+        const rank = getFaceitRank(me.processedForPeriod, goal);
+        let badge = view.querySelector('.af-faceit-badge');
+        if (!badge) {
+            badge = renderFaceitRankBadge(me.processedForPeriod, { target: goal, size: 96, className: 'af-faceit-badge--period' });
+            view.querySelector('.af-faceit-period-badge-slot').appendChild(badge);
+        } else {
+            updateFaceitRankBadge(badge, me.processedForPeriod, { target: goal });
+        }
+        const setText = (sel, text) => { const el = view.querySelector(sel); if (el) el.textContent = text; };
+        setText('#af-fpr-range', getFaceitPeriodLabel(startDate, endDate));
+        setText('#af-fpr-rank', rank.title);
+        setText('#af-fpr-count', String(rank.count));
+        setText('#af-fpr-next', getFaceitNextLevelText(rank));
+        view.dataset.afKind = rank.kind;
+        view.style.setProperty('--af-rank-color', rank.color);
+    }
+    //==================== КІНЕЦЬ БЛОКУ ТЕМ / FACEIT ==================
+
+    //==================== CSS ТЕМ ==================
+    // Базовий блок: елементи, що існують лише для FACEIT-теми, у звичайній темі приховані.
+    const AF_THEME_BASE_CSS = `
+        .af-widget-root .af-faceit-only { display: none; }
+    `;
+
+    // Уся FACEIT-тема живе під .af-theme-faceit (клас лише на коренях віджета) —
+    // жоден селектор нижче не може спрацювати поза Anti-Fraud Widget.
+    const AF_FACEIT_THEME_CSS = `
+        .af-theme-faceit {
+            --af-bg: #0b0b0b;
+            --af-bg-secondary: #111111;
+            --af-panel: #171717;
+            --af-panel-2: #1a1a1a;
+            --af-panel-hover: #202020;
+            --af-border: #2a2a2a;
+            --af-border-strong: #353535;
+            --af-primary: #ff5500;
+            --af-primary-hover: #ff6a1a;
+            --af-primary-dark: #c94300;
+            --af-danger: #e0243c;
+            --af-danger-hover: #f43a52;
+            --af-success: #2ecc71;
+            --af-warning: #f5b400;
+            --af-text: #f5f5f5;
+            --af-text-secondary: #a7a7a7;
+            --af-muted: #6f6f6f;
+            --af-radius: 6px;
+            --af-font: Inter, Roboto, Arial, Helvetica, sans-serif;
+            --af-ease: cubic-bezier(.22, .61, .36, 1);
+            --af-rank-color: #9a9a9a;
+            font-family: var(--af-font) !important;
+            color: var(--af-text) !important;
+            color-scheme: dark;
+        }
+        .af-theme-faceit, .af-theme-faceit * { scrollbar-width: thin; scrollbar-color: #3a3a3a #111; }
+        .af-theme-faceit ::-webkit-scrollbar { width: 9px; height: 9px; }
+        .af-theme-faceit ::-webkit-scrollbar-track { background: #111; }
+        .af-theme-faceit ::-webkit-scrollbar-thumb { background: #333; border-radius: 6px; border: 2px solid #111; }
+        .af-theme-faceit ::-webkit-scrollbar-thumb:hover { background: var(--af-primary-dark); }
+
+        /* ---------- Корені панелей / модальних вікон ---------- */
+        .af-theme-faceit.custom-popup,
+        .af-theme-faceit.af-settings-popup,
+        .af-theme-faceit#manager-stats-popup,
+        .af-theme-faceit#mini-deposit-stats,
+        .af-theme-faceit#mini-withdraw-stats,
+        .af-theme-faceit#color-popup,
+        .af-theme-faceit#balance-log-analyzer-popup,
+        .af-theme-faceit#watch-reminder-menu,
+        .af-theme-faceit.af-pending-box {
+            background: var(--af-bg) !important;
+            color: var(--af-text) !important;
+            border: 1px solid var(--af-border) !important;
+            border-radius: var(--af-radius) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.6), 0 0 0 1px #000 !important;
+            backdrop-filter: none !important;
+        }
+        .af-theme-faceit.custom-popup { border-top: 2px solid var(--af-primary) !important; }
+        .af-theme-faceit .af-main-content,
+        .af-theme-faceit#custom-popup-box {
+            background: var(--af-bg) !important;
+            color: var(--af-text) !important;
+            border-radius: var(--af-radius) !important;
+            border-color: var(--af-border) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.6) !important;
+            font-family: var(--af-font) !important;
+        }
+        /* Кольорове "glow"-обведення головного вікна (стан PA) лишається: це існуючий сигнал стану. */
+        .af-theme-faceit .af-main-content { border-width: 1px !important; }
+        .af-theme-faceit .af-main-content > div[style*="dashed"] { border-color: var(--af-border) !important; border-style: solid !important; border-width: 1px !important; }
+
+        .af-theme-faceit .popup-header,
+        .af-theme-faceit#manager-stats-popup #stats-header,
+        .af-theme-faceit#mini-deposit-stats #stats-header,
+        .af-theme-faceit .af-settings-popup h2,
+        .af-theme-faceit h2, .af-theme-faceit h3 {
+            color: var(--af-text) !important;
+            font-family: var(--af-font) !important;
+            font-weight: 700 !important;
+            letter-spacing: .01em;
+        }
+        .af-theme-faceit .popup-header,
+        .af-theme-faceit#manager-stats-popup #stats-header,
+        .af-theme-faceit#mini-deposit-stats #stats-header {
+            border-bottom: 1px solid var(--af-border) !important;
+        }
+        .af-theme-faceit .popup-header .close-btn {
+            background: var(--af-panel) !important; color: var(--af-text-secondary) !important;
+            border: 1px solid var(--af-border) !important; border-radius: 4px !important;
+            transition: background .15s var(--af-ease), color .15s var(--af-ease);
+        }
+        .af-theme-faceit .popup-header .close-btn:hover { background: var(--af-danger) !important; color: #fff !important; border-color: var(--af-danger) !important; }
+        .af-theme-faceit .popup-resize-handle { background: var(--af-border-strong) !important; }
+
+        /* ---------- Текст ---------- */
+        .af-theme-faceit p, .af-theme-faceit label, .af-theme-faceit span, .af-theme-faceit div, .af-theme-faceit li, .af-theme-faceit td, .af-theme-faceit th, .af-theme-faceit b, .af-theme-faceit strong { font-family: var(--af-font); }
+        .af-theme-faceit p, .af-theme-faceit label { color: var(--af-text) ; }
+        .af-theme-faceit [style*="color: #333"], .af-theme-faceit [style*="color: rgb(51, 51, 51)"],
+        .af-theme-faceit [style*="color: #111"], .af-theme-faceit [style*="color: rgb(17, 17, 17)"],
+        .af-theme-faceit [style*="color: #1e293b"], .af-theme-faceit [style*="color: #2d3748"],
+        .af-theme-faceit [style*="color: #2c3e50"], .af-theme-faceit [style*="color: rgb(44, 62, 80)"],
+        .af-theme-faceit [style*="color: #1a202c"], .af-theme-faceit [style*="color: rgb(26, 32, 44)"],
+        .af-theme-faceit [style*="color: #000"], .af-theme-faceit [style*="color: black"] { color: var(--af-text) !important; }
+        .af-theme-faceit [style*="color: #666"], .af-theme-faceit [style*="color: rgb(102, 102, 102)"],
+        .af-theme-faceit [style*="color: #555"], .af-theme-faceit [style*="color: rgb(85, 85, 85)"],
+        .af-theme-faceit [style*="color: #64748b"], .af-theme-faceit [style*="color: #7f8c8d"],
+        .af-theme-faceit [style*="color: #888"], .af-theme-faceit [style*="color: #546e7a"],
+        .af-theme-faceit [style*="color: #78909c"] { color: var(--af-text-secondary) !important; }
+        .af-theme-faceit strong[style*="color: #666"] { text-transform: uppercase; letter-spacing: .04em; font-size: 10px; font-weight: 600; }
+        .af-theme-faceit [style*="color: green"] { color: var(--af-success) !important; }
+        .af-theme-faceit [style*="color: blue"] { color: #4da3ff !important; }
+        .af-theme-faceit a { color: #ff9a5c; }
+        .af-theme-faceit a:hover { color: var(--af-primary-hover); }
+        .af-theme-faceit [style*="background: #f8f9fa"], .af-theme-faceit [style*="background-color: #f8f9fa"],
+        .af-theme-faceit [style*="background: #f0f0f0"], .af-theme-faceit [style*="background-color: #f0f0f0"],
+        .af-theme-faceit [style*="background: #f9f9f9"], .af-theme-faceit [style*="background-color: #f9f9f9"],
+        .af-theme-faceit [style*="background: white"], .af-theme-faceit [style*="background-color: white"],
+        .af-theme-faceit [style*="background: #fff"], .af-theme-faceit [style*="background-color: #fff"],
+        .af-theme-faceit [style*="background-color: rgb(255, 255, 255)"], .af-theme-faceit [style*="background: rgb(255, 255, 255)"],
+        .af-theme-faceit [style*="background-color: #eef2ff"] { background: var(--af-panel) !important; color: var(--af-text) !important; }
+
+        /* ---------- Кнопки ---------- */
+        .af-theme-faceit button, .af-theme-faceit input[type="button"], .af-theme-faceit input[type="submit"] {
+            background: var(--af-primary) !important; color: #fff !important; border: 1px solid transparent !important;
+            border-radius: 4px !important; font-family: var(--af-font) !important; font-weight: 600 !important;
+            letter-spacing: .01em; box-shadow: none !important; text-shadow: none;
+            transition: background .15s var(--af-ease), box-shadow .15s var(--af-ease), transform .12s var(--af-ease), border-color .15s var(--af-ease) !important;
+        }
+        .af-theme-faceit button:hover:not(:disabled) { background: var(--af-primary-hover) !important; }
+        .af-theme-faceit button:active:not(:disabled) { background: var(--af-primary-dark) !important; box-shadow: 0 0 0 3px rgba(255,85,0,.28) !important; transform: translateY(1px); }
+        .af-theme-faceit button:focus-visible { outline: none !important; box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--af-primary) !important; }
+        .af-theme-faceit button:disabled { opacity: .55; cursor: default !important; }
+        /* Вторинні (сірі) кнопки → графіт + бордер */
+        .af-theme-faceit button[style*="#95a5a6"], .af-theme-faceit button[style*="rgb(149, 165, 166)"],
+        .af-theme-faceit button[style*="#d3d3d3"], .af-theme-faceit button[style*="rgb(211, 211, 211)"],
+        .af-theme-faceit button[style*="#6c757d"], .af-theme-faceit button[style*="#ccc"], .af-theme-faceit button[style*="#ddd"],
+        .af-theme-faceit .watch-page-btn, .af-theme-faceit .watch-tab, .af-theme-faceit .period-tab, .af-theme-faceit .shift-tab,
+        .af-theme-faceit #watch-reminder-menu button, .af-theme-faceit button.af-secondary {
+            background: var(--af-panel) !important; color: var(--af-text-secondary) !important; border: 1px solid var(--af-border) !important;
+        }
+        .af-theme-faceit button[style*="#d3d3d3"]:hover, .af-theme-faceit button[style*="rgb(211, 211, 211)"]:hover,
+        .af-theme-faceit button[style*="#95a5a6"]:hover, .af-theme-faceit button[style*="rgb(149, 165, 166)"]:hover,
+        .af-theme-faceit .watch-page-btn:hover:not(:disabled), .af-theme-faceit #watch-reminder-menu button:hover:not(:disabled) {
+            background: var(--af-panel-hover) !important; color: var(--af-text) !important; border-color: var(--af-border-strong) !important;
+        }
+        /* Деструктивні / червоні дії лишаються червоними */
+        .af-theme-faceit button[style*="#f44336"], .af-theme-faceit button[style*="rgb(244, 67, 54)"],
+        .af-theme-faceit button[style*="#dc3545"], .af-theme-faceit button[style*="rgb(220, 53, 69)"],
+        .af-theme-faceit button[style*="#ff4444"], .af-theme-faceit button[style*="rgb(255, 68, 68)"],
+        .af-theme-faceit button[style*="#e74c3c"], .af-theme-faceit button[style*="rgb(231, 76, 60)"],
+        .af-theme-faceit button[style*="#e53935"], .af-theme-faceit button[style*="#c62828"], .af-theme-faceit button[style*="#cc0000"],
+        .af-theme-faceit button[style*="#ff4d4d"], .af-theme-faceit button[style*="background-color: red"], .af-theme-faceit button[style*="background: red"],
+        .af-theme-faceit .delete-rule, .af-theme-faceit .delete-user, .af-theme-faceit #reset-password-btn,
+        .af-theme-faceit .tl-notification-cancel-btn, .af-theme-faceit #close-popup, .af-theme-faceit button.af-danger {
+            background: var(--af-danger) !important; color: #fff !important; border-color: transparent !important;
+        }
+        .af-theme-faceit button[style*="#f44336"]:hover, .af-theme-faceit button[style*="rgb(244, 67, 54)"]:hover,
+        .af-theme-faceit button[style*="#dc3545"]:hover, .af-theme-faceit button[style*="rgb(220, 53, 69)"]:hover,
+        .af-theme-faceit button[style*="#ff4444"]:hover, .af-theme-faceit button[style*="rgb(255, 68, 68)"]:hover,
+        .af-theme-faceit button[style*="#e74c3c"]:hover, .af-theme-faceit button[style*="rgb(231, 76, 60)"]:hover,
+        .af-theme-faceit .delete-rule:hover, .af-theme-faceit .delete-user:hover, .af-theme-faceit #reset-password-btn:hover,
+        .af-theme-faceit .tl-notification-cancel-btn:hover, .af-theme-faceit #close-popup:hover {
+            background: var(--af-danger-hover) !important;
+        }
+        .af-theme-faceit button[style*="#f44336"]:active, .af-theme-faceit button[style*="rgb(244, 67, 54)"]:active,
+        .af-theme-faceit .delete-rule:active, .af-theme-faceit .delete-user:active { box-shadow: 0 0 0 3px rgba(224,36,60,.28) !important; }
+        /* Головна кнопка Checked — pill лишається, але у FACEIT-стилі */
+        .af-theme-faceit .clean-button { border-radius: 4px !important; letter-spacing: .04em; text-transform: uppercase; font-size: 13px !important; }
+        .af-theme-faceit .clean-button:disabled { background: var(--af-panel) !important; color: var(--af-success) !important; border: 1px solid var(--af-border-strong) !important; opacity: 1; }
+        .af-theme-faceit #all-button-trigger { border-radius: 4px !important; text-transform: uppercase; letter-spacing: .06em; font-size: 13px !important; box-shadow: 0 0 14px rgba(255,85,0,.25) !important; }
+        /* Іконки дій у таблицях (кольорові квадратики) → графіт з кольоровим значком */
+        .af-theme-faceit #admin-popup-table .actions i, .af-theme-faceit .active-url-btn { background: var(--af-panel) !important; border: 1px solid var(--af-border); color: var(--af-text-secondary) !important; }
+        .af-theme-faceit #admin-popup-table .actions i:hover, .af-theme-faceit .active-url-btn:hover { color: var(--af-primary) !important; border-color: var(--af-primary-dark); }
+        .af-theme-faceit .delete-user, .af-theme-faceit .watch-action-delete { color: var(--af-danger) !important; }
+
+        /* ---------- Вкладки ---------- */
+        .af-theme-faceit .shift-tabs, .af-theme-faceit #mini-deposit-stats div[style*="f0f0f0"] { background: var(--af-bg-secondary) !important; border: 1px solid var(--af-border); border-radius: 4px !important; padding: 4px !important; }
+        .af-theme-faceit .watch-tab, .af-theme-faceit .period-tab, .af-theme-faceit .shift-tab {
+            position: relative; border-radius: 3px !important; box-shadow: none !important; text-transform: uppercase; letter-spacing: .04em; font-size: 11px !important; font-weight: 600 !important;
+        }
+        .af-theme-faceit .watch-tab::after, .af-theme-faceit .period-tab::after, .af-theme-faceit .shift-tab::after {
+            content: ''; position: absolute; left: 10%; right: 10%; bottom: -1px; height: 2px; background: var(--af-primary);
+            transform: scaleX(0); transform-origin: center; transition: transform .18s var(--af-ease); border-radius: 2px;
+        }
+        .af-theme-faceit .watch-tab.active, .af-theme-faceit .shift-tab.active,
+        .af-theme-faceit .period-tab[style*="font-weight: bold"] {
+            background: var(--af-panel-hover) !important; color: var(--af-text) !important; border-color: var(--af-border-strong) !important;
+        }
+        .af-theme-faceit .watch-tab.active::after, .af-theme-faceit .shift-tab.active::after,
+        .af-theme-faceit .period-tab[style*="font-weight: bold"]::after { transform: scaleX(1); }
+        .af-theme-faceit .watch-tab:hover, .af-theme-faceit .period-tab:hover, .af-theme-faceit .shift-tab:hover { color: var(--af-text) !important; background: var(--af-panel-hover) !important; }
+
+        /* ---------- Поля вводу ---------- */
+        .af-theme-faceit input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="button"]):not([type="submit"]),
+        .af-theme-faceit select, .af-theme-faceit textarea {
+            background: var(--af-bg-secondary) !important; color: var(--af-text) !important; border: 1px solid var(--af-border-strong) !important;
+            border-radius: 4px !important; font-family: var(--af-font) !important; box-shadow: none !important;
+            transition: border-color .15s var(--af-ease), box-shadow .15s var(--af-ease);
+        }
+        .af-theme-faceit input::placeholder, .af-theme-faceit textarea::placeholder { color: var(--af-muted) !important; }
+        .af-theme-faceit input:not([type="checkbox"]):not([type="radio"]):focus, .af-theme-faceit select:focus, .af-theme-faceit textarea:focus {
+            outline: none !important; border-color: var(--af-primary) !important; box-shadow: 0 0 0 3px rgba(255,85,0,.22) !important;
+        }
+        .af-theme-faceit select option { background: var(--af-panel); color: var(--af-text); }
+        .af-theme-faceit input[type="checkbox"], .af-theme-faceit input[type="radio"] { accent-color: var(--af-primary); }
+        .af-theme-faceit input[type="color"] { background: var(--af-panel); border: 1px solid var(--af-border); border-radius: 4px; }
+
+        /* ---------- Таблиці ---------- */
+        .af-theme-faceit table { border-color: var(--af-border) !important; color: var(--af-text) !important; }
+        .af-theme-faceit th, .af-theme-faceit td { border-color: var(--af-border) !important; color: var(--af-text); }
+        .af-theme-faceit th {
+            background: var(--af-bg-secondary) !important; color: var(--af-text-secondary) !important;
+            text-transform: uppercase; letter-spacing: .04em; font-size: 11px !important; font-weight: 600 !important;
+        }
+        .af-theme-faceit thead[style*="background: white"], .af-theme-faceit thead[style*="background-color: white"] { background: var(--af-bg-secondary) !important; }
+        .af-theme-faceit tbody tr:nth-child(even), .af-theme-faceit tbody tr:nth-child(even) td { background: var(--af-panel-2) !important; }
+        .af-theme-faceit tbody tr:nth-child(odd), .af-theme-faceit tbody tr:nth-child(odd) td { background: var(--af-panel) !important; }
+        .af-theme-faceit tbody tr:hover, .af-theme-faceit tbody tr:hover td { background: var(--af-panel-hover) !important; }
+        .af-theme-faceit tr[style*="#eef2ff"], .af-theme-faceit tr[style*="#eef2ff"] td { background: #1f1710 !important; box-shadow: inset 2px 0 0 var(--af-primary); }
+        .af-theme-faceit .watch-row-critical td { background: #261212 !important; }
+        .af-theme-faceit .watch-row-overdue td { background: #2a1010 !important; }
+        .af-theme-faceit #watch-table tr.watch-row-selected td { box-shadow: inset 0 0 0 1px var(--af-primary-dark) !important; }
+        .af-theme-faceit .watch-chip { background: var(--af-panel-hover) !important; }
+        .af-theme-faceit .unread-comment-row, .af-theme-faceit .unread-comment-row td { background: #2a1010 !important; }
+        .af-theme-faceit .crown { color: var(--af-warning) !important; }
+
+        /* ---------- Картки / блоки всередині вікон ---------- */
+        .af-theme-faceit .popup-text > div, .af-theme-faceit .project-search-results > div,
+        .af-theme-faceit .tl-notification-content, .af-theme-faceit #watch-form {
+            background: var(--af-panel) !important; border: 1px solid var(--af-border) !important; border-radius: var(--af-radius) !important; color: var(--af-text) !important;
+        }
+        .af-theme-faceit .watch-chip { border: 1px solid var(--af-border-strong); }
+        .af-theme-faceit .watch-empty { color: var(--af-muted) !important; }
+        .af-theme-faceit #watch-footer { color: var(--af-text-secondary) !important; }
+        .af-theme-faceit #watch-reminder-menu .watch-menu-head { color: var(--af-text-secondary) !important; border-bottom-color: var(--af-border) !important; }
+        .af-theme-faceit #watch-reminder-menu .watch-menu-head b { color: var(--af-text) !important; }
+        .af-theme-faceit .popup-rule { background: var(--af-panel); border: 1px solid var(--af-border); border-radius: 4px; padding: 6px; margin-bottom: 6px; }
+        .af-theme-faceit .loader { border-color: var(--af-border) !important; border-top-color: var(--af-primary) !important; }
+
+        /* ---------- Дашборд команди ---------- */
+        .af-theme-faceit #dash-modal-backdrop { background: rgba(0,0,0,.72) !important; }
+        .af-theme-faceit #dash-modal-content { background: var(--af-bg) !important; color: var(--af-text) !important; border: 1px solid var(--af-border) !important; border-top: 2px solid var(--af-primary) !important; border-radius: var(--af-radius) !important; box-shadow: 0 20px 60px rgba(0,0,0,.7) !important; font-family: var(--af-font) !important; }
+        .af-theme-faceit #dash-header { border-bottom-color: var(--af-border) !important; }
+        .af-theme-faceit .dash-grid-row { border-bottom-color: var(--af-border) !important; }
+        .af-theme-faceit .dash-day-header, .af-theme-faceit .dash-manager-name, .af-theme-faceit .dash-total-cell { color: var(--af-text) !important; }
+        .af-theme-faceit .dash-day-header { color: var(--af-text-secondary) !important; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
+        .af-theme-faceit .dash-manager-name { background: var(--af-bg) !important; border-right-color: var(--af-border) !important; }
+        .af-theme-faceit .dash-total-cell { background: var(--af-panel) !important; border-right-color: var(--af-border) !important; color: var(--af-text) !important; }
+        .af-theme-faceit .dash-day-cell { border-right-color: var(--af-bg-secondary) !important; }
+        .af-theme-faceit .dash-day-header.clickable:hover { background: var(--af-panel-hover) !important; color: var(--af-primary) !important; }
+        .af-theme-faceit .dash-bar { border-radius: 2px !important; }
+        .af-theme-faceit #dash-tooltip, .af-theme-faceit#dash-tooltip { background: var(--af-panel) !important; color: var(--af-text) !important; border: 1px solid var(--af-border-strong); box-shadow: 0 6px 18px rgba(0,0,0,.6) !important; }
+
+        /* ---------- Статистика депозитів / pending-бокси ---------- */
+        .af-theme-faceit#mini-deposit-stats #stats-body > div > div[style*="border-top"] { border-top-color: var(--af-border) !important; }
+
+        /* ---------- Налаштування ---------- */
+        .af-theme-faceit.af-settings-popup label { color: var(--af-text) !important; }
+        .af-theme-faceit.af-settings-popup p { color: var(--af-text-secondary) !important; }
+        .af-theme-faceit .af-theme-setting { border-top: 1px solid var(--af-border); }
+        .af-theme-faceit .af-theme-setting label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: var(--af-text-secondary) !important; font-weight: 600; }
+
+        /* ---------- Продуктивність за зміну (FACEIT-картка) ---------- */
+        .af-theme-faceit#manager-stats-popup { padding: 12px 14px !important; min-width: 292px !important; max-width: 340px; font-size: 13px !important; }
+        .af-theme-faceit#manager-stats-popup.collapsed { min-width: auto !important; padding: 6px 10px !important; }
+        .af-theme-faceit#manager-stats-popup::before {
+            content: ''; position: absolute; top: 0; left: 14px; width: 42px; height: 2px; background: var(--af-primary);
+            clip-path: polygon(0 0, 100% 0, calc(100% - 4px) 100%, 4px 100%);
+        }
+        .af-theme-faceit#manager-stats-popup #stats-header {
+            font-size: 11px !important; text-transform: uppercase; letter-spacing: .08em; color: var(--af-text-secondary) !important;
+            margin-bottom: 10px !important; padding-bottom: 8px !important;
+        }
+        .af-theme-faceit#manager-stats-popup #stats-toggle-btn, .af-theme-faceit#manager-stats-popup #stats-expand-btn { color: var(--af-text-secondary); }
+        .af-theme-faceit#manager-stats-popup #stats-toggle-btn:hover, .af-theme-faceit#manager-stats-popup #stats-expand-btn:hover { background: var(--af-panel-hover) !important; color: var(--af-text); }
+        .af-theme-faceit#manager-stats-popup #stats-content-wrapper > .stat-item { display: none !important; }
+        .af-theme-faceit#manager-stats-popup #stats-minimal-view .stat-item strong { color: var(--af-text-secondary) !important; }
+        .af-theme-faceit#manager-stats-popup #stats-minimal-view .stat-item { margin-right: 8px; white-space: nowrap; }
+        .af-theme-faceit#manager-stats-popup #stats-minimal-view { gap: 6px; }
+        .af-theme-faceit #af-faceit-productivity { display: block; }
+        .af-theme-faceit .af-faceit-prod-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .af-theme-faceit .af-faceit-prod-badge-slot { flex: 0 0 auto; }
+        .af-theme-faceit .af-faceit-prod-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .af-theme-faceit .af-faceit-prod-rank { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--af-rank-color); white-space: nowrap; }
+        .af-theme-faceit .af-faceit-prod-count { font-size: 24px; font-weight: 800; line-height: 1.05; color: var(--af-text); font-variant-numeric: tabular-nums; white-space: nowrap; display: flex; align-items: baseline; gap: 4px; }
+        .af-theme-faceit .af-faceit-prod-sep { color: var(--af-muted); font-weight: 500; font-size: 18px; }
+        .af-theme-faceit .af-faceit-prod-count #af-fp-goal { color: var(--af-text-secondary); font-size: 18px; font-weight: 600; }
+        .af-theme-faceit .af-faceit-prod-pct { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--af-muted); background: var(--af-panel); border: 1px solid var(--af-border); border-radius: 3px; padding: 1px 5px; font-variant-numeric: tabular-nums; }
+        .af-theme-faceit .af-faceit-prod-next { font-size: 11px; color: var(--af-text-secondary); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .af-theme-faceit #af-faceit-productivity[data-af-kind="challenger"] .af-faceit-prod-next { color: var(--af-rank-color); }
+        .af-theme-faceit .af-faceit-prod-bar { margin: 10px 0 8px; height: 3px; background: var(--af-border); border-radius: 2px; overflow: hidden; }
+        .af-theme-faceit .af-faceit-prod-bar-fill { height: 100%; width: 0; background: var(--af-rank-color); border-radius: 2px; transition: width .65s var(--af-ease), background .3s var(--af-ease); box-shadow: 0 0 8px var(--af-rank-color); }
+        .af-theme-faceit .af-faceit-prod-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .af-theme-faceit .af-faceit-stat { background: var(--af-panel); border: 1px solid var(--af-border); border-radius: 4px; padding: 6px 8px; min-width: 0; transition: background .18s var(--af-ease), border-color .18s var(--af-ease); }
+        .af-theme-faceit .af-faceit-stat:hover { background: var(--af-panel-hover); border-color: var(--af-border-strong); }
+        .af-theme-faceit .af-faceit-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--af-muted); font-weight: 600; margin-bottom: 2px; }
+        .af-theme-faceit .af-faceit-value { display: block; font-size: 15px; font-weight: 700; color: var(--af-text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .af-theme-faceit .af-faceit-value small { font-size: 10px; color: var(--af-text-secondary); font-weight: 500; }
+        .af-theme-faceit#manager-stats-popup #feedback-message {
+            margin-top: 8px !important; padding: 6px 8px !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: .06em;
+            border-radius: 4px !important; border: 1px solid var(--af-border); border-left: 3px solid currentColor; text-align: left !important; font-weight: 700 !important;
+        }
+        .af-theme-faceit#manager-stats-popup #feedback-message[style*="rgb(85, 85, 85)"] { color: var(--af-text-secondary) !important; background: var(--af-panel) !important; }
+        .af-theme-faceit#manager-stats-popup #feedback-message[style*="rgb(231, 76, 60)"] { background: rgba(231,76,60,.14) !important; }
+        .af-theme-faceit#manager-stats-popup #feedback-message[style*="rgb(243, 156, 18)"] { background: rgba(255,85,0,.12) !important; }
+        .af-theme-faceit#manager-stats-popup #feedback-message[style*="rgb(39, 174, 96)"] { background: rgba(46,204,113,.12) !important; }
+        @media (max-width: 1100px) {
+            .af-theme-faceit#manager-stats-popup { min-width: 268px !important; }
+            .af-theme-faceit .af-faceit-badge--prod { --af-badge-size: 64px; }
+            .af-theme-faceit .af-faceit-prod-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ---------- Бейдж рангу ---------- */
+        .af-theme-faceit .af-faceit-badge {
+            --af-badge-size: 72px;
+            position: relative; display: inline-flex; width: var(--af-badge-size); height: var(--af-badge-size); flex: 0 0 auto;
+            transform: scale(1); transition: transform .3s var(--af-ease), filter .3s var(--af-ease);
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,.6));
+        }
+        .af-theme-faceit .af-faceit-badge.af-faceit-only { display: inline-flex; }
+        .af-theme-faceit .af-faceit-badge-svg { width: 100%; height: 100%; display: block; }
+        .af-theme-faceit .af-faceit-badge[data-af-kind="challenger"] { filter: drop-shadow(0 0 7px rgba(255,23,79,.45)) drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
+        .af-theme-faceit .af-faceit-badge[data-af-rank="level-10"] { filter: drop-shadow(0 0 6px rgba(237,28,36,.35)) drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
+        .af-theme-faceit .af-faceit-ring-progress { transition: stroke-dashoffset .7s var(--af-ease), stroke .3s var(--af-ease); }
+        .af-theme-faceit .af-faceit-badge--mini { --af-badge-size: 26px; filter: none; }
+        .af-theme-faceit .af-faceit-badge--mini .af-faceit-tooltip { display: none !important; }
+        .af-theme-faceit .af-faceit-tooltip {
+            display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; min-width: 140px; padding: 7px 10px;
+            background: #0e0e0e; border: 1px solid var(--af-border-strong); border-top: 2px solid var(--af-rank-color); border-radius: 4px;
+            box-shadow: 0 8px 20px rgba(0,0,0,.7); font-size: 11px; line-height: 1.45; color: var(--af-text-secondary); white-space: nowrap; pointer-events: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .af-theme-faceit .af-faceit-tooltip span { display: block; }
+        .af-theme-faceit .af-faceit-tooltip span:first-child { color: var(--af-text); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+        .af-theme-faceit .af-faceit-badge:hover .af-faceit-tooltip { display: block; }
+        .af-theme-faceit .af-faceit-badge--period .af-faceit-tooltip { left: 50%; transform: translateX(-50%); }
+        @keyframes afFaceitPulse { 0% { transform: scale(.97); } 45% { transform: scale(1.04); } 100% { transform: scale(1); } }
+        @keyframes afFaceitGlow { 0% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); } 40% { filter: drop-shadow(0 0 12px var(--af-rank-color)); } 100% { filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)); } }
+        @keyframes afFaceitGlowStrong { 0% { filter: drop-shadow(0 0 0 rgba(237,28,36,0)); } 40% { filter: drop-shadow(0 0 18px rgba(237,28,36,.9)); } 100% { filter: drop-shadow(0 0 6px rgba(237,28,36,.35)); } }
+        @keyframes afFaceitGlowChallenger { 0% { filter: drop-shadow(0 0 0 rgba(255,23,79,0)); } 40% { filter: drop-shadow(0 0 20px rgba(255,23,79,.95)); } 100% { filter: drop-shadow(0 0 7px rgba(255,23,79,.45)); } }
+        .af-theme-faceit .af-faceit-pulse { animation: afFaceitPulse .6s var(--af-ease), afFaceitGlow .8s var(--af-ease); }
+        .af-theme-faceit .af-faceit-pulse--strong { animation: afFaceitPulse .7s var(--af-ease), afFaceitGlowStrong .9s var(--af-ease); }
+        .af-theme-faceit .af-faceit-pulse--challenger { animation: afFaceitPulse .7s var(--af-ease), afFaceitGlowChallenger .9s var(--af-ease); }
+
+        /* ---------- "Опрацьовано за період" (попап Статистика) ---------- */
+        .af-theme-faceit #af-faceit-period-rank {
+            display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 4px 0 14px; padding: 14px 12px 12px;
+            background: linear-gradient(180deg, #151515 0%, #101010 100%); border: 1px solid var(--af-border); border-radius: var(--af-radius); position: relative; overflow: visible;
+        }
+        .af-theme-faceit #af-faceit-period-rank::before { content: ''; position: absolute; top: -1px; left: 12px; width: 48px; height: 2px; background: var(--af-rank-color); clip-path: polygon(0 0, 100% 0, calc(100% - 4px) 100%, 4px 100%); }
+        .af-theme-faceit #af-faceit-period-rank[data-af-empty="1"] { display: none; }
+        .af-theme-faceit .af-faceit-period-head { align-self: stretch; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+        .af-theme-faceit .af-faceit-period-head .af-faceit-label { margin: 0; }
+        .af-theme-faceit .af-faceit-period-range { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--af-text); white-space: nowrap; }
+        .af-theme-faceit .af-faceit-period-rank-title { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--af-rank-color); margin-top: 6px; }
+        .af-theme-faceit .af-faceit-period-count { font-size: 34px; font-weight: 800; line-height: 1; color: var(--af-text); font-variant-numeric: tabular-nums; }
+        .af-theme-faceit .af-faceit-period-next { font-size: 11px; color: var(--af-text-secondary); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-top: 2px; }
+        .af-theme-faceit #af-faceit-period-rank[data-af-kind="challenger"] .af-faceit-period-next { color: var(--af-rank-color); }
+        .af-theme-faceit #statistic-popup p, .af-theme-faceit#statistic-popup p { color: var(--af-text-secondary) !important; }
+        .af-theme-faceit#statistic-popup p span { color: var(--af-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+
+        .af-theme-faceit #login-form { background: var(--af-bg) !important; border: 1px solid var(--af-border); border-top: 2px solid var(--af-primary); color: var(--af-text); }
+        .af-theme-faceit #login-form h2 { color: var(--af-text) !important; }
+        .af-theme-faceit.tl-notification { background: var(--af-bg) !important; border-color: var(--af-danger) !important; border-radius: var(--af-radius) !important; }
+        .af-theme-faceit.tl-notification h3, .af-theme-faceit.tl-notification p { color: var(--af-text) !important; }
+        .af-theme-faceit#color-popup h2 { color: var(--af-text) !important; }
+
+        /* ---------- Reduced motion ---------- */
+        @media (prefers-reduced-motion: reduce) {
+            .af-theme-faceit .af-faceit-ring-progress, .af-theme-faceit .af-faceit-prod-bar-fill, .af-theme-faceit .af-faceit-badge,
+            .af-theme-faceit button, .af-theme-faceit .af-faceit-stat { transition: none !important; }
+            .af-theme-faceit .af-faceit-pulse, .af-theme-faceit .af-faceit-pulse--strong, .af-theme-faceit .af-faceit-pulse--challenger { animation: none !important; }
+        }
+    `;
+    GM_addStyle(AF_THEME_BASE_CSS + AF_FACEIT_THEME_CSS);
+    //==================== КІНЕЦЬ CSS ТЕМ ==================
+
     const currencySymbols = new Map([
         ['UAH', '₴'],
         ['CAD', '$'],
@@ -120,11 +848,11 @@
     ]);
 
     const CURRENCY_CONFIG = {
-        'UAH': {minBalance: 1000, minPending: 100, symbol: '₴'},
-        'PLN': {minBalance: 500, minPending: 100, symbol: 'zł'},
-        'CAD': {minBalance: 100, minPending: 100, symbol: '$'},
-        'EUR': {minBalance: 100, minPending: 100, symbol: '€'},
-        'DEFAULT': {minBalance: 100, minPending: 100, symbol: ''}
+        'UAH': { minBalance: 1000, minPending: 100, symbol: '₴' },
+        'PLN': { minBalance: 500, minPending: 100, symbol: 'zł' },
+        'CAD': { minBalance: 100, minPending: 100, symbol: '$' },
+        'EUR': { minBalance: 100, minPending: 100, symbol: '€' },
+        'DEFAULT': { minBalance: 100, minPending: 100, symbol: '' }
     };
 
     const TRANSLATIONS = {
@@ -192,18 +920,17 @@
     ];
 
     const EU_PROJECTS = [
-        'admin.wildwinz.com',
-        'admin.777royals.com'
+        'admin.wildwinz.com'
     ];
 
     const defaultRules = [
-        {text: 'Ввод средств', color: '#7cfc00'},
-        {text: 'Вывод средств', color: '#f0e68c'},
-        {text: 'Отыгрывание бонуса', color: '#ff69b4'},
-        {text: 'Начисление cashback', color: '#ff69b4'},
-        {text: 'Присвоение бонуса', color: '#1e90ff'},
-        {text: 'Активация бонуса', color: '#1e90ff'},
-        {text: 'Отмена', color: '#ff4500'}
+        { text: 'Ввод средств', color: '#7cfc00' },
+        { text: 'Вывод средств', color: '#f0e68c' },
+        { text: 'Отыгрывание бонуса', color: '#ff69b4' },
+        { text: 'Начисление cashback', color: '#ff69b4' },
+        { text: 'Присвоение бонуса', color: '#1e90ff' },
+        { text: 'Активация бонуса', color: '#1e90ff' },
+        { text: 'Отмена', color: '#ff4500' }
     ];
 
     function getRules() {
@@ -413,6 +1140,7 @@
         `;
 
         document.body.append(popup);
+        registerThemeRoot(popup);
 
         document.querySelectorAll('.delete-rule').forEach(button => {
             button.addEventListener('click', event => {
@@ -425,7 +1153,7 @@
         });
 
         document.getElementById('add-rule').addEventListener('click', () => {
-            rules.push({text: '', color: '#ffffff'});
+            rules.push({ text: '', color: '#ffffff' });
             saveRules(rules);
             updateTransactionsPopup();
         });
@@ -528,8 +1256,8 @@
 
     function addExcludeButton() {
         const formatableTextDiv =
-            document.getElementById('formatable-text-antifraud_manager') ||
-            document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+              document.getElementById('formatable-text-antifraud_manager') ||
+              document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
         if (!formatableTextDiv) {
             return;
         }
@@ -570,8 +1298,8 @@
 
     function addCheckButton(TotalPA, Balance, totalPending) {
         const formatableTextDiv =
-            document.getElementById('formatable-text-antifraud_manager') ||
-            document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
+              document.getElementById('formatable-text-antifraud_manager') ||
+              document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
         if (!formatableTextDiv) {
             return;
         }
@@ -606,16 +1334,16 @@
             const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
             const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
             const colorPA =
-                TotalPA < 0.75
-                    ? 'green'
-                    : (TotalPA < 1 ? 'orange' : 'red');
+                  TotalPA < 0.75
+            ? 'green'
+            : (TotalPA < 1 ? 'orange' : 'red');
             const createEntry = (label, value, minLimit) => {
                 if (value < minLimit) {
                     return '';
                 }
                 const style = value > ALERT_THRESHOLD
-                    ? 'style="color:red;"'
-                    : '';
+                ? 'style="color:red;"'
+                : '';
                 const displayValue = formatCurrency(
                     value,
                     showAmount,
@@ -628,7 +1356,11 @@
             textToInsert += createEntry(t.pending, totalPending, config.minPending);
             textToInsert += createEntry(t.safe, safeBalance, 4200);
 
-            if (isEuProject()) {
+            // WildWinz: перед рядком додається той самий автоматичний коментар,
+            // що й на інших не-UA проєктах — дата, точний час і менеджер з налаштувань.
+            // buildAntifraudComment() уже повертає потрібний формат, тому нічого нового
+            // тут не вигадуємо. На UA-проєктах ця гілка не виконується.
+            if (isWildWinz()) {
                 textToInsert = buildAntifraudComment() + textToInsert;
             }
 
@@ -819,7 +1551,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({player_id: playerId, url: url})
+                body: JSON.stringify({ player_id: playerId, url: url })
             });
 
             const data = await response.json();
@@ -936,7 +1668,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({player_id: playerId, url})
+                body: JSON.stringify({ player_id: playerId, url })
             });
 
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
@@ -947,7 +1679,7 @@
             const currentDate = parseDateCheck(getCurrentDate());
 
             const isCheckedToday = (dataDate && currentDate && dataDate.getTime() === currentDate.getTime()) ||
-                (dateFromField && currentDate && dateFromField.getTime() === currentDate.getTime());
+                  (dateFromField && currentDate && dateFromField.getTime() === currentDate.getTime());
 
             if (data.checklistExists && dataDate && (dateFromField <= dataDate || currentDate <= dataDate)) {
                 const alertDiv = document.createElement('div');
@@ -974,10 +1706,10 @@
                 }
             }
 
-            return {isCheckedToday};
+            return { isCheckedToday };
         } catch (error) {
             console.error('Ошибка в checkUserInChecklist:', error);
-            return {isCheckedToday: false};
+            return { isCheckedToday: false };
         }
     }
 
@@ -994,6 +1726,8 @@
         settingsPopup.style.fontFamily = 'Arial, sans-serif';
         settingsPopup.style.fontSize = '14px';
         settingsPopup.style.borderRadius = '8px';
+        settingsPopup.classList.add('af-settings-popup');
+        registerThemeRoot(settingsPopup);
 
         const header = document.createElement('h2');
         header.innerText = 'Налаштування';
@@ -1068,6 +1802,21 @@
         });
         settingsPopup.appendChild(watchIntervalWrap);
 
+        // Тема інтерфейсу — лише візуальний шар, зберігається тим самим GM-механізмом.
+        const themeWrap = document.createElement('div');
+        themeWrap.className = 'af-theme-setting';
+        themeWrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0 10px;padding-top:8px;';
+        themeWrap.innerHTML = `
+            <label for="af-theme-select" style="flex:1;">Тема інтерфейсу</label>
+            <select id="af-theme-select" style="padding:4px 6px;border:1px solid #d5dbe0;border-radius:4px;background:#fff;">
+                ${Object.values(AF_THEMES).map(t => `<option value="${t.id}">${t.label}</option>`).join('')}
+            </select>
+        `;
+        const themeSelect = themeWrap.querySelector('#af-theme-select');
+        themeSelect.value = getActiveTheme();
+        themeSelect.addEventListener('change', (e) => setActiveTheme(e.target.value));
+        settingsPopup.appendChild(themeWrap);
+
         if (managerData.status === 'Admin') {
             settingsPopup.appendChild(
                 createCheckboxWithLabel('Відображати продуктивність', GM_getValue(progressBarDisplayKey, true), (e) => {
@@ -1123,19 +1872,19 @@
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${token}`
                         },
-                        body: JSON.stringify({password: newPassword}),
+                        body: JSON.stringify({ password: newPassword }),
                     })
                         .then(response => {
-                            if (response.ok) {
-                                alert('Пароль успішно змінено');
-                            } else {
-                                alert('Сталася помилка при зміні пароля');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Помилка:', error);
+                        if (response.ok) {
+                            alert('Пароль успішно змінено');
+                        } else {
                             alert('Сталася помилка при зміні пароля');
-                        });
+                        }
+                    })
+                        .catch(error => {
+                        console.error('Помилка:', error);
+                        alert('Сталася помилка при зміні пароля');
+                    });
                 }
             })
         );
@@ -1171,6 +1920,7 @@
     }
 
 
+
     function calculatePendingAmount() {
         const now = Date.now();
         const periods = {
@@ -1182,10 +1932,10 @@
 
         let activeAmount = 0;
         let stats = {
-            '30d': {count: 0, sum: 0},
-            '3m': {count: 0, sum: 0},
-            '6m': {count: 0, sum: 0},
-            'year': {count: 0, sum: 0}
+            '30d': { count: 0, sum: 0 },
+            '3m': { count: 0, sum: 0 },
+            '6m': { count: 0, sum: 0 },
+            'year': { count: 0, sum: 0 }
         };
 
         const rows = document.querySelectorAll('table.items tbody tr');
@@ -1231,6 +1981,7 @@
             font-family: Inter, sans-serif; box-shadow: rgba(0, 0, 0, 0.1) 0px 10px 30px;
             border: 1px solid rgba(255, 255, 255, 0.5); min-width: 280px; overflow: hidden;`;
             document.body.appendChild(container);
+            registerThemeRoot(container);
 
             let isDragging = false;
             let offsetX, offsetY;
@@ -1353,59 +2104,24 @@
         text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}$</b></center>`;
         popupBoxWithDraw.appendChild(text);
 
+        popupBoxWithDraw.classList.add('af-pending-box');
+        registerThemeRoot(popupBoxWithDraw);
         document.body.appendChild(popupBoxWithDraw);
     }
 
-    // Назви колонок таблиці виплат трьома мовами адмінки (англ., рус., укр.).
-    // Порівнюємо з повним текстом заголовка без урахування регістру, тому
-    // "Sum" не сплутається з "API Sum" / "Сумма API".
-    // У таблиці дві колонки "Status": перша — статус виплати, друга — статус картки.
-    // findPaymentColumns бере першу, саме ту, що потрібна.
-    const PAYMENT_COLUMN_TITLES = {
-        status: ['status', 'статус'],
-        sum: ['sum', 'сумма', 'сума'],
-        details: ['payment details', 'реквизиты оплаты', 'реквізити оплати']
-    };
-
-    // Повертає номери колонок (1-based, для td:nth-child) за їхніми назвами,
-    // щоб не прив'язуватися до порядку колонок, який різниться між проєктами.
-    // Якщо колонку не знайдено, її номер буде 0.
-    function findPaymentColumns(doc, keys) {
-        const headerRow = Array.from(doc.querySelectorAll('tr')).find(r => r.querySelector('th'));
-        const titles = headerRow
-            ? Array.from(headerRow.querySelectorAll('th')).map(th => (th.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase())
-            : [];
-
-        const columns = {};
-        keys.forEach(key => {
-            columns[key] = titles.findIndex(title => PAYMENT_COLUMN_TITLES[key].includes(title)) + 1;
-            if (!columns[key]) {
-                console.warn(`findPaymentColumns: не знайдено колонку "${key}"`, titles);
-            }
-        });
-        return columns;
-    }
-
-    function parsePaymentAmount(text) {
-        const match = (text || '').match(/-?\d[\d\s.,]*/);
-        return match ? (parseFloat(match[0].replace(/\s/g, '').replace(',', '.')) || 0) : 0;
-    }
-
-    function calculatePendingAmountEU() {
+    function calculatePendingAmountWildWinz() {
         let totalPendingCAD = 0;
         let totalPendingEUR = 0;
         let totalPendingPLN = 0;
 
-        const {status: statusColumn, sum: sumColumn} = findPaymentColumns(document, ['status', 'sum']);
-        if (!statusColumn || !sumColumn) return;
-
         const rows = document.querySelectorAll('tr');
         rows.forEach(row => {
-            const statusSpan = row.querySelector(`td:nth-child(${statusColumn}) span.label`);
+            const statusSpan = row.querySelector('span.label');
             if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
-                const amountCell = row.querySelector(`td:nth-child(${sumColumn})`);
-                if (amountCell) {
-                    const amountText = (amountCell.querySelector('code') || amountCell).textContent.trim();
+                const amountCode = row.querySelector('td:nth-child(6) code');
+                console.log(amountCode)
+                if (amountCode) {
+                    const amountText = amountCode.textContent.trim();
                     const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, ''));
                     if (!isNaN(amount)) {
                         if (amountText.includes('CAD')) {
@@ -1448,6 +2164,8 @@
         textPLN.innerHTML = `<center><b>Сума pending PLN: ${totalPendingPLN.toFixed(2)}zł</b></center>`;
         popupBoxWithDraw.appendChild(textPLN);
 
+        popupBoxWithDraw.classList.add('af-pending-box');
+        registerThemeRoot(popupBoxWithDraw);
         document.body.appendChild(popupBoxWithDraw);
     }
 
@@ -1470,6 +2188,7 @@
         <div class="popup-resize-handle"></div>
     `;
         document.body.appendChild(popup);
+        registerThemeRoot(popup);
 
         enableResize(popup);
 
@@ -1541,8 +2260,7 @@
     </div>
     `;
 
-        createPopup('admin-popup', 'Менеджери', content, () => {
-        });
+        createPopup('admin-popup', 'Менеджери', content, () => {});
 
         loadUsers(adminTeam);
 
@@ -1705,8 +2423,7 @@
             `;
             });
 
-            createPopup('reminder', 'Новини', content, () => {
-            });
+            createPopup('reminder', 'Новини', content, () => {});
 
             if (status === 'Admin') {
                 document.getElementById('add-article-btn').addEventListener('click', () => {
@@ -1742,10 +2459,10 @@
             fetch(`${API_BASE_URL}/get_article/${articleId}`)
                 .then(response => response.json())
                 .then(article => {
-                    title = article.title;
-                    content = article.content;
-                    showEditorPopup(title, content, articleId);
-                });
+                title = article.title;
+                content = article.content;
+                showEditorPopup(title, content, articleId);
+            });
         } else {
             showEditorPopup(title, content);
         }
@@ -1758,18 +2475,17 @@
         <div id="quill-editor"></div>
         <button class="save-article-btn" id="save-article-btn">Зберегти</button>
     `;
-        createPopup('editor', 'Редагування', editorContent, () => {
-        });
+        createPopup('editor', 'Редагування', editorContent, () => {});
 
         loadQuillResources().then(() => {
             const quill = new Quill('#quill-editor', {
                 theme: 'snow',
                 modules: {
                     toolbar: [
-                        [{'header': [1, 2, false]}],
+                        [{ 'header': [1, 2, false] }],
                         ['bold', 'italic', 'underline', 'strike'],
-                        [{'list': 'ordered'}, {'list': 'bullet'}],
-                        [{'color': []}, {'background': []}],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
                         ['clean']
                     ]
                 }
@@ -1858,35 +2574,20 @@
     function createFindPopUp() {
         const popupId = 'findPopup';
 
-        // На EU-проєктах шукаємо лише між EU-проєктами, на UA — між UA.
-        // На EU замість ІПН (там він порожній) шукаємо за номером документа.
-        const isEu = isEuProject();
-        const searchProjects = isEu
-            ? [
-                {key: 'wildwinz', label: 'WildWinz', url: 'https://admin.wildwinz.com/'},
-                {key: '777royals', label: '777Royals', url: 'https://admin.777royals.com/'}
-            ]
-            : [
-                {key: 'betking', label: 'Betking', url: 'https://admin.betking.com.ua/'},
-                {key: 'vegas', label: 'Vegas', url: 'https://admin.vegas.ua/'},
-                {key: '777', label: '777', url: 'https://admin.777.ua/'}
-            ];
-        const idField = isEu
-            ? {field: 'document', placeholder: 'Номер документа'}
-            : {field: 'inn', placeholder: 'ІПН'};
-
         const content = `
     <div class="search-container">
         <div class="input-group">
             <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
             <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
             <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
-            <input type="text" id="searchInnInput" placeholder="${idField.placeholder}" class="search-input">
+            <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
             <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
             <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
         </div>
         <div class="button-group">
-            ${searchProjects.map(p => `<button id="search-${p.key}-btn" data-project="${p.key}">${p.label}</button>`).join('')}
+            <button id="searchBetkingBtn">Betking</button>
+            <button id="searchVegasBtn">Vegas</button>
+            <button id="search777Btn">777</button>
         </div>
         <div id="searchResults" class="search-results"></div>
     </div>
@@ -1935,25 +2636,17 @@
         transform: translateY(0);
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
-    .find-popup #search-betking-btn {
+    .find-popup #searchBetkingBtn {
         background-color: #e63946;
         color: #ffd60a;
     }
-    .find-popup #search-vegas-btn {
+    .find-popup #searchVegasBtn {
         background-color: #48cae4;
         color: #d00000;
     }
-    .find-popup #search-777-btn {
+    .find-popup #search777Btn {
         background-color: #1d1d1d;
         color: #d00000;
-    }
-    .find-popup #search-wildwinz-btn {
-        background-color: #1d1d1d;
-        color: #2ee6c5;
-    }
-    .find-popup #search-777royals-btn {
-        background-color: #4a148c;
-        color: #ffd60a;
     }
     .find-popup .search-results {
         margin-top: 10px;
@@ -2018,26 +2711,27 @@
         const searchInnInput = document.getElementById('searchInnInput');
         const searchEmailInput = document.getElementById('searchEmailInput');
         const searchNicknameInput = document.getElementById('searchNicknameInput');
+        const searchBetkingBtn = document.getElementById('searchBetkingBtn');
+        const searchVegasBtn = document.getElementById('searchVegasBtn');
+        const search777Btn = document.getElementById('search777Btn');
         const searchResults = document.getElementById('searchResults');
         const ProjectUrl = {
             '777.ua': 'https://admin.777.ua/',
             'vegas.ua': 'https://admin.vegas.ua/',
             'wildwinz.com': 'https://admin.wildwinz.com/',
-            '777royals.com': 'https://admin.777royals.com/',
             'com.ua': 'https://admin.betking.com.ua/',
         }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
 
-        popup.querySelectorAll('.button-group button[data-project]').forEach(btn => {
-            btn.addEventListener('click', () => performSearch(btn.dataset.project));
-        });
+        searchBetkingBtn.addEventListener('click', () => performSearch('betking'));
+        searchVegasBtn.addEventListener('click', () => performSearch('vegas'));
+        search777Btn.addEventListener('click', () => performSearch('777'));
 
-        // Enter шукає на поточному проєкті (для UA — betking за замовчуванням, як і раніше).
         searchSurnameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                const hostname = window.location.hostname;
-                const current = searchProjects.find(p => hostname.includes(`${p.key}.`))
-                    || searchProjects[0];
-                performSearch(current.key);
+                const project = window.location.hostname.includes('777.ua') ? '777' :
+                window.location.hostname.includes('vegas.ua') ? 'vegas' :
+                'betking';
+                performSearch(project);
             }
         });
 
@@ -2097,7 +2791,12 @@
             const terms = surnameTerm.split(' ').filter(Boolean);
             let bodyData = '';
 
-            const projectUrl = searchProjects.find(p => p.key === project)?.url;
+            const projectUrls = {
+                'betking': 'https://admin.betking.com.ua/',
+                'vegas': 'https://admin.vegas.ua/',
+                '777': 'https://admin.777.ua/'
+            };
+            const projectUrl = projectUrls[project];
             if (!projectUrl) {
                 console.error(`Не удалось определить projectUrl для проекта ${project}`);
                 searchResults.innerHTML = '<p>Помилка: не вдалося визначити домен проекту</p>';
@@ -2115,7 +2814,7 @@
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[phone]=${encodeURIComponent(phoneTerm)}`;
             }
             if (innTerm) {
-                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[${idField.field}]=${encodeURIComponent(innTerm)}`;
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[inn]=${encodeURIComponent(innTerm)}`;
             }
             if (emailTerm) {
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[email]=${encodeURIComponent(emailTerm)}`;
@@ -2123,10 +2822,7 @@
             if (nicknameTerm) {
                 bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[nickname]=${encodeURIComponent(nicknameTerm)}`;
             }
-            if (idField.field !== 'document' || !innTerm) {
-                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=`;
-            }
-            bodyData += '&yt0=';
+            bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=&yt0=`;
 
             console.log('Sending search request with body:', bodyData, 'to URL:', searchUrl);
 
@@ -2142,7 +2838,7 @@
                     'pragma': 'no-cache'
                 },
                 data: bodyData,
-                onload: function (response) {
+                onload: function(response) {
                     const finalUrl = response.finalUrl || searchUrl;
                     const html = response.responseText;
                     const parser = new DOMParser();
@@ -2163,7 +2859,7 @@
                                 'cache-control': 'no-cache',
                                 'pragma': 'no-cache'
                             },
-                            onload: function (profileResponse) {
+                            onload: function(profileResponse) {
                                 const profileHtml = profileResponse.responseText;
                                 const parser = new DOMParser();
                                 const profileDoc = parser.parseFromString(profileHtml, 'text/html');
@@ -2196,13 +2892,13 @@
                                     }
                                     if (terms.length === 2 &&
                                         (profileData.surname !== inputData.surname ||
-                                            profileData.name !== inputData.name)) {
+                                         profileData.name !== inputData.name)) {
                                         dataMatches = false;
                                     }
                                     if (terms.length === 3 &&
                                         (profileData.surname !== inputData.surname ||
-                                            profileData.name !== inputData.name ||
-                                            profileData.patronymic !== inputData.patronymic)) {
+                                         profileData.name !== inputData.name ||
+                                         profileData.patronymic !== inputData.patronymic)) {
                                         dataMatches = false;
                                     }
                                 }
@@ -2219,7 +2915,7 @@
                                     setFixedPopupSize(popup);
                                 }
                             },
-                            onerror: function (error) {
+                            onerror: function(error) {
                                 searchResults.innerHTML = `<p>Помилка при завантаженні профілю: ${error.responseText || error}</p>`;
                                 console.error('Profile fetch error:', error);
                                 setFixedPopupSize(popup);
@@ -2245,12 +2941,7 @@
                                     const matchesSurname = surnameCell === surname;
                                     const matchesName = nameCell === name;
 
-                                    console.log('Row data (surname + name):', {
-                                        surnameCell,
-                                        nameCell,
-                                        matchesSurname,
-                                        matchesName
-                                    });
+                                    console.log('Row data (surname + name):', { surnameCell, nameCell, matchesSurname, matchesName });
 
                                     return matchesSurname && matchesName;
                                 });
@@ -2274,14 +2965,7 @@
                                     const matchesName = nameCell === name;
                                     const matchesPatronymic = patronymicCell === patronymic;
 
-                                    console.log('Row data (full PIB):', {
-                                        surnameCell,
-                                        nameCell,
-                                        patronymicCell,
-                                        matchesSurname,
-                                        matchesName,
-                                        matchesPatronymic
-                                    });
+                                    console.log('Row data (full PIB):', { surnameCell, nameCell, patronymicCell, matchesSurname, matchesName, matchesPatronymic });
 
                                     return matchesSurname && matchesName && matchesPatronymic;
                                 });
@@ -2321,7 +3005,7 @@
                         setFixedPopupSize(popup);
                     }
                 },
-                onerror: function (error) {
+                onerror: function(error) {
                     searchResults.innerHTML = `<p>Помилка: ${error.responseText || error}</p>`;
                     console.error('Search error:', error);
                     setFixedPopupSize(popup);
@@ -2398,8 +3082,7 @@
     </div>
     `;
 
-        createPopup('register-popup', 'Реєстрація нового співробітника', content, () => {
-        });
+        createPopup('register-popup', 'Реєстрація нового співробітника', content, () => {});
 
         document.getElementById('register-btn').addEventListener('click', async () => {
             const username = document.getElementById('register-username').value;
@@ -2476,7 +3159,7 @@
         try {
             const usersResponse = await fetch(`${API_BASE_URL}/api/users`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!usersResponse.ok) throw new Error(`Users fetch error: ${usersResponse.status}`);
             const allUsers = await usersResponse.json();
@@ -2484,12 +3167,12 @@
             const isAll = filterTeam === 'All' || !filterTeam;
 
             const filteredUsers = isAll
-                ? allUsers
-                : allUsers.filter(u => u.team === filterTeam);
+            ? allUsers
+            : allUsers.filter(u => u.team === filterTeam);
 
             const statsResponse = await fetch(`${API_BASE_URL}/api/get_all_statistics?date=${today}`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!statsResponse.ok) throw new Error(`Stats fetch error: ${statsResponse.status}`);
             const stats = await statsResponse.json();
@@ -2516,8 +3199,8 @@
                 const row = document.createElement('tr');
 
                 const teamBadge = isAll
-                    ? `<br><small style="color: #888;">${user.team || 'Без команди'}</small>`
-                    : '';
+                ? `<br><small style="color: #888;">${user.team || 'Без команди'}</small>`
+                : '';
 
                 row.innerHTML = `
                 <td><strong>${user.manager_name}</strong>${teamBadge}</td>
@@ -2562,7 +3245,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/api/user/active_url/${userId}`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             if (!response.ok) {
@@ -2624,8 +3307,7 @@
         </div>
     </div>`;
 
-        createPopup('user-settings-popup', 'Налаштування користувача', content, () => {
-        });
+        createPopup('user-settings-popup', 'Налаштування користувача', content, () => {});
 
         document.getElementById('save-settings-btn').onclick = async () => {
             const payload = {
@@ -2672,7 +3354,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/api/get_seen_entries/${userId}?date=${selectedDate}`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
@@ -2782,7 +3464,6 @@
         if (!WATCH_TEAM_FILTER) WATCH_TEAM_FILTER = 'ALL';
         return WATCH_TEAM_FILTER;
     }
-
     let WATCH_SEARCH = '';
     let WATCH_POLL_TIMER = null;
     // Запис, обраний кліком по рядку: на нього діє меню керування нагадуванням.
@@ -2795,10 +3476,10 @@
     //   [#BET] — команда Betting
     //   без тега — загальний запис, видимий усім
     const WATCH_TEAMS = {
-        GEN: {key: 'GEN', tag: '', label: 'Загальний — усі команди', short: 'Загальний'},
-        UA: {key: 'UA', tag: '[#UA]', label: 'UA — лише команда UA', short: 'UA'},
-        US: {key: 'US', tag: '[#US]', label: 'USA — лише команда USA', short: 'USA'},
-        BET: {key: 'BET', tag: '[#BET]', label: 'Betting — лише Betting', short: 'Betting'}
+        GEN: { key: 'GEN', tag: '',       label: 'Загальний — усі команди', short: 'Загальний' },
+        UA:  { key: 'UA',  tag: '[#UA]',  label: 'UA — лише команда UA',     short: 'UA' },
+        US:  { key: 'US',  tag: '[#US]',  label: 'USA — лише команда USA',   short: 'USA' },
+        BET: { key: 'BET', tag: '[#BET]', label: 'Betting — лише Betting',   short: 'Betting' }
     };
 
     const WATCH_NOTIFICATIONS_OFF_KEY = 'watchNotificationsOff';
@@ -2828,11 +3509,7 @@
         const own = watchTeamOfManagerTeam(managerData && managerData.team);
         if (own) teams.add(own);
         // Менеджер без команди бачить усі розділи, щоб нічого не загубити.
-        if (!own) {
-            teams.add('UA');
-            teams.add('US');
-            teams.add('BET');
-        }
+        if (!own) { teams.add('UA'); teams.add('US'); teams.add('BET'); }
         return teams;
     }
 
@@ -2868,24 +3545,16 @@
     }
 
     const WATCH_PRIORITIES = {
-        critical: {key: 'critical', tag: '[!!]', label: 'Критичний', color: '#c62828', bg: '#fdecea', order: 0},
-        normal: {key: 'normal', tag: '[!]', label: 'Звичайний', color: '#ef6c00', bg: '#fff6e8', order: 1},
-        low: {key: 'low', tag: '', label: 'Низький', color: '#546e7a', bg: '#f4f6f7', order: 2}
+        critical: { key: 'critical', tag: '[!!]', label: 'Критичний', color: '#c62828', bg: '#fdecea', order: 0 },
+        normal:   { key: 'normal',   tag: '[!]',  label: 'Звичайний', color: '#ef6c00', bg: '#fff6e8', order: 1 },
+        low:      { key: 'low',      tag: '',     label: 'Низький',   color: '#546e7a', bg: '#f4f6f7', order: 2 }
     };
 
     const watchPad = n => String(n).padStart(2, '0');
     const watchFormatDate = d => (d ? `${watchPad(d.getDate())}.${watchPad(d.getMonth() + 1)}.${d.getFullYear()}` : '');
     const watchFormatTime = d => (d ? `${watchPad(d.getHours())}:${watchPad(d.getMinutes())}` : '');
-    const watchStartOfDay = d => {
-        const x = new Date(d);
-        x.setHours(0, 0, 0, 0);
-        return x;
-    };
-    const watchAddDays = (d, n) => {
-        const x = new Date(d);
-        x.setDate(x.getDate() + n);
-        return x;
-    };
+    const watchStartOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const watchAddDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
     const watchIsSameDay = (a, b) => watchStartOfDay(a).getTime() === watchStartOfDay(b).getTime();
 
     // Повна позначка часу нагадування: з точним часом, якщо його вказано.
@@ -3014,20 +3683,15 @@
 
     // Локальне "прийнято на цю зміну" — не змінює чужі записи на сервері.
     function getWatchAcks() {
-        try {
-            return JSON.parse(GM_getValue(WATCH_ACK_KEY, '{}')) || {};
-        } catch (e) {
-            return {};
-        }
+        try { return JSON.parse(GM_getValue(WATCH_ACK_KEY, '{}')) || {}; }
+        catch (e) { return {}; }
     }
-
     function setWatchAck(id, on) {
         const acks = getWatchAcks();
         if (on) acks[id] = watchFormatDate(new Date());
         else delete acks[id];
         GM_setValue(WATCH_ACK_KEY, JSON.stringify(acks));
     }
-
     function isWatchAcked(id) {
         return getWatchAcks()[id] === watchFormatDate(new Date());
     }
@@ -3067,9 +3731,8 @@
 
     function writeWatchCache(items) {
         try {
-            GM_setValue(WATCH_CACHE_KEY, JSON.stringify({savedAt: Date.now(), items: items}));
-        } catch (e) { /* кеш не критичний */
-        }
+            GM_setValue(WATCH_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items: items }));
+        } catch (e) { /* кеш не критичний */ }
     }
 
     function hydrateWatchEntries(list) {
@@ -3089,7 +3752,7 @@
 
         const response = await fetch(`${API_BASE_URL}/api/frauds`, {
             method: 'GET',
-            headers: {'Authorization': `Bearer ${token}`}
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error(`Failed to fetch frauds: ${response.statusText}`);
 
@@ -3396,10 +4059,7 @@
 
         const prevButton = popup.querySelector('#watch-prev');
         if (prevButton) prevButton.addEventListener('click', () => {
-            if (WATCH_PAGE > 1) {
-                WATCH_PAGE--;
-                renderWatchList();
-            }
+            if (WATCH_PAGE > 1) { WATCH_PAGE--; renderWatchList(); }
         });
 
         const nextButton = popup.querySelector('#watch-next');
@@ -3452,7 +4112,7 @@
                 .some(v => String(v || '').toLowerCase().includes(WATCH_SEARCH)));
         }
 
-        const dueRank = {overdue: 0, soon: 1, today: 2, future: 3, none: 4};
+        const dueRank = { overdue: 0, soon: 1, today: 2, future: 3, none: 4 };
         list.sort((a, b) => {
             const pa = WATCH_PRIORITIES[a.meta.priority].order;
             const pb = WATCH_PRIORITIES[b.meta.priority].order;
@@ -3616,7 +4276,7 @@
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({comment: comment})
+            body: JSON.stringify({ comment: comment })
         });
         return response.json();
     }
@@ -3667,7 +4327,7 @@
 
     // Зберігає змінені мета-дані запису тим самим механізмом, що й решта дій.
     async function saveWatchMeta(entry, patch) {
-        const meta = {...entry.meta, team: entry.meta.team || 'GEN', ...patch};
+        const meta = { ...entry.meta, team: entry.meta.team || 'GEN', ...patch };
         try {
             const data = await saveWatchComment(entry.id, buildWatchComment(meta));
             if (data && data.success) loadFrauds();
@@ -3680,7 +4340,7 @@
 
     // Вимкнути/увімкнути нагадування для всіх (зберігається тегом [mute] у коментарі).
     function setWatchRemindersForAll(entry, enabled) {
-        if (enabled) return saveWatchMeta(entry, {remindersEnabled: true});
+        if (enabled) return saveWatchMeta(entry, { remindersEnabled: true });
         return Swal.fire({
             title: 'Вимкнути сповіщення для всіх?',
             text: `ID ${entry.player_id}: інші менеджери більше не отримуватимуть нагадувань.`,
@@ -3690,7 +4350,7 @@
             cancelButtonText: 'Скасувати',
             confirmButtonColor: '#c62828'
         }).then(result => {
-            if (result.isConfirmed) return saveWatchMeta(entry, {remindersEnabled: false});
+            if (result.isConfirmed) return saveWatchMeta(entry, { remindersEnabled: false });
         });
     }
 
@@ -3710,10 +4370,7 @@
     }
 
     function toggleWatchReminderMenu(anchor) {
-        if (document.getElementById('watch-reminder-menu')) {
-            closeWatchReminderMenu();
-            return;
-        }
+        if (document.getElementById('watch-reminder-menu')) { closeWatchReminderMenu(); return; }
 
         const entry = WATCH_CACHE.find(e => String(e.id) === String(WATCH_SELECTED_ID)) || null;
         const enabled = !entry || entry.meta.remindersEnabled !== false;
@@ -3723,8 +4380,8 @@
         menu.innerHTML = entry
             ? `<div class="watch-menu-head">Запис: <b>ID ${watchEscape(entry.player_id)}</b> · нагадування ${enabled ? 'увімкнено' : 'вимкнено'}</div>
                ${enabled
-                ? '<button data-act="off"><i class="fa fa-bell-slash"></i>Вимкнути для всіх</button>'
-                : '<button data-act="on"><i class="fa fa-bell"></i>Увімкнути для всіх</button>'}
+                   ? '<button data-act="off"><i class="fa fa-bell-slash"></i>Вимкнути для всіх</button>'
+                   : '<button data-act="on"><i class="fa fa-bell"></i>Увімкнути для всіх</button>'}
                <button data-act="postpone"${entry.meta.nextReview ? '' : ' title="Нагадування не задано — буде встановлено на завтра"'}><i class="fa fa-calendar-plus-o"></i>Перенести на +1 день</button>`
             : `<div class="watch-menu-head">Оберіть запис у таблиці кліком по рядку</div>
                <button disabled><i class="fa fa-bell-slash"></i>Вимкнути для всіх</button>
@@ -3735,6 +4392,7 @@
         menu.style.left = `${Math.max(8, rect.right - 230)}px`;
         menu.addEventListener('click', e => e.stopPropagation());
         document.body.appendChild(menu);
+        registerThemeRoot(menu);
 
         menu.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', () => {
             const act = btn.dataset.act;
@@ -3829,11 +4487,7 @@
     function createAddFraudPopup() {
         // Автопідстановка з відкритої сторінки гравця.
         let suggestedId = '';
-        try {
-            suggestedId = (typeof getPlayerID === 'function' && getPlayerID()) || '';
-        } catch (e) {
-            suggestedId = '';
-        }
+        try { suggestedId = (typeof getPlayerID === 'function' && getPlayerID()) || ''; } catch (e) { suggestedId = ''; }
         const suggestedUrl = /players/.test(window.location.href) ? window.location.href : '';
         const defaultNext = watchFormatDate(watchAddDays(new Date(), watchDefaultReviewDays()));
 
@@ -3906,7 +4560,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({player_id: playerId, url: url, comment: comment})
+                body: JSON.stringify({ player_id: playerId, url: url, comment: comment })
             });
 
             const data = await response.json();
@@ -3930,7 +4584,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/api/delete_fraud/${fraudId}`, {
                 method: 'DELETE',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
@@ -4197,12 +4851,13 @@
     document.head.appendChild(stylePopUps);
 
 
+
     async function deleteUser(userId) {
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/delete_user/${userId}`, {
                 method: 'DELETE',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
 
@@ -4233,7 +4888,7 @@
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/change_password/${userId}`, {
                         method: 'PUT',
-                        headers: {'Authorization': `Bearer ${token}`}
+                        headers: { 'Authorization': `Bearer ${token}` }
                     });
                     const data = await response.json();
 
@@ -4293,8 +4948,7 @@
         <button class="cancel-comment-btn">Скасувати</button>
     `;
 
-        createPopup('tl-comment-popup', 'Редагувати коментар TL', content, () => {
-        });
+        createPopup('tl-comment-popup', 'Редагувати коментар TL', content, () => {});
 
         const popupEl = document.getElementById('tl-comment-popup');
         if (popupEl) {
@@ -4307,8 +4961,8 @@
                 toolbar: [
                     ['bold', 'italic', 'underline'],
                     ['link'],
-                    [{'list': 'ordered'}, {'list': 'bullet'}],
-                    [{'color': ['#ff0000', '#008000', '#ffa500']}],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }],
                     ['clean']
                 ]
             }
@@ -4327,7 +4981,7 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({tl_comment: tlComment})
+                    body: JSON.stringify({ tl_comment: tlComment })
                 });
 
                 const data = await response.json();
@@ -4365,9 +5019,7 @@
                 const purifyScript = document.createElement('script');
                 purifyScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js';
                 document.head.appendChild(purifyScript);
-                await new Promise((resolve) => {
-                    purifyScript.onload = resolve;
-                });
+                await new Promise((resolve) => { purifyScript.onload = resolve; });
             }
 
             if (isAdmin) await loadQuillResources();
@@ -4377,7 +5029,7 @@
 
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
@@ -4423,14 +5075,14 @@
                         </thead>
                         <tbody>
                             ${data.entries.map(entry => {
-                    let displayTime = '';
-                    if (entry.created_at) {
-                        displayTime = entry.created_at.includes('T')
-                            ? entry.created_at.split('T')[1].substring(0, 5)
-                            : entry.created_at.substring(0, 5);
-                    }
-                    const isUnread = !isAdmin && unreadEntryIds.includes(entry.id);
-                    return `
+                                let displayTime = '';
+                                if (entry.created_at) {
+                                    displayTime = entry.created_at.includes('T')
+                                        ? entry.created_at.split('T')[1].substring(0, 5)
+                                    : entry.created_at.substring(0, 5);
+                                }
+                                const isUnread = !isAdmin && unreadEntryIds.includes(entry.id);
+                                return `
                                 <tr data-id="${entry.id}" class="${isUnread ? 'unread-comment-row' : ''}">
                                     <td style="font-size: 11px; color: #666;">${displayTime}</td>
                                     <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
@@ -4441,7 +5093,7 @@
                                         ${isAdmin ? (entry.tl_comment || '<span class="tl-comment-placeholder">Додати...</span>') : (entry.tl_comment ? DOMPurify.sanitize(entry.tl_comment) : '')}
                                     </td>
                                 </tr>`;
-                }).join('')}
+                            }).join('')}
                         </tbody>
                     </table>
                 </div>`;
@@ -4454,8 +5106,7 @@
                     existingPopup.querySelector('.popup-content').innerHTML = content;
                     existingPopup.style.zIndex = "20000";
                 } else {
-                    createPopup(popupId, popupTitle, content, () => {
-                    });
+                    createPopup(popupId, popupTitle, content, () => {});
                     const newPopup = document.getElementById(popupId);
                     if (newPopup) newPopup.style.zIndex = "20000";
                 }
@@ -4464,7 +5115,7 @@
                     setTimeout(() => {
                         const firstUnread = document.querySelector('.unread-comment-row');
                         if (firstUnread) {
-                            firstUnread.scrollIntoView({behavior: 'smooth', block: 'center'});
+                            firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     }, 500);
                 }
@@ -4481,12 +5132,12 @@
                     });
                 } else {
                     document.querySelectorAll('.unread-comment-row').forEach(row => {
-                        row.onclick = async function () {
+                        row.onclick = async function() {
                             const entryId = this.getAttribute('data-id');
                             try {
                                 const readResponse = await fetch(`${API_BASE_URL}/api/working/${entryId}/mark_read`, {
                                     method: 'PUT',
-                                    headers: {'Authorization': `Bearer ${token}`}
+                                    headers: { 'Authorization': `Bearer ${token}` }
                                 });
 
                                 if (readResponse.ok) {
@@ -4523,7 +5174,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/api/unread_tl_comments/${userId}`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
@@ -4542,6 +5193,7 @@
             `;
 
                 document.body.appendChild(notification);
+                registerThemeRoot(notification);
 
                 const unreadEntryIds = data.comments.map(comment => comment.entry_id);
 
@@ -4738,6 +5390,14 @@
         <input type="text" id="dateRangePicker" />
         <button id="updateStatisticsButton">Оновити</button>
 
+        <div id="af-faceit-period-rank" class="af-faceit-only" data-af-empty="1">
+            <div class="af-faceit-period-head"><span class="af-faceit-label">Опрацьовано за період</span><span class="af-faceit-period-range" id="af-fpr-range"></span></div>
+            <div class="af-faceit-period-badge-slot"></div>
+            <div class="af-faceit-period-rank-title" id="af-fpr-rank"></div>
+            <div class="af-faceit-period-count" id="af-fpr-count"></div>
+            <span class="af-faceit-label">Обробок</span>
+            <div class="af-faceit-period-next" id="af-fpr-next"></div>
+        </div>
         <p>Опрацьовано за період: <span id="totalPeriod">0</span></p>
         <p>Опрацьовано всього: <span id="totalAllTime">0</span></p>
         <p>Середнє оброблення на менеджера за період: <span id="averageProcessedPerManager">0</span></p>
@@ -4762,8 +5422,7 @@
 
     `;
 
-        createPopup('statistic-popup', 'Статистика', content, () => {
-        });
+        createPopup('statistic-popup', 'Статистика', content, () => {});
 
         $('#dateRangePicker').daterangepicker({
             startDate: today,
@@ -4797,7 +5456,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
                 method: 'GET',
-                headers: {'Authorization': `Bearer ${token}`}
+                headers: { 'Authorization': `Bearer ${token}` }
             });
 
             const data = await response.json();
@@ -4808,8 +5467,8 @@
                 if (managerData.status === 'Manager') {
                     const myTeam = managerData.team;
                     displayManagers = data.managers.filter(m =>
-                        m.team === myTeam || m.name === managerData.name
-                    );
+                                                           m.team === myTeam || m.name === managerData.name
+                                                          );
                 }
 
                 let totalPeriod = 0;
@@ -4823,12 +5482,13 @@
                 });
 
                 const avgProcessedPerManager = displayManagers.length > 0
-                    ? totalAvgSum / displayManagers.length
-                    : 0;
+                ? totalAvgSum / displayManagers.length
+                : 0;
 
                 document.getElementById('totalPeriod').textContent = totalPeriod;
                 document.getElementById('totalAllTime').textContent = totalAllTime;
                 document.getElementById('averageProcessedPerManager').textContent = avgProcessedPerManager.toFixed(2);
+                updateFaceitPeriodRankView(data.managers, startDate, endDate);
 
                 managersList.innerHTML = '';
 
@@ -4917,15 +5577,15 @@
         const innerBalance = Number(document.querySelector('input[data-field="inner_balance"]')?.value) || 0;
 
         const totalHoldAmount = Array.from(document.querySelectorAll('.hold-amount > span.hold-amount'))
-            .reduce((sum, hold) => {
-                const match = hold.textContent.trim().match(/^([\d.]+)/);
-                return sum + (match ? Number(match[1]) || 0 : 0);
-            }, 0);
+        .reduce((sum, hold) => {
+            const match = hold.textContent.trim().match(/^([\d.]+)/);
+            return sum + (match ? Number(match[1]) || 0 : 0);
+        }, 0);
 
         const safeBalance = Number(
             Array.from(document.querySelectorAll('tr'))
-                .find(row => row.querySelector('th')?.textContent.trim() === 'Баланс сейфа')
-                ?.querySelector('td code')?.textContent.trim()
+            .find(row => row.querySelector('th')?.textContent.trim() === 'Баланс сейфа')
+            ?.querySelector('td code')?.textContent.trim()
         ) || 0;
 
         const totalBalance = innerBalance + totalHoldAmount + safeBalance;
@@ -5057,7 +5717,7 @@
         if (newField) {
             newField.focus();
             newField.innerHTML = buildHtml(newField.innerHTML);
-            newField.dispatchEvent(new Event('input', {bubbles: true}));
+            newField.dispatchEvent(new Event('input', { bubbles: true }));
             applyCaret(newField);
             return;
         }
@@ -5069,10 +5729,12 @@
             oldField.innerHTML = oldField.innerHTML.replace(pattern, '').trim();
             oldField.focus();
             oldField.innerHTML = buildHtml(oldField.innerHTML);
-            oldField.dispatchEvent(new Event('input', {bubbles: true}));
+            oldField.dispatchEvent(new Event('input', { bubbles: true }));
             applyCaret(oldField);
         }
     }
+
+    let isProfitButtonClicked = false;
 
     function formatAmount(balance) {
         let formattedBalance;
@@ -5119,14 +5781,14 @@
                     range.deleteContents();
                     range.insertNode(document.createTextNode(date));
                     range.collapse(false);
-                    const event = new Event('input', {bubbles: true});
+                    const event = new Event('input', { bubbles: true });
                     activeElement.dispatchEvent(event);
                 } else {
                     const startPos = activeElement.selectionStart;
                     const endPos = activeElement.selectionEnd;
                     activeElement.value = activeElement.value.substring(0, startPos) + date + activeElement.value.substring(endPos);
                     activeElement.selectionStart = activeElement.selectionEnd = startPos + date.length;
-                    const event = new Event('input', {bubbles: true});
+                    const event = new Event('input', { bubbles: true });
                     activeElement.dispatchEvent(event);
                 }
             }
@@ -5211,17 +5873,7 @@
         return container;
     }
 
-    async function createPopupBox({
-                                      MonthPA,
-                                      TotalPA,
-                                      Balance,
-                                      SafeBalance,
-                                      NDFL,
-                                      totalPending,
-                                      cards = [],
-                                      displayCards = [],
-                                      isCheckedToday
-                                  }) {
+    async function createPopupBox({ MonthPA, TotalPA, Balance, SafeBalance, NDFL, totalPending, cards = [], displayCards = [], isCheckedToday }) {
         if (window.popupBox) {
             console.log('Popup already exists, skipping creation');
             return;
@@ -5229,6 +5881,8 @@
 
         const popupBox = document.createElement('div');
         window.popupBox = popupBox;
+        popupBox.classList.add('af-main-box');
+        registerThemeRoot(popupBox);
         const popupWidth = parseInt(POPUP_STYLES.width.replace('px', ''), 10);
 
         popupBox.appendChild(createDragHandle(popupBox));
@@ -5240,6 +5894,7 @@
 
         try {
             const contentWrapper = document.createElement('div');
+            contentWrapper.classList.add('af-main-content');
 
             applyStyles(contentWrapper, {
                 ...CONTENT_WRAPPER_STYLES,
@@ -5285,7 +5940,7 @@
                 addExcludeButton();
             } else {
                 const placeholder = document.createElement('div');
-                applyStyles(placeholder, {width: '20px'});
+                applyStyles(placeholder, { width: '20px' });
                 iconRow.appendChild(placeholder);
             }
 
@@ -5306,16 +5961,9 @@
 
             contentWrapper.appendChild(headerContainer);
 
-            contentWrapper.appendChild(await createMainText({
-                Balance,
-                SafeBalance,
-                NDFL,
-                totalPending,
-                MonthPA,
-                TotalPA
-            }));
+            contentWrapper.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }));
 
-            const buttonRows = createButtonRows({Balance, totalPending, TotalPA, isCheckedToday});
+            const buttonRows = createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday });
             contentWrapper.appendChild(buttonRows);
 
             const messagesContainer = document.createElement('div');
@@ -5328,13 +5976,17 @@
 
             const projectSearchContainer = document.createElement('div');
             projectSearchContainer.className = 'project-search-results';
-            applyStyles(projectSearchContainer, {width: '100%'});
+            applyStyles(projectSearchContainer, { width: '100%' });
             contentWrapper.appendChild(projectSearchContainer);
 
             const allButtonContainer = contentWrapper.querySelector('#all-button-container');
             const allButton = contentWrapper.querySelector('#all-button-trigger');
 
             if (allButton && allButtonContainer) {
+                const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
+                ? handleTotalInOutClick
+                : handleCombinedProfit;
+
                 allButton.addEventListener('click', async () => {
 
                     const loader = createLoader();
@@ -5344,7 +5996,7 @@
                     try {
                         await Promise.all([
                             handleProjectSearchClick(projectSearchContainer, allButton),
-                            handleCombinedProfit(messagesContainer, {Balance, totalPending})
+                            clickHandler(messagesContainer, { Balance, totalPending })
                         ]);
 
                         allButtonContainer.innerHTML = '<i class="fa fa-check-circle" style="font-size: 28px; color: green; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
@@ -5354,7 +6006,7 @@
                         allButtonContainer.innerHTML = '<i class="fa fa-times-circle" style="font-size: 28px; color: red; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
                     }
 
-                }, {once: true});
+                }, { once: true });
             }
 
             const footerContainer = document.createElement('div');
@@ -5421,7 +6073,7 @@
         return dragHandle;
     }
 
-    async function createMainText({Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA}) {
+    async function createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }) {
         const showAmount = GM_getValue(amountDisplayKey, true);
         const currencySymbol = currencySymbols.get(getCurrency()) || '';
 
@@ -5445,47 +6097,78 @@
             padding: '10px 0'
         });
 
-        const cell = (title, value) => `
+        // WildWinz: Prognose, KYC і Passport там завжди порожні ("---", "Док. не найден"),
+        // тому показуємо лише те, що справді має значення. Приховані елементи лишаються
+        // в DOM, щоб код, який їх заповнює, не падав. UA/USA беруть розмітку нижче.
+        if (isWildWinz()) {
+            mainText.innerHTML = `
         <div style="font-size: 12px;">
-            <strong style="color: #666;">${title}</strong><br>
-            ${value}
-        </div>`;
+            <strong style="color: #666;">Full Money</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+        </div>
 
-        const fullMoneyCell = cell('Full Money', `<span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>`);
-        const pendingCell = cell('Pending', `<span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>`);
-        const totalCell = cell('Total', `<span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>`);
-        const prognoseCell = cell('Prognose', '<span id="prognos-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>');
-        const kycCell = cell('KYC', '<span id="verification-provider-target" style="font-size: 15px; font-weight: bold; color: green;">---</span>');
-        const passportCell = cell('Passport', '<span id="current-document-target" style="font-size: 15px; color: #333;">---</span>');
-        const allButtonCell = `
-        <div id="all-button-container">
-            <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
-                All
-            </button>
-        </div>`;
+            <div id="all-button-container">
+                <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
+                    All
+                </button>
+            </div>
 
-        // Перші два рядки однакові для UA і EU. Рядок KYC/Passport лише на UA:
-        // на EU KYC не визначається, а паспорт займає забагато місця. Їхні елементи
-        // лишаються прихованими в DOM, щоб код, який їх заповнює, не падав.
-        const lastRow = isEuProject()
-            ? `
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Pending</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>
+        </div>
+
+        <div></div>
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Total</strong><br>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
+        </div>
+        <div></div>
+
         <div style="display: none;">
+            <span id="prognos-inout-target"></span>
             <span id="verification-provider-target"></span>
             <span id="current-document-target"></span>
-        </div>`
-            : `
-        ${kycCell}
-        <div></div>
-        ${passportCell}`;
+        </div>
+    `;
+            return mainText;
+        }
 
         mainText.innerHTML = `
-        ${fullMoneyCell}
-        <div></div>
-        ${pendingCell}
-        ${totalCell}
-        ${allButtonCell}
-        ${prognoseCell}
-        ${lastRow}`;
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Full Money</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Pending</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>
+        </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Total</strong><br>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
+        </div>
+
+            <div id="all-button-container">
+                <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
+                    All
+                </button>
+            </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Prognose</strong><br>
+            <span id="prognos-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>
+        </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">KYC</strong><br>
+            <span id="verification-provider-target" style="font-size: 15px; font-weight: bold; color: green;">---</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Passport</strong><br>
+            <span id="current-document-target" style="font-size: 15px; color: #333;">---</span>
+        </div>
+    `;
 
         return mainText;
     }
@@ -5494,7 +6177,7 @@
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-cog"></i>';
 
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
 
         icon.title = 'Налаштування';
         icon.onclick = createSettingsPopup;
@@ -5504,7 +6187,7 @@
     function createOldSettingsIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-cog"></i>';
-        applyStyles(icon, {...ICON_STYLES, top: '10px', right: '10px'});
+        applyStyles(icon, { ...ICON_STYLES, top: '10px', right: '10px' });
         icon.title = 'Налаштування';
         icon.onclick = createSettingsPopup;
         return icon;
@@ -5516,7 +6199,7 @@
         icon.innerHTML += '<i class="fa fa-search"></i>';
         icon.innerHTML += '<i class="fa fa-search"></i>';
 
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
 
         icon.title = 'Швидкий пошук';
         icon.onclick = () => {
@@ -5529,7 +6212,7 @@
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-signal"></i>';
 
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
 
         icon.title = 'Статистика';
         icon.onclick = createStatisticPopup;
@@ -5539,7 +6222,7 @@
     function createOldStatisticIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-signal"></i>';
-        applyStyles(icon, {...ICON_STYLES, top: '35px', right: '10px'});
+        applyStyles(icon, { ...ICON_STYLES, top: '35px', right: '10px' });
         icon.title = 'Статистика';
         icon.onclick = createStatisticPopup;
         return icon;
@@ -5549,7 +6232,7 @@
         const icon = document.createElement('div');
         icon.id = 'af-watch-icon';
         icon.innerHTML = '<i class="fa fa-eye"></i>';
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
         icon.title = 'Нагляд';
         icon.onclick = createFraudPopup;
         // Показує лічильник записів, що потребують уваги, і блимає за критичних.
@@ -5560,7 +6243,7 @@
     function createDocumentsIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-id-card-o"></i>';
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
         icon.title = 'Відкрити всі документи гравця';
         icon.onclick = openPlayerDocuments;
         return icon;
@@ -5569,7 +6252,7 @@
     function createFinanceTabsIcon() {
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-exchange"></i>';
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
         icon.title = 'Депозити, виплати, лог балансу, лог транзакцій';
         icon.onclick = openFinanceTabs;
         return icon;
@@ -5584,7 +6267,7 @@
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-newspaper-o"></i>';
 
-        applyStyles(icon, {...NAV_ICON_STYLES});
+        applyStyles(icon, { ...NAV_ICON_STYLES });
 
         icon.title = 'Новини';
         if (hasNewArticles || shouldBlink) icon.classList.add('blinking');
@@ -5600,7 +6283,7 @@
         if (managerData.status !== 'Admin') return;
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-users"></i>';
-        applyStyles(icon, {...ICON_STYLES, top: '70px', right: '10px', fontSize: '18px'});
+        applyStyles(icon, { ...ICON_STYLES, top: '70px', right: '10px', fontSize: '18px' });
         icon.title = 'Користувачі';
         icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
         popupBox.appendChild(icon);
@@ -5613,7 +6296,7 @@
         const icon = document.createElement('div');
         icon.innerHTML = '<i class="fa fa-users"></i>';
 
-        applyStyles(icon, {...NAV_ICON_STYLES, fontSize: '18px'});
+        applyStyles(icon, { ...NAV_ICON_STYLES, fontSize: '18px' });
 
         icon.title = 'Користувачі';
         icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
@@ -5621,7 +6304,7 @@
         return icon;
     }
 
-    function createButtonRows({Balance, totalPending, TotalPA, isCheckedToday}) {
+    function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
 
         const secondRow = createContainer({
             marginTop: '10px',
@@ -5638,21 +6321,14 @@
         const button = document.createElement('button');
         button.className = 'clean-button';
 
-        const baseStyles = {...BUTTON_STYLES};
+        const baseStyles = { ...BUTTON_STYLES };
 
         delete baseStyles.padding;
         delete baseStyles.borderRadius;
 
         const stateStyles = isCheckedToday
-            ? {
-                innerText: 'Checked ✔',
-                backgroundColor: '#d3d3d3',
-                color: '#000',
-                border: '2px solid #000',
-                disabled: true,
-                cursor: 'default'
-            }
-            : {innerText: 'Checked', backgroundColor: '#28a745', disabled: false};
+        ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true, cursor: 'default' }
+        : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
 
         const finalStyles = {
             ...baseStyles,
@@ -5673,10 +6349,12 @@
     }
 
     async function createProjectButtonContainer() {
-        const container = createContainer({marginTop: '10px', display: 'block', textAlign: 'center'});
+        if (window.location.hostname.includes('admin.wildwinz.com')) return document.createElement('div');
+
+        const container = createContainer({ marginTop: '10px', display: 'block', textAlign: 'center' });
         const searchImage = document.createElement('img');
         searchImage.src = 'https://cdn-icons-png.flaticon.com/512/64/64673.png';
-        applyStyles(searchImage, {cursor: 'pointer', width: '50px', height: '50px'});
+        applyStyles(searchImage, { cursor: 'pointer', width: '50px', height: '50px' });
         searchImage.addEventListener('click', () => handleProjectSearchClick(container, searchImage));
         container.appendChild(searchImage);
         return container;
@@ -5722,8 +6400,8 @@
         return diffDays < 7;
     }
 
-    function isEuProject() {
-        return EU_PROJECTS.includes(window.location.hostname.toLowerCase());
+    function isWildWinz() {
+        return window.location.hostname.includes('wildwinz');
     }
 
     function buildAntifraudComment() {
@@ -5737,11 +6415,11 @@
         if (isUaProject) {
             return language === 'російська'
                 ? `Проверен антифрод менеджером`
-                : `Перевірений антифрод менеджером`;
+            : `Перевірений антифрод менеджером`;
         } else {
             return language === 'російська'
                 ? `${date} в ${time} проверен антифрод командой/${initials}<br>`
-                : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
+            : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
         }
     }
 
@@ -5810,7 +6488,7 @@
             if (newField) {
                 const existing = newField.innerHTML.trim();
                 newField.innerHTML = existing ? `${text}<br>${existing}` : text;
-                newField.dispatchEvent(new Event('input', {bubbles: true}));
+                newField.dispatchEvent(new Event('input', { bubbles: true }));
                 placeCaretAtEnd(newField);
             }
         }
@@ -5939,18 +6617,18 @@
                 if (result.isConfirmed) {
                     sendDataToServer(dataToInsert, token)
                         .then(() => {
-                            if (needsTemplateComment) clickUpdateButton();
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Успішно!',
-                                text: 'Користувач позначений як переглянутий'
-                            }).then(() => location.reload());
-                        })
+                        if (needsTemplateComment) clickUpdateButton();
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Успішно!',
+                            text: 'Користувач позначений як переглянутий'
+                        }).then(() => location.reload());
+                    })
                         .catch(() => Swal.fire({
-                            icon: 'error',
-                            title: 'Помилка!',
-                            text: 'Не вдалося надіслати дані.'
-                        }));
+                        icon: 'error',
+                        title: 'Помилка!',
+                        text: 'Не вдалося надіслати дані.'
+                    }));
                 }
             });
             return;
@@ -5962,18 +6640,18 @@
 
         sendDataToServer(dataToInsert, token)
             .then(() => {
-                if (needsTemplateComment) clickUpdateButton();
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Успішно!',
-                    text: 'Користувач позначений як переглянутий'
-                }).then(() => location.reload());
-            })
+            if (needsTemplateComment) clickUpdateButton();
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: 'Користувач позначений як переглянутий'
+            }).then(() => location.reload());
+        })
             .catch(() => Swal.fire({
-                icon: 'error',
-                title: 'Помилка!',
-                text: 'Не вдалося надіслати дані.'
-            }));
+            icon: 'error',
+            title: 'Помилка!',
+            text: 'Не вдалося надіслати дані.'
+        }));
     }
 
     function createProjectContainer(project, projectUrl) {
@@ -6033,33 +6711,7 @@
         if (fieldType === 'phone') {
             return '<i class="fa fa-phone" aria-hidden="true"></i>';
         }
-        if (fieldType === 'document') {
-            return '<i class="fa fa-id-card-o" aria-hidden="true"></i>';
-        }
         return '';
-    }
-
-    // Основний критерій пошуку: на UA це ІПН, на EU — номер документа.
-    // Саме за ним визначається знайдений гравець, його документ і картки.
-    function isPrimarySearchField(fieldType) {
-        return fieldType === 'inn' || fieldType === 'document';
-    }
-
-    // Номер документа з форми credentials: ID card, паспорт або інший документ.
-    // Серія паспорта є не завжди (на WildWinz буває лише номер), тому склеюємо те, що є.
-    function extractDocumentNumber(root) {
-        const creds = '#common_services_players_models_PlayerCredentials_';
-        const value = field => root.querySelector(`${creds}${field}`)?.value?.trim() || '';
-        const passport = value('passport_series') + value('passport_number');
-        return value('id_card') || passport || value('other_document') || null;
-    }
-
-    // Реквізит із "Payment details": номер чи маску картки скорочуємо до 123456|7890,
-    // а IBAN, пошту тощо (на EU) показуємо як є.
-    function formatRequisite(requisite) {
-        return /^\d{6}[\d*\s-]*\d{4}$/.test(requisite)
-            ? `${requisite.slice(0, 6)}|${requisite.slice(-4)}`
-            : requisite;
     }
 
     let CURRENT_PLAYER_CARDS = {};
@@ -6112,7 +6764,7 @@
         console.log('Карты текущего игрока:', CURRENT_PLAYER_CARDS);
     }
 
-    function appendProjectResult({container, fieldType, html}) {
+    function appendProjectResult({ container, fieldType, html }) {
         const div = document.createElement('div');
 
         applyStyles(div, {
@@ -6126,11 +6778,11 @@
 
         div.innerHTML = html;
 
-        if (isPrimarySearchField(fieldType)) {
+        if (fieldType === 'inn') {
             div.id = `inn-result-${container.id}`;
         }
 
-        if (isPrimarySearchField(fieldType)) {
+        if (fieldType === 'inn') {
             const img = container.querySelector('img');
             if (img) {
                 img.parentElement.after(div);
@@ -6142,7 +6794,7 @@
         }
     }
 
-    function appendCardResult({container, html}) {
+    function appendCardResult({ container, html }) {
 
         if (container.id === 'current-project-cards-container' && !container.dataset.hasHeader) {
 
@@ -6191,21 +6843,19 @@
 
     function revealContact(type) {
         return new Promise(resolve => {
-            // На UA заголовки й кнопка російською, на EU — англійською.
-            const labels = type === 'email' ? ['E-mail'] : ['Телефон', 'Phone'];
-            const showButton = 'input[value="Показать"], input[value="Show"]';
-            const row = Array.from(document.querySelectorAll('tr')).find(r => labels.includes(r.querySelector('th')?.textContent.trim()));
+            const label = type === 'email' ? 'E-mail' : 'Телефон';
+            const row = Array.from(document.querySelectorAll('tr')).find(r => r.querySelector('th')?.textContent.trim() === label);
             if (!row) return resolve(null);
 
             const td = row.querySelector('td');
-            const btn = td.querySelector(showButton);
+            const btn = td.querySelector('input[value="Показать"]');
 
             if (!btn) return resolve(cleanExtractedText(td.innerHTML));
 
             btn.click();
             let attempts = 0;
             const interval = setInterval(() => {
-                if (!td.querySelector(showButton)) {
+                if (!td.querySelector('input[value="Показать"]')) {
                     clearInterval(interval);
                     const result = cleanExtractedText(td.innerHTML);
                     if (result && result.length > 2) resolve(result);
@@ -6220,22 +6870,20 @@
     function handleProjectSearchClick(container, searchImage) {
         container.innerHTML = '';
 
-        // EU-проєкти шукаються лише між собою, UA — між собою.
-        const isEu = isEuProject();
-        const projectUrls = isEu
-            ? {
-                'wildwinz': 'https://admin.wildwinz.com/players/playersItems/search/',
-                '777royals': 'https://admin.777royals.com/players/playersItems/search/'
-            }
-            : {
-                'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
-                '777': 'https://admin.777.ua/players/playersItems/search/',
-                'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
-            };
+        const projectUrls = {
+            'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
+            '777': 'https://admin.777.ua/players/playersItems/search/',
+            'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
+        };
+
+        // WildWinz не пов'язаний з UA-проєктами: картки 777/King там завжди порожні.
+        if (isWildWinz()) {
+            container.innerHTML = '';
+            return;
+        }
 
         initializeCurrentPlayerCards();
-        const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p))
-            || (isEu ? 'wildwinz' : 'vegas');
+        const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
         const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
 
         const url = getAjaxUrl();
@@ -6251,9 +6899,16 @@
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
 
-                const currentDocument = extractDocumentNumber(tempDiv);
                 const docTarget = document.getElementById('current-document-target');
                 if (docTarget) {
+                    const creds = '#common_services_players_models_PlayerCredentials_';
+                    const idCard = tempDiv.querySelector(`${creds}id_card`)?.value;
+                    const pSeries = tempDiv.querySelector(`${creds}passport_series`)?.value;
+                    const pNumber = tempDiv.querySelector(`${creds}passport_number`)?.value;
+                    const otherDoc = tempDiv.querySelector(`${creds}other_document`)?.value;
+
+                    const currentDocument = idCard || ((pSeries && pNumber) ? pSeries + pNumber : null) || otherDoc || null;
+
                     if (currentDocument) {
                         docTarget.innerHTML = currentDocument;
                         docTarget.dataset.document = currentDocument;
@@ -6291,11 +6946,7 @@
                     projectContainer.id = `project-container-${project}`;
                     projectsRow.appendChild(projectContainer);
 
-                    if (isEu) {
-                        searchUser(currentDocument, 'document', projectUrl, projectContainer);
-                    } else {
-                        searchUser(inn, 'inn', projectUrl, projectContainer);
-                    }
+                    searchUser(inn, 'inn', projectUrl, projectContainer);
                     if (email) searchUser(email, 'email', projectUrl, projectContainer);
                     if (phone) searchUser(phone, 'phone', projectUrl, projectContainer);
 
@@ -6306,7 +6957,7 @@
 
                 const currentCardsContainer = document.createElement('div');
                 currentCardsContainer.id = 'current-project-cards-container';
-                applyStyles(currentCardsContainer, {width: '100%'});
+                applyStyles(currentCardsContainer, { width: '100%' });
                 container.appendChild(currentCardsContainer);
 
                 processCurrentProjectCards(currentProject, projectUrls[currentProject], currentCardsContainer);
@@ -6330,7 +6981,7 @@
         GM_xmlhttpRequest({
             method: 'POST',
             url: projectUrl,
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
             onload: response => {
                 if (response.finalUrl.includes('/update/')) {
@@ -6359,12 +7010,9 @@
                 const playerLabels = ['Номер игрока', 'Player number', 'Номер гравця'];
                 let playerId = null;
 
-                // getValueByLabel повертає 'Не найдено', якщо мітки немає (parseFloat дає NaN),
-                // тому такі значення пропускаємо й переходимо до наступної мітки.
                 for (const label of playerLabels) {
                     const foundValue = getValueByLabel(tempDiv, label);
-                    const number = parseFloat(foundValue);
-                    if (!isNaN(number) && number !== 0) {
+                    if (foundValue && parseFloat(foundValue) !== 0) {
                         playerId = foundValue;
                         break;
                     }
@@ -6376,14 +7024,11 @@
 
                 let status = determineUserStatus(tempDiv);
 
-                if (isPrimarySearchField(fieldType) && playerId) {
+                if (fieldType === 'inn' && playerId) {
                     container.dataset.foundPlayerId = playerId;
                 }
 
-                // Для показу беремо ID зі сторінки гравця, якщо номер не знайшовся за мітками.
-                playerId = playerId || url.match(/\/update\/(\d+)/)?.[1] || 'Не найдено';
-
-                if (!isPrimarySearchField(fieldType)) {
+                if (fieldType !== 'inn') {
                     appendProjectResult({
                         container,
                         fieldType,
@@ -6413,7 +7058,12 @@
                             const credentialsDiv = document.createElement('div');
                             credentialsDiv.innerHTML = credentialsResponse.responseText;
 
-                            const found_document_id = extractDocumentNumber(credentialsDiv);
+                            const idCard = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+                            const passportSeries = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+                            const passportNumber = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+                            const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+                            const otherDocument = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+                            const found_document_id = idCard || passportFull || otherDocument || null;
 
                             const currentDocTarget = document.getElementById('current-document-target');
                             if (currentDocTarget && found_document_id) {
@@ -6520,9 +7170,9 @@
                 resultsContainer.appendChild(document.createTextNode(' '));
             });
 
-            appendProjectResult({container, fieldType, html: resultsContainer.innerHTML});
+            appendProjectResult({ container, fieldType, html: resultsContainer.innerHTML });
         } else {
-            appendProjectResult({container, fieldType, html: `<b>${searchTypeLabel}</b> не знайдено`});
+            appendProjectResult({ container, fieldType, html: `<b>${searchTypeLabel}</b> не знайдено` });
         }
     }
 
@@ -6552,7 +7202,7 @@
         GM_xmlhttpRequest({
             method: 'POST',
             url: searchUrl,
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
             onload: response => {
                 const tempDiv = document.createElement('div');
@@ -6577,7 +7227,7 @@
 
                         appendCardResult({
                             container: container,
-                            html: `<i class="fa fa-exchange" aria-hidden="true"></i> <b>${formatRequisite(card)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                            html: `<i class="fa fa-exchange" aria-hidden="true"></i> <b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
                         });
                     }
                 });
@@ -6595,7 +7245,7 @@
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: searchUrl,
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
                     onload: response => {
                         const tempDiv = document.createElement('div');
@@ -6608,7 +7258,7 @@
                             if (playerCard && !playerCard.outerHTML.includes(userId)) {
                                 appendCardResult({
                                     container: container,
-                                    html: `<b>${formatRequisite(card)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                                    html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
                                 });
                             }
                         });
@@ -6754,7 +7404,7 @@
 
                 newField.innerHTML = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
 
-                newField.dispatchEvent(new Event('input', {bubbles: true}));
+                newField.dispatchEvent(new Event('input', { bubbles: true }));
 
                 if (shouldUpdate && addButton) {
                     addButton.click();
@@ -6781,7 +7431,7 @@
         return `${year}.${month}.${day}`;
     }
 
-    async function handleCombinedProfit(container, {Balance, totalPending}) {
+    async function handleCombinedProfit(container, { Balance, totalPending }) {
         const totalTarget = document.getElementById('total-inout-target');
         const prognosTarget = document.getElementById('prognos-inout-target');
         const projectSearchWrapper = document.querySelector('.project-search-results');
@@ -6799,7 +7449,7 @@
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: baseURL,
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
                     onload: response => {
                         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -6819,21 +7469,24 @@
                         });
 
                         const profit = depositsTotal - redeemsTotal;
-                        resolve({deposits: depositsTotal, withdrawals: redeemsTotal, profit});
+                        resolve({ deposits: depositsTotal, withdrawals: redeemsTotal, profit });
                     },
                     onerror: error => reject(error)
                 });
             });
 
-            // Того самого гравця на інших проєктах шукаємо: на UA — за ІПН серед UA-проєктів,
-            // на EU — за номером документа серед EU-проєктів. Якщо ідентифікатора немає,
-            // рахуємо лише поточного гравця.
-            const {field, value} = await getPlayerIdentifier();
+            const inn = await getPlayerInn();
+            if (!inn) {
+                handleTotalInOutClick(container, { Balance, totalPending });
+                if (totalTarget) totalTarget.innerHTML = '---';
+                if (prognosTarget) prognosTarget.innerHTML = '---';
+                return;
+            }
+
             const currentProject = window.location.origin + '/';
-            const projectDomains = isEuProject() ? EU_PROJECTS.map(host => `https://${host}/`) : PROJECT_DOMAINS;
-            const searchDomains = value ? projectDomains.filter(domain => domain !== currentProject) : [];
+            const searchDomains = PROJECT_DOMAINS.filter(domain => domain !== currentProject);
             const foundPlayers = await Promise.all(
-                searchDomains.map(domain => searchPlayerBy(domain, field, value))
+                searchDomains.map(domain => searchPlayerByInn(domain, inn))
             );
 
             const validPlayers = foundPlayers.filter(result => result && result.playerId);
@@ -6864,7 +7517,7 @@
                     insertTextToComment(totalTarget.dataset.text);
                     totalTarget.dataset.clicked = 'true';
                     totalTarget.style.opacity = '0.85';
-                }, {once: false});
+                }, { once: false });
             }
 
             if (prognosTarget) {
@@ -6881,13 +7534,13 @@
                     insertTextToComment(prognosTarget.dataset.text);
                     prognosTarget.dataset.clicked = 'true';
                     prognosTarget.style.opacity = '0.85';
-                }, {once: false});
+                }, { once: false });
 
                 if (totalPending > 1 || cleanBalance > 1 || safeBalance > 1) {
                     const prognosePaDiv = document.createElement('div');
                     const paDataText = `<b>Prognose PayOut: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>`;
 
-                    applyStyles(prognosePaDiv, {fontSize: '14px', color: getColor(prognosePA / 100)});
+                    applyStyles(prognosePaDiv, { fontSize: '14px', color: getColor(prognosePA / 100) });
                     prognosePaDiv.innerHTML = `(${prognosePA.toFixed(2)}%)`;
                     prognosePaDiv.classList.add('clickable');
                     prognosePaDiv.dataset.text = paDataText;
@@ -6898,7 +7551,7 @@
                         insertTextToComment(prognosePaDiv.dataset.text);
                         prognosePaDiv.dataset.clicked = 'true';
                         prognosePaDiv.style.opacity = '0.85';
-                    }, {once: false});
+                    }, { once: false });
 
                     prognosTarget.appendChild(prognosePaDiv);
                 }
@@ -6916,8 +7569,8 @@
                     const closingTagIndex = targetDiv.innerHTML.indexOf('</a>');
                     if (closingTagIndex !== -1) {
                         const newHtml = targetDiv.innerHTML.slice(0, closingTagIndex + 4) +
-                            profitHtml +
-                            targetDiv.innerHTML.slice(closingTagIndex + 4);
+                              profitHtml +
+                              targetDiv.innerHTML.slice(closingTagIndex + 4);
                         targetDiv.innerHTML = newHtml;
                     } else {
                         targetDiv.innerHTML += profitHtml;
@@ -6979,13 +7632,12 @@
     }
 
 
-    // Ідентифікатор гравця для пошуку на інших проєктах: ІПН на UA, номер документа на EU.
-    function getPlayerIdentifier() {
+    function getPlayerInn() {
         return new Promise((resolve, reject) => {
             const scripts = Array.from(document.querySelectorAll('script'));
             const credentialsScript = scripts.find(script =>
-                script.textContent.includes('#credentials-info') && script.textContent.includes('/players/playerCredentials/show/')
-            );
+                                                   script.textContent.includes('#credentials-info') && script.textContent.includes('/players/playerCredentials/show/')
+                                                  );
             if (!credentialsScript) return reject(new Error('Скрипт с URL для ИНН не найден'));
 
             const urlMatch = credentialsScript.textContent.match(/url:\s*['"]\/players\/playerCredentials\/show\/\d+\/['"]/);
@@ -6997,27 +7649,22 @@
                 method: 'GET',
                 success: response => {
                     const doc = new DOMParser().parseFromString(response, 'text/html');
-                    if (isEuProject()) {
-                        resolve({field: 'document', value: extractDocumentNumber(doc)});
-                    } else {
-                        const inn = doc.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
-                        resolve({field: 'inn', value: inn || null});
-                    }
+                    const innInput = doc.querySelector('#common_services_players_models_PlayerCredentials_inn');
+                    resolve(innInput?.value || null);
                 },
                 error: () => reject(new Error('Не удалось загрузить ИНН'))
             });
         });
     }
 
-    function searchPlayerBy(domain, field, value) {
+    function searchPlayerByInn(domain, inn) {
         return new Promise(resolve => {
-            const url = `${domain}players/playersItems/search?PlayersSearchForm[${field}]=${encodeURIComponent(value)}`;
-
+            const url = `${domain}players/playersItems/search?PlayersSearchForm[inn]=${inn}`;
             function handleRequest(currentUrl) {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: currentUrl,
-                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     onload: response => {
                         if (response.status === 301 || response.status === 302) {
                             const redirectUrlMatch = response.responseHeaders.match(/location: (.+)/i);
@@ -7030,7 +7677,7 @@
                             if (playerRow) {
                                 const playerIdSpan = playerRow.querySelector('td span:not(.fa):not(.manager-names)');
                                 const playerId = playerIdSpan ? playerIdSpan.textContent.trim() : null;
-                                resolve(playerId ? {domain, playerId} : null);
+                                resolve(playerId ? { domain, playerId } : null);
                             } else {
                                 resolve(null);
                             }
@@ -7041,7 +7688,6 @@
                     onerror: () => resolve(null)
                 });
             }
-
             handleRequest(url);
         });
     }
@@ -7054,7 +7700,7 @@
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: baseURL,
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerId)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
                 onload: response => {
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -7068,12 +7714,84 @@
                             if (key === 'Redeems Total') redeemsTotal = value;
                         });
                     }
-                    resolve({domain, depositsTotal, redeemsTotal, playerId});
+                    resolve({ domain, depositsTotal, redeemsTotal, playerId });
                 },
-                onerror: () => resolve({domain, depositsTotal: 0, redeemsTotal: 0, playerId})
+                onerror: () => resolve({ domain, depositsTotal: 0, redeemsTotal: 0, playerId })
             });
         });
     }
+
+    function handleTotalInOutClick(container, { Balance, totalPending }) {
+        if (isProfitButtonClicked) return;
+        isProfitButtonClicked = true;
+
+        const loader = createLoader();
+        container.appendChild(loader);
+
+        const playerID = getPlayerID();
+        const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+        // Видалити, коли задача Владонича зайде на всі проєкти
+        const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: baseURL,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
+            onload: response => {
+                container.removeChild(loader);
+                const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                const table = doc.querySelector('.detail-view');
+                if (!table) {
+                    container.innerHTML += 'Таблица с результатами не найдена.';
+                    return;
+                }
+
+                let depositsTotal = 0, redeemsTotal = 0;
+                table.querySelectorAll('tr').forEach(row => {
+                    const key = row.querySelector('th')?.textContent.trim();
+                    const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                    if (key === 'Deposits Total') depositsTotal = value;
+                    if (key === 'Redeems Total') redeemsTotal = value;
+                });
+
+                const cleanBalance = parseFloat(Balance);
+                const safeBalance = getInnerBalanceValue();
+                const profit = depositsTotal - redeemsTotal;
+                const prognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
+                const prognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
+                const showAmount = GM_getValue(amountDisplayKey, true);
+                const currencySymbol = currencySymbols.get(getCurrency()) || '';
+
+                container.innerHTML = `
+                <div class="profit-section main-profit">
+                    <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b>'>
+                        Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span>
+                    </b><br>
+                    ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
+                        <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b>'>
+                            Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span>
+                        </b><br>
+                        <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                            Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                        </b>
+                    ` : ''}
+                </div>
+            `;
+
+                container.querySelectorAll('.clickable').forEach(element => {
+                    element.addEventListener('click', () => {
+                        const formattedText = element.getAttribute('data-text');
+                        insertTextToComment(formattedText, false);
+                    });
+                });
+            },
+            onerror: error => {
+                container.removeChild(loader);
+                container.innerHTML += `Ошибка запроса: ${error.message}`;
+            }
+        });
+    }
+
 
     function createLoader() {
         const loader = document.createElement('div');
@@ -7151,17 +7869,7 @@
         return message;
     }
 
-    async function updatePopupBox({
-                                      balanceAfterBonus,
-                                      withdrawAmount,
-                                      bonusId,
-                                      bonusText,
-                                      withdrawId,
-                                      withdrawText,
-                                      bonusAmount,
-                                      bonusDate,
-                                      index
-                                  }) {
+    async function updatePopupBox({ balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index }) {
         if (!window.popupBox) {
             console.error('Попап не существует');
             return;
@@ -7180,12 +7888,12 @@
             `popup-clickable-text-${index}`,
             content,
             onClick,
-            {color: 'red'}
+            { color: 'red' }
         );
         addMessageToContainer(message);
     }
 
-    function showBonusViolationMessage({bonusId, dateStr, index, count}) {
+    function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
         const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
         const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
 
@@ -7193,11 +7901,11 @@
             `popup-bonus-violation-${index}`,
             content,
             onClick,
-            {color: 'orange'}
+            { color: 'orange' }
         ));
     }
 
-    function showBRP({totalDeposits, bonusWithDeposits, bonusDepositPercentage}) {
+    function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
         if (bonusDepositPercentage > 40) {
             const brpWarning = document.createElement('div');
             brpWarning.id = 'brp-warning-msg';
@@ -7312,7 +8020,7 @@
             GM_xmlhttpRequest({
                 method: 'POST',
                 url,
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 data: new URLSearchParams(formData).toString(),
                 onload: resolve,
                 onerror: reject
@@ -7361,7 +8069,7 @@
         } else if (actionType.includes('Ручное начисление баланса')) {
             const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
             if (amount > 1 && state.manualBalanceCount < 3) {
-                showManualBalance({dateStr, bonusInfo, index: state.manualBalanceCount++});
+                showManualBalance({ dateStr, bonusInfo, index: state.manualBalanceCount++ });
             }
         } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
             state.bonusAmount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
@@ -7371,7 +8079,7 @@
             state.bonusDate = dateStr;
 
             if (isRecent && state.totalWithdrawAmount > state.balanceAfterBonus && state.messageCount < 2) {
-                updatePopupBox({...state, index: state.messageCount++});
+                updatePopupBox({ ...state, index: state.messageCount++ });
             }
             state.waitingForBonus = false;
 
@@ -7410,7 +8118,7 @@
                 const key = `${bonusId}_${dateStr}`;
 
                 if (count >= 3 && !state.displayedMessages[key]) {
-                    violations.push({bonusId, dateStr, count, key});
+                    violations.push({ bonusId, dateStr, count, key });
                 }
             }
         }
@@ -7435,14 +8143,14 @@
     }
 
 
-    function showManualBalance({dateStr, bonusInfo, index}) {
+    function showManualBalance({ dateStr, bonusInfo, index }) {
         if (!window.popupBox) {
             console.error('Попап не существует');
             return;
         }
 
         const message = document.createElement('div');
-        applyStyles(message, {...MESSAGE_STYLES, color: 'blue'});
+        applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
         message.innerHTML = `<center><span id="popup-manual-balance-${index}">${bonusInfo} | ${dateStr}</span></center>`;
         addMessageToContainer(message);
     }
@@ -7488,11 +8196,7 @@
             if (state.totalDeposits > 0) {
                 const bonusDepositPercentage = (state.bonusWithDeposits / state.totalDeposits) * 100;
                 console.log(`Загальна кількість депозитів: ${state.totalDeposits}, Бонусів з депозитом: ${state.bonusWithDeposits}, BRP: ${bonusDepositPercentage.toFixed(2)}%`);
-                showBRP({
-                    totalDeposits: state.totalDeposits,
-                    bonusWithDeposits: state.bonusWithDeposits,
-                    bonusDepositPercentage
-                });
+                showBRP({ totalDeposits: state.totalDeposits, bonusWithDeposits: state.bonusWithDeposits, bonusDepositPercentage });
             } else {
                 console.log('Депозити відсутні.');
             }
@@ -7501,7 +8205,7 @@
         }
     }
 
-    async function fetchPaymentsData({searchLogin, includePending = false}) {
+    async function fetchPaymentsData({ searchLogin, includePending = false }) {
         const url = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${searchLogin}&newPageSize=2000`;
         try {
             const response = await new Promise((resolve, reject) => {
@@ -7519,28 +8223,48 @@
             const displayCardsSet = new Set();
             let totalPending = 0;
 
-            const {status: statusColumn, sum: sumColumn, details: detailsColumn} =
-                findPaymentColumns(doc, ['status', 'sum', 'details']);
+            // Колонки на WildWinz зсунуті (є зайва "Country"), тому їхні номери
+            // визначаємо за заголовками таблиці. UA/USA працюють як раніше.
+            let wwSumColumn = 6;
+            let wwDetailsColumn = 11;
+            if (isWildWinz()) {
+                const headerRow = Array.from(doc.querySelectorAll('tr')).find(r => r.querySelector('th'));
+                if (headerRow) {
+                    Array.from(headerRow.querySelectorAll('th')).forEach((th, i) => {
+                        const title = (th.textContent || '').trim();
+                        if (/^(sum|сумма|сума)$/i.test(title)) wwSumColumn = i + 1;
+                        if (/(payment details|реквизит|реквізит)/i.test(title)) wwDetailsColumn = i + 1;
+                    });
+                }
+            }
+            const detailsColumn = isWildWinz() ? wwDetailsColumn : 10;
 
             doc.querySelectorAll('tr').forEach(row => {
-                if (detailsColumn) {
-                    const cardLabelSpecific = row.querySelector(`td:nth-child(${detailsColumn}) span.label[style="background-color: #8D8A8E"]`);
-                    if (cardLabelSpecific?.textContent.trim()) {
-                        displayCardsSet.add(cardLabelSpecific.textContent.trim());
-                    }
-
-                    const cardLabel = row.querySelector(`td:nth-child(${detailsColumn})`);
-                    if (cardLabel?.textContent.trim()) {
-                        allCardsSet.add(cardLabel.textContent.trim());
-                    }
+                const cardLabelSpecific = row.querySelector(`td:nth-child(${detailsColumn}) span.label[style="background-color: #8D8A8E"]`);
+                if (cardLabelSpecific?.textContent.trim()) {
+                    displayCardsSet.add(cardLabelSpecific.textContent.trim());
                 }
 
-                if (includePending && statusColumn && sumColumn) {
-                    const status = row.querySelector(`td:nth-child(${statusColumn}) span.label`)?.textContent.trim();
+                const cardLabel = row.querySelector(`td:nth-child(${detailsColumn})`);
+                if (cardLabel?.textContent.trim()) {
+                    allCardsSet.add(cardLabel.textContent.trim());
+                }
+
+                if (includePending) {
+                    const statusSpan = row.querySelector('span.label');
+                    const status = statusSpan?.textContent.trim();
                     if (['pending', 'review', 'on_hold'].includes(status)) {
-                        const amountCell = row.querySelector(`td:nth-child(${sumColumn}) code`)
-                            || row.querySelector(`td:nth-child(${sumColumn})`);
-                        totalPending += parsePaymentAmount(amountCell?.textContent);
+                        if (isWildWinz()) {
+                            // На WildWinz у таблиці є зайва колонка "Country", через яку
+                            // сума зсунута з 5-ї на 6-ту позицію. UA/USA не чіпаємо.
+                            const wwCell = row.querySelector(`td:nth-child(${wwSumColumn}) code`)
+                                || row.querySelector(`td:nth-child(${wwSumColumn})`);
+                            const wwMatch = (wwCell?.textContent || '').match(/-?\d[\d\s.,]*/);
+                            totalPending += wwMatch ? (parseFloat(wwMatch[0].replace(/\s/g, '').replace(',', '.')) || 0) : 0;
+                        } else {
+                            const amountText = row.querySelector('td:nth-child(5) code')?.textContent.trim().replace('UAH', '').replace(',', '.') || '0';
+                            totalPending += parseFloat(amountText) || 0;
+                        }
                     }
                 }
             });
@@ -7548,20 +8272,19 @@
             const allCards = Array.from(allCardsSet);
             const displayCards = Array.from(displayCardsSet);
             return includePending
-                ? {totalPending, cards: allCards, displayCards}
-                : {cards: allCards, displayCards};
+                ? { totalPending, cards: allCards, displayCards }
+            : { cards: allCards, displayCards };
         } catch (error) {
             console.error('Ошибка загрузки данных:', error);
             throw error;
         }
     }
-
     async function fetchAndProcessPending() {
-        return fetchPaymentsData({searchLogin: getPlayerID(), includePending: true});
+        return fetchPaymentsData({ searchLogin: getPlayerID(), includePending: true });
     }
 
     async function fetchAllCards() {
-        const result = await fetchPaymentsData({searchLogin: getPlayerID()});
+        const result = await fetchPaymentsData({ searchLogin: getPlayerID() });
         console.log('Fetched cards:', result.cards);
         return result;
     }
@@ -7582,6 +8305,7 @@
             popup.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
             popup.style.borderRadius = '5px';
             document.body.appendChild(popup);
+            registerThemeRoot(popup);
         }
 
         popup.innerHTML = `
@@ -7591,7 +8315,7 @@
 
         const links = popup.querySelectorAll('a[data-round-id]');
         links.forEach(link => {
-            link.addEventListener('click', function (e) {
+            link.addEventListener('click', function(e) {
                 e.preventDefault();
                 const roundId = this.getAttribute('data-round-id');
                 scrollToRound(roundId);
@@ -7600,7 +8324,7 @@
 
         const toggleButtons = popup.querySelectorAll('.toggle-button');
         toggleButtons.forEach(button => {
-            button.addEventListener('click', function (event) {
+            button.addEventListener('click', function(event) {
                 const content = this.nextElementSibling;
                 if (content.style.display === 'none') {
                     content.style.display = 'block';
@@ -7679,6 +8403,7 @@
     }
 
 
+
     function checkAnomalousBetIncreases(data) {
         const gameBets = {};
 
@@ -7700,13 +8425,14 @@
             for (let i = bets.length - 1; i >= 0; i--) {
                 const bet = bets[i];
                 if (previousBet && previousBet.amount < 0 && Math.abs(bet.amount) > Math.abs(previousBet.amount) * 500) {
-                    alerts.push({previousBet, bet});
+                    alerts.push({ previousBet, bet });
                 }
                 previousBet = bet;
             }
         }
         return alerts;
     }
+
 
 
     function scrollToRound(roundId) {
@@ -7722,7 +8448,7 @@
         });
 
         if (targetElement) {
-            targetElement.scrollIntoView({behavior: 'smooth', block: 'center'});
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else {
             console.warn(`Element with round ID ${roundId} not found.`);
         }
@@ -7787,16 +8513,15 @@
         }
 
         select.value = BALANCE_LOG_PAGE_SIZE;
-        select.dispatchEvent(new Event('input', {bubbles: true}));
-        select.dispatchEvent(new Event('change', {bubbles: true}));
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
 
         // Якщо сторінка слухає подію через jQuery — дублюємо і там.
         try {
             if (typeof window.jQuery === 'function') {
                 window.jQuery(select).val(BALANCE_LOG_PAGE_SIZE).trigger('change');
             }
-        } catch (e) { /* необов'язково */
-        }
+        } catch (e) { /* необов'язково */ }
 
         balanceLogPageSizeApplied = true;
         return true;
@@ -7845,7 +8570,7 @@
             applyBalanceLogPageSize(select);
         });
 
-        observer.observe(document.documentElement, {childList: true, subtree: true});
+        observer.observe(document.documentElement, { childList: true, subtree: true });
 
         // Якщо селект так і не з'явився — застосовуємо через адресу сторінки.
         setTimeout(() => {
@@ -7946,7 +8671,7 @@
             }
 
             if (!roundData[round_id]) {
-                roundData[round_id] = {bet: null, win: null};
+                roundData[round_id] = { bet: null, win: null };
             }
             if (entry.type === 'Bet' && Math.abs(entry.amount) > 1000) {
                 roundData[round_id].bet = entry;
@@ -7959,7 +8684,7 @@
         const pendingRounds = [];
 
         for (const round_id in roundData) {
-            const {bet, win} = roundData[round_id];
+            const { bet, win } = roundData[round_id];
 
             if (bet && win) {
                 const betDate = new Date(bet.date);
@@ -7996,12 +8721,12 @@
 
     function checkLargeBets(data) {
         const largeBets = data.filter(entry =>
-            entry.type === 'Bet' &&
-            (
-                (entry.balance > 1 && Math.abs(entry.amount) > 0.25 * entry.balance && Math.abs(entry.amount) > 1000) ||
-                (entry.balance === 0 && Math.abs(entry.amount) > 1000)
-            )
-        );
+                                      entry.type === 'Bet' &&
+                                      (
+            (entry.balance > 1 && Math.abs(entry.amount) > 0.25 * entry.balance && Math.abs(entry.amount) > 1000) ||
+            (entry.balance === 0	 && Math.abs(entry.amount) > 1000)
+        )
+                                     );
         return largeBets;
     }
 
@@ -8084,7 +8809,7 @@
         data.forEach(entry => {
             if (entry.type === 'Bet' && entry.amount < 0) {
                 if (!results[entry.game]) {
-                    results[entry.game] = {bonusBets: 0, realBets: 0};
+                    results[entry.game] = { bonusBets: 0, realBets: 0 };
                 }
 
                 if (entry.round_type === 'bonus') {
@@ -8104,7 +8829,7 @@
         data.forEach(entry => {
             if (entry.type === 'WIN' && entry.amount > 0) {
                 if (!results[entry.game]) {
-                    results[entry.game] = {bonus: 0, real: 0};
+                    results[entry.game] = { bonus: 0, real: 0 };
                 }
 
                 if (entry.round_type === 'bonus') {
@@ -8187,7 +8912,7 @@
 
         for (const game in winResults) {
             const winResult = winResults[game];
-            const betResult = betResults[game] || {bonusBets: 0, realBets: 0};
+            const betResult = betResults[game] || { bonusBets: 0, realBets: 0 };
             const ggrBonus = betResult.bonusBets - winResult.bonus;
             const ggrReal = betResult.realBets - winResult.real;
 
@@ -8209,10 +8934,11 @@
                         message += `
                     <b>Деталі GGR:</b>
                     <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
-                    ${createScrollableContent([{game: game, message: messageForGame}])}
+                    ${createScrollableContent([{ game: game, message: messageForGame }])}
                     <br>
                 `;
-                    } else {
+                    }
+                    else {
                         message += '<b>GGR в нормі</b><br>';
                     }
                 }
@@ -8253,7 +8979,7 @@
 
         document.body.appendChild(button);
 
-        button.addEventListener('click', function () {
+        button.addEventListener('click', function() {
             mainBalance();
             button.remove();
         });
@@ -8298,11 +9024,11 @@
                     console.log(dataToInsert)
                     sendDataToServer(dataToInsert, token)
                         .then(response => {
-                            console.log('Data sent successfully:', response);
-                        })
+                        console.log('Data sent successfully:', response);
+                    })
                         .catch(err => {
-                            console.error('Error sending data:', err);
-                        });
+                        console.error('Error sending data:', err);
+                    });
                 } else {
                     console.log("The first line of the comment does not contain today's date or correct initials.");
                 }
@@ -8336,11 +9062,11 @@
 
             sendDataToServer(dataToInsert, token)
                 .then(response => {
-                    console.log('Data sent successfully:', response);
-                })
+                console.log('Data sent successfully:', response);
+            })
                 .catch(err => {
-                    console.error('Error sending data:', err);
-                });
+                console.error('Error sending data:', err);
+            });
         });
     }
 
@@ -8397,62 +9123,22 @@
 
         sendDataToServer(dataToUpdate, token)
             .then(response => {
-                console.log('Edit data sent successfully:', response);
-            })
+            console.log('Edit data sent successfully:', response);
+        })
             .catch(err => {
-                console.error('Error sending edit data:', err);
-            });
+            console.error('Error sending edit data:', err);
+        });
     }
 
     function parseDateFromFooter(text) {
         const monthMap = {
-            'января': '01',
-            'февраля': '02',
-            'марта': '03',
-            'апреля': '04',
-            'мая': '05',
-            'июня': '06',
-            'июля': '07',
-            'августа': '08',
-            'сентября': '09',
-            'октября': '10',
-            'ноября': '11',
-            'декабря': '12',
-            'січня': '01',
-            'лютого': '02',
-            'березня': '03',
-            'квітня': '04',
-            'травня': '05',
-            'червня': '06',
-            'липня': '07',
-            'серпня': '08',
-            'вересня': '09',
-            'жовтня': '10',
-            'листопада': '11',
-            'грудня': '12',
-            'january': '01',
-            'february': '02',
-            'march': '03',
-            'april': '04',
-            'may': '05',
-            'june': '06',
-            'july': '07',
-            'august': '08',
-            'september': '09',
-            'october': '10',
-            'november': '11',
-            'december': '12',
-            'jan': '01',
-            'feb': '02',
-            'mar': '03',
-            'apr': '04',
-            'jun': '06',
-            'jul': '07',
-            'aug': '08',
-            'sep': '09',
-            'oct': '10',
-            'nov': '11',
-            'dec': '12'
+            'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
+            'июля': '07', 'августа': '08', 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
+            'січня': '01', 'лютого': '02', 'березня': '03', 'квітня': '04', 'травня': '05', 'червня': '06',
+            'липня': '07', 'серпня': '08', 'вересня': '09', 'жовтня': '10', 'листопада': '11', 'грудня': '12',
+            'january': '01', 'february': '02', 'march': '03', 'april': '04', 'may': '05', 'june': '06',
+            'july': '07', 'august': '08', 'september': '09', 'october': '10', 'november': '11', 'december': '12',
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
         };
 
         const cleanText = text.toLowerCase().replace(/&nbsp;/g, ' ');
@@ -8517,7 +9203,7 @@
         try {
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {'Content-Type': 'application/json', ...options.headers},
+                headers: { 'Content-Type': 'application/json', ...options.headers },
                 credentials: options.credentials || 'same-origin'
             });
             if (!response.ok) {
@@ -8548,7 +9234,7 @@
             const [inOutData, balanceData] = await Promise.all([
                 fetchData(inOutUrl),
                 fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
-                    headers: {'accept': '*/*', 'x-requested-with': 'XMLHttpRequest'},
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
                     credentials: 'include'
                 })
             ]);
@@ -8561,10 +9247,10 @@
                 NDFL: balanceData?.balance_after ?? '0'
             };
 
-            const {isCheckedToday} = await checkUserInChecklist();
+            const { isCheckedToday } = await checkUserInChecklist();
             params.isCheckedToday = isCheckedToday;
-            const {totalPending, cards, displayCards} = await fetchAndProcessPending();
-            Object.assign(params, {totalPending, cards, displayCards});
+            const { totalPending, cards, displayCards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards, displayCards });
 
             await createPopupBox(params);
             showVerificationCards(displayCards);
@@ -8573,12 +9259,12 @@
 
             verificationProvider()
                 .then(provider => {
-                    showVerificationProvider(provider);
-                })
+                showVerificationProvider(provider);
+            })
                 .catch(error => {
-                    console.error('Ошибка при получении KYC провайдера:', error);
-                    showVerificationProvider(null);
-                });
+                console.error('Ошибка при получении KYC провайдера:', error);
+                showVerificationProvider(null);
+            });
 
             if (typeof addCheckButton === 'function') {
                 addCheckButton(params.TotalPA, params.Balance, params.totalPending);
@@ -8599,7 +9285,7 @@
             const [inOutData, balanceData] = await Promise.all([
                 fetchData(inOutUrl),
                 fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
-                    headers: {'accept': '*/*', 'x-requested-with': 'XMLHttpRequest'},
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
                     credentials: 'include'
                 })
             ]);
@@ -8613,10 +9299,10 @@
                 NDFL: balanceData?.balance_after ?? '0'
             };
 
-            const {isCheckedToday} = await checkUserInChecklist();
+            const { isCheckedToday } = await checkUserInChecklist();
             params.isCheckedToday = isCheckedToday;
-            const {totalPending, cards} = await fetchAndProcessPending();
-            Object.assign(params, {totalPending, cards});
+            const { totalPending, cards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards });
             await createPopupBox(params);
             await fetchAndProcessData();
             if (typeof addCheckButton === 'function') {
@@ -8629,24 +9315,24 @@
 
     async function checkToken() {
         if (!token) {
-            return {success: false};
+            return { success: false };
         }
         try {
             const response = await fetch(`${API_BASE_URL}/api/check_token`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({token})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
             });
 
             if (!response.ok) {
-                return {success: false};
+                return { success: false };
             }
 
             const data = await response.json();
             return data;
         } catch (error) {
             console.error('Помилка перевірки токену:', error);
-            return {success: false};
+            return { success: false };
         }
     }
 
@@ -8710,12 +9396,13 @@
     `;
 
         document.body.appendChild(form);
+        registerThemeRoot(form);
 
         document.getElementById('login-btn').addEventListener('click', async () => {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
 
-            const {success, token} = await authenticate(username, password);
+            const { success, token } = await authenticate(username, password);
 
             if (success) {
                 GM_setValue('authToken', token);
@@ -8735,7 +9422,7 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({username, password}),
+                body: JSON.stringify({ username, password }),
                 credentials: 'include'
             });
 
@@ -8743,7 +9430,7 @@
             return data;
         } catch (error) {
             console.error('Error:', error);
-            return {success: false};
+            return { success: false };
         }
     }
 
@@ -8765,8 +9452,7 @@
                 managerMap = Object.fromEntries(data.map(item => [item.player_id, item.manager_initials]));
                 powerBIhighlightSavedCells();
             }
-        } catch {
-        }
+        } catch {}
     }
 
     async function powerBIsaveHighlightedValue(cellValue) {
@@ -8774,26 +9460,20 @@
         try {
             await fetch(`${API_BASE_URL}/api/powerbi/add`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
-                body: JSON.stringify({
-                    player_id: cellValue,
-                    date: new Date().toISOString().split('T')[0],
-                    sheet_name: powerBIgetSheetName()
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ player_id: cellValue, date: new Date().toISOString().split('T')[0], sheet_name: powerBIgetSheetName() })
             });
-        } catch {
-        }
+        } catch {}
     }
 
     async function powerBIdeleteHighlightedValue(cellValue) {
         try {
             await fetch(`${API_BASE_URL}/api/powerbi/delete`, {
                 method: 'DELETE',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({player_id: cellValue, sheet_name: powerBIgetSheetName()})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: cellValue, sheet_name: powerBIgetSheetName() })
             });
-        } catch {
-        }
+        } catch {}
     }
 
     function powerBIapplyStylesToCell(cell, manager) {
@@ -8823,7 +9503,7 @@
             if (!cell.classList.contains('clickable-cell')) {
                 cell.classList.add('clickable-cell');
                 cell.style.cursor = 'pointer';
-                cell.addEventListener('click', function () {
+                cell.addEventListener('click', function() {
                     const cellValue = cell.textContent.trim();
                     if (highlightedValues.includes(cellValue)) {
                         highlightedValues = highlightedValues.filter(value => value !== cellValue);
@@ -8843,7 +9523,7 @@
             if (!header.classList.contains('clickable-header')) {
                 header.classList.add('clickable-header');
                 header.style.cursor = 'pointer';
-                header.addEventListener('click', function () {
+                header.addEventListener('click', function() {
                     const headerValue = header.textContent.trim();
                     if (highlightedValues.includes(headerValue)) {
                         highlightedValues = highlightedValues.filter(value => value !== headerValue);
@@ -8878,7 +9558,7 @@
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({url: currentUrl})
+                body: JSON.stringify({ url: currentUrl })
             });
         }
     }
@@ -8964,9 +9644,9 @@
             const data = await response.json();
 
             const activeUsers = data.filter(user =>
-                (user.active_url.includes(playerId) || user.active_url.includes(userId)) &&
-                user.manager_name !== currentManager
-            );
+                                            (user.active_url.includes(playerId) || user.active_url.includes(userId)) &&
+                                            user.manager_name !== currentManager
+                                           );
 
             if (activeUsers.length > 0 && table && targetElement) {
                 const otherManagers = activeUsers.map(user => user.manager_name).join(', ');
@@ -9130,7 +9810,8 @@
             });
 
             cell.appendChild(icon);
-        } else {
+        }
+        else {
             cell.innerHTML = '&nbsp;';
         }
 
@@ -9149,18 +9830,18 @@
                 "x-requested-with": "XMLHttpRequest"
             },
             method: "POST",
-            body: JSON.stringify({status}),
+            body: JSON.stringify({ status }),
         })
             .then(response => response.ok ? response.text() : Promise.reject(response))
             .then(() => {
-                statusCell.value = newValue;
-                markerCell.style.backgroundColor = color;
-                icon.remove();
+            statusCell.value = newValue;
+            markerCell.style.backgroundColor = color;
+            icon.remove();
 
-                if (checkbox && status === 'other_person_card' && checkbox.checked) {
-                    handleCheckboxRequest(checkbox);
-                }
-            })
+            if (checkbox && status === 'other_person_card' && checkbox.checked) {
+                handleCheckboxRequest(checkbox);
+            }
+        })
             .catch(err => console.error(err));
     }
 
@@ -9177,25 +9858,25 @@
             method: "POST"
         })
             .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Ошибка: ${response.status} ${response.statusText}`);
-                }
-                return response.text();
-            })
+            if (!response.ok) {
+                throw new Error(`Ошибка: ${response.status} ${response.statusText}`);
+            }
+            return response.text();
+        })
             .then((text) => {
-                if (text) {
-                    try {
-                        const data = JSON.parse(text);
-                        console.log('Ответ для чекбокса:', data);
-                    } catch {
-                        console.warn('Ответ для чекбокса не является JSON:', text);
-                    }
-                } else {
-                    console.warn('Пустой ответ для чекбокса');
+            if (text) {
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Ответ для чекбокса:', data);
+                } catch {
+                    console.warn('Ответ для чекбокса не является JSON:', text);
                 }
+            } else {
+                console.warn('Пустой ответ для чекбокса');
+            }
 
-                checkbox.checked = false;
-            })
+            checkbox.checked = false;
+        })
             .catch(err => alert('Ошибка запроса для чекбокса: ' + err.message));
     }
 
@@ -9246,7 +9927,7 @@
         GM_xmlhttpRequest({
             method: "GET",
             url: card.querySelector('a').href,
-            onload: function (response) {
+            onload: function(response) {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = response.responseText;
 
@@ -9344,13 +10025,13 @@
 
         try {
             const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
-            verificationSheets = settings.sheets || {Betking: '', '777': '', Vegas: ''};
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
         } catch (error) {
             console.error('Ошибка загрузки настроек верификации:', error);
-            verificationSheets = {Betking: '', '777': '', Vegas: ''};
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
         }
 
-        const {status, inactiveReason, playerID} = getBanStatus();
+        const { status, inactiveReason, playerID } = getBanStatus();
         if (!shouldSendToVerification(status, inactiveReason)) {
             updateButton.form.submit();
             return;
@@ -9360,8 +10041,7 @@
         if (!shouldProceed) {
             updateButton.form.submit();
             return;
-        }
-        ;
+        };
 
         const reason = await selectVerificationReason();
         if (!reason) return;
@@ -9451,7 +10131,7 @@
     async function processBanVerification(playerID, reason, updateButton, verificationSheets) {
         const project = getProject();
         const sheetName = getSheetNameForProject(project, verificationSheets);
-        const {name, email} = await gatherPlayerData();
+        const { name, email } = await gatherPlayerData();
         const currentDate = getCurrentDate();
         const initials = GM_getValue(initialsKey);
         try {
@@ -9498,7 +10178,7 @@
         const newField = document.querySelector('div[contenteditable="true"][id^="antifraud-input-"]');
         if (newField) {
             newField.innerHTML = message + newField.innerHTML;
-            newField.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
+            newField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
 
             const addButton = document.querySelector('[data-antifraud-add]');
             if (addButton) {
@@ -9516,7 +10196,7 @@
         const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
         if (!commentField) throw new Error('Поле комментария не найдено');
         commentField.innerHTML = message + commentField.innerHTML;
-        commentField.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
+        commentField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
         const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
         if (updateCommentButton) {
             updateCommentButton.click();
@@ -9593,29 +10273,19 @@
     const ALERT_CONFIG = {
         Pendings: {
             fields: {
-                priorities: {type: 'multi-select', selector: 'pendings-priority-select', required: true},
-                total_amount: {
-                    type: 'text',
-                    selector: 'pendings-total-amount',
-                    required: true,
-                    validate: v => /^\d+$/.test(v)
-                },
-                manager: {type: 'text', selector: 'pendings-manager-input', required: true}
+                priorities: { type: 'multi-select', selector: 'pendings-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'pendings-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                manager: { type: 'text', selector: 'pendings-manager-input', required: true }
             },
             apiFields: ['priorities', 'amount', 'manager'],
             requiresProject: true
         },
         PayOut: {
             fields: {
-                priorities: {type: 'multi-select', selector: 'payout-priority-select', required: true},
-                total_amount: {
-                    type: 'text',
-                    selector: 'payout-total-amount',
-                    required: true,
-                    validate: v => /^\d+$/.test(v)
-                },
-                auto_disable: {type: 'checkbox', selector: 'payout-auto-disable'},
-                manager: {type: 'text', selector: 'payout-manager-input', required: true}
+                priorities: { type: 'multi-select', selector: 'payout-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'payout-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                auto_disable: { type: 'checkbox', selector: 'payout-auto-disable' },
+                manager: { type: 'text', selector: 'payout-manager-input', required: true }
             },
             apiFields: ['priorities', 'amount', 'auto_disable', 'manager'],
             requiresProject: true
@@ -9633,13 +10303,8 @@
                     })),
                     validate: settings => settings.every(s => /^\d+$/.test(s.amount) && /^\d+$/.test(s.bonusAmount))
                 },
-                inefficient_transaction_percent: {
-                    type: 'text',
-                    selector: 'inefficient-transaction-percent',
-                    required: true,
-                    validate: v => /^\d+%$/.test(v)
-                },
-                manager: {type: 'text', selector: 'deposits-manager-input', required: true}
+                inefficient_transaction_percent: { type: 'text', selector: 'inefficient-transaction-percent', required: true, validate: v => /^\d+%$/.test(v) },
+                manager: { type: 'text', selector: 'deposits-manager-input', required: true }
             },
             apiFields: ['settings', 'inefficient_transaction_percent', 'manager'],
             requiresProject: true
@@ -9680,11 +10345,11 @@
     class ApiService {
         static async fetchData(endpoint, options = {}) {
 
-            const defaultHeaders = {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'};
+            const defaultHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
             try {
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, {
                     ...options,
-                    headers: {...defaultHeaders, ...options.headers}
+                    headers: { ...defaultHeaders, ...options.headers }
                 });
                 if (!response.ok) throw new Error(`HTTP error! Status: ${response.status} - ${await response.text()}`);
                 return await response.json();
@@ -9706,8 +10371,8 @@
         async loadSettings(project) {
             try {
                 const endpoint = this.config.requiresProject
-                    ? `/get_settings?alert_type=${this.alertType}&project=${project}`
-                    : `/get_settings?alert_type=${this.alertType}`;
+                ? `/get_settings?alert_type=${this.alertType}&project=${project}`
+                : `/get_settings?alert_type=${this.alertType}`;
                 const data = await ApiService.fetchData(endpoint);
                 this.parseSettings(data);
             } catch (error) {
@@ -9803,7 +10468,7 @@
         }
 
         async sendSettings(project, settings) {
-            const payload = {alert_type: this.alertType};
+            const payload = { alert_type: this.alertType };
             if (this.config.requiresProject) payload.project = project;
             this.config.apiFields.forEach(field => {
                 if (field === 'amount') payload[field] = parseInt(settings['total_amount']);
@@ -10153,8 +10818,7 @@
         <div class="error" id="alert-error-msg"></div>
         <div class="success" id="alert-success-msg"></div>
     `;
-        createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {
-        });
+        createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {});
 
         byId('project-select').addEventListener('change', async (e) => {
             const selectedValue = e.target.value;
@@ -10190,17 +10854,17 @@
         });
 
         ['pendings-update-btn', 'payout-update-btn', 'update-deposits-btn', 'verification-update-btn'].forEach(btn =>
-            byId(btn).addEventListener('click', () => {
-                const alertType = {
-                    'pendings-update-btn': 'Pendings',
-                    'payout-update-btn': 'PayOut',
-                    'update-deposits-btn': 'Deposits',
-                    'verification-update-btn': 'Verification'
-                }[btn];
-                const project = alertType === 'Verification' ? null : byId('project-select').value;
-                new SettingsManager(alertType).updateSettings(project);
-            })
-        );
+                                                                                                               byId(btn).addEventListener('click', () => {
+            const alertType = {
+                'pendings-update-btn': 'Pendings',
+                'payout-update-btn': 'PayOut',
+                'update-deposits-btn': 'Deposits',
+                'verification-update-btn': 'Verification'
+            }[btn];
+            const project = alertType === 'Verification' ? null : byId('project-select').value;
+            new SettingsManager(alertType).updateSettings(project);
+        })
+                                                                                                              );
     }
 
     function verificationProvider() {
@@ -10259,7 +10923,7 @@
             const iat = Math.floor(Date.now() / 1000);
             const exp = iat + 3600;
 
-            const oHeader = {alg: "RS256", typ: "JWT"};
+            const oHeader = { alg: "RS256", typ: "JWT" };
             const oPayload = {
                 iss: clientEmail,
                 scope: scopes,
@@ -10282,16 +10946,16 @@
             })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.access_token) {
-                        resolve(data.access_token);
-                    } else {
-                        reject("No access_token found in response.");
-                    }
-                })
+                if (data.access_token) {
+                    resolve(data.access_token);
+                } else {
+                    reject("No access_token found in response.");
+                }
+            })
                 .catch(err => {
-                    console.error("Error during token request:", err);
-                    reject(err);
-                });
+                console.error("Error during token request:", err);
+                reject(err);
+            });
         });
     }
 
@@ -10316,10 +10980,10 @@
             })
         }).then(response => response.json())
             .then(data => {
-            })
+        })
             .catch((error) => {
-                console.error("Error sending data to Google Sheets:", error);
-            });
+            console.error("Error sending data to Google Sheets:", error);
+        });
     }
 
     async function goToGoogleSheet() {
@@ -10335,10 +10999,10 @@
         let verificationSheets;
         try {
             const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
-            verificationSheets = settings.sheets || {Betking: '', '777': '', Vegas: ''};
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
         } catch (error) {
             console.error('Ошибка загрузки настроек верификации:', error);
-            verificationSheets = {Betking: '', '777': '', Vegas: ''};
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
         }
 
         button.addEventListener('click', (event) => handleVerificationClick(event, verificationSheets));
@@ -10372,7 +11036,7 @@
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: `${ProjectUrl}players/playersItems/transactionLog/${userId}/`,
-                onload: function (response) {
+                onload: function(response) {
                     try {
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(response.responseText, 'text/html');
@@ -10392,7 +11056,7 @@
                             const fullDate = cells[6].textContent.trim();
                             const dateOnly = fullDate.split(' ')[0];
                             const comment = cells[7].textContent.trim();
-                            const entry = {date: fullDate, comment: comment};
+                            const entry = { date: fullDate, comment: comment };
 
                             if (operation === 'Ручное начисление баланса' && !manualBalance) {
                                 manualBalance = `${fullDate} ${comment}`;
@@ -10429,7 +11093,7 @@
                         reject(e.message);
                     }
                 },
-                onerror: function (error) {
+                onerror: function(error) {
                     reject(error.statusText || 'Неизвестная ошибка');
                 }
             });
@@ -10469,7 +11133,7 @@
     async function handleVerificationClick(event, verificationSheets) {
         event.preventDefault();
 
-        const {department, reason} = await showVerificationPopup();
+        const { department, reason } = await showVerificationPopup();
         if (!department || !reason) return;
 
         const playerData = await gatherPlayerData();
@@ -10535,18 +11199,18 @@
             <select id="reason-select" class="swal2-select">
                 <option value="">Оберіть...</option>
                 ${[
-                'Після рефанду використовує чужу картку',
-                'Підозра на малолітнього',
-                'Підозра на Лудомана',
-                'Схемщик/потенц. фрод',
-                'Більше двох чужих карток в місяць',
-                'Картка родича, неприбутковий',
-                'Недоцільні транзакції',
-                'Картковий фрод',
-                'Фін претензія',
-                'Cascad',
-                'Схемщик/Ставки на спорт⚽',
-            ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
+                    'Після рефанду використовує чужу картку',
+                    'Підозра на малолітнього',
+                    'Підозра на Лудомана',
+                    'Схемщик/потенц. фрод',
+                    'Більше двох чужих карток в місяць',
+                    'Картка родича, неприбутковий',
+                    'Недоцільні транзакції',
+                    'Картковий фрод',
+                    'Фін претензія',
+                    'Cascad',
+                    'Схемщик/Ставки на спорт⚽',
+                ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
             </select>
         `,
             showCancelButton: true,
@@ -10559,7 +11223,7 @@
                     Swal.showValidationMessage('Будь ласка, оберіть усі параметри');
                     return false;
                 }
-                return {department, reason};
+                return { department, reason };
             }
         }).then(result => result.isConfirmed ? result.value : {});
     }
@@ -10568,12 +11232,12 @@
         const playerID = getPlayerID();
         const project = getProject();
         const name = Array.from(document.querySelectorAll('tr'))
-            .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
-            .map(row => row.querySelector('td').textContent.trim())
-            .join(' ');
+        .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
+        .map(row => row.querySelector('td').textContent.trim())
+        .join(' ');
         const email = await revealContact('email');
 
-        return {playerID, project, name, email};
+        return { playerID, project, name, email };
     }
 
     function getSheetNameForProject(project, sheets) {
@@ -10686,28 +11350,28 @@
 
     const fetchBonusInfo = (bonusNumber, isSportBonus = false) => fetch(
         `${ProjectUrl}${isSportBonus ? 'sportBetting/sportBettingBonus' : 'bonuses/bonusesItems'}/preview/${bonusNumber}/`,
-        {method: 'POST', headers: {"accept": "*/*", "x-requested-with": "XMLHttpRequest"}, credentials: 'include'}
+        { method: 'POST', headers: { "accept": "*/*", "x-requested-with": "XMLHttpRequest" }, credentials: 'include' }
     )
-        .then(res => res.text())
-        .then(html => {
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            let content;
+    .then(res => res.text())
+    .then(html => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let content;
 
-            if (isSportBonus) {
-                content = formatSportBonusContent(doc.querySelector('.popup-content'));
-            } else {
-                const modalContent = doc.querySelector('.modal-content');
-                if (modalContent) {
-                    const closeButton = modalContent.querySelector('.close');
-                    if (closeButton) closeButton.remove();
-                    content = modalContent.innerHTML;
-                }
+        if (isSportBonus) {
+            content = formatSportBonusContent(doc.querySelector('.popup-content'));
+        } else {
+            const modalContent = doc.querySelector('.modal-content');
+            if (modalContent) {
+                const closeButton = modalContent.querySelector('.close');
+                if (closeButton) closeButton.remove();
+                content = modalContent.innerHTML;
             }
+        }
 
-            if (content) showPopup(content);
-            else alert(`Ошибка: не удалось получить данные о ${isSportBonus ? 'спортивном ' : ''}бонусе.`);
-        })
-        .catch(error => console.error('Ошибка при запросе бонуса:', error))
+        if (content) showPopup(content);
+        else alert(`Ошибка: не удалось получить данные о ${isSportBonus ? 'спортивном ' : ''}бонусе.`);
+    })
+    .catch(error => console.error('Ошибка при запросе бонуса:', error))
 
     const formatSportBonusContent = popupContent => {
         if (!popupContent) return '';
@@ -10906,7 +11570,7 @@
         };
 
         const targetTr = Array.from(document.querySelectorAll('tr'))
-            .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
+        .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
         const targetTd = targetTr?.querySelector('td');
 
         if (!targetTd) {
@@ -10919,7 +11583,7 @@
             type: 'button',
             value: 'Вимкнути всі активності',
             class: 'btn btn-xs btn-danger',
-            css: {'margin-right': '10px'}
+            css: { 'margin-right': '10px' }
         }).on('click', e => {
             e.preventDefault();
             Swal.fire({
@@ -10934,17 +11598,14 @@
                             `https://admin.${project}.com/players/playersItems/changePromoOfferLimitPerDay/`,
                             {
                                 ...baseConfig,
-                                headers: {
-                                    ...baseHeaders,
-                                    "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-                                },
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
                                 body: `playerId=${userId}&offerLimit=0`
                             }
                         ).then(res => res.json());
 
                         if (!limitResponse.success) throw new Error(limitResponse.message || 'Помилка першого запиту');
 
-                        const featuresToBlock = {playerId: userId};
+                        const featuresToBlock = { playerId: userId };
 
                         const allCheckboxes = document.querySelectorAll('.toggle-restricted-features-info-container input[type="checkbox"]');
 
@@ -10962,7 +11623,7 @@
                             `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
                             {
                                 ...baseConfig,
-                                headers: {...baseHeaders, "content-type": "application/json"},
+                                headers: { ...baseHeaders, "content-type": "application/json" },
                                 body: JSON.stringify(featuresToBlock)
                             }
                         ).then(res => res.json());
@@ -10973,10 +11634,7 @@
                             `https://admin.${project}.com/players/playersItems/update/${userId}/`,
                             {
                                 ...baseConfig,
-                                headers: {
-                                    ...baseHeaders,
-                                    "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-                                },
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
                                 body: `Players[no_bonus]=1`
                             }
                         ).then(res => res.text());
@@ -10985,13 +11643,13 @@
 
                         const currentLanguage = GM_getValue(languageKey, 'російська');
                         let insertText = currentLanguage === 'українська'
-                            ? `Відключив всі активності, оффери, бонуси`
-                            : `Отключил все активности, офферы, бонусы`;
+                        ? `Відключив всі активності, оффери, бонуси`
+                        : `Отключил все активности, офферы, бонусы`;
                         insertTextToComment(insertText, true)
-                        Swal.fire({icon: 'success', title: 'Успішно відключено', width: '200px'})
+                        Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
                             .then(() => location.reload());
                     } catch (error) {
-                        Swal.fire({icon: 'error', title: 'Помилка', text: error.message});
+                        Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
                     }
                 }
             });
@@ -11062,14 +11720,14 @@
             type: 'button',
             value: 'Вимкнути офери',
             class: 'btn btn-xs btn-warning',
-            css: {'margin-right': '10px'}
+            css: { 'margin-right': '10px' }
         }).on('click', e => {
             e.preventDefault();
             Swal.fire({
                 icon: 'question',
                 title: 'Вимкнути офери?',
                 html: 'Ліміт оферів буде встановлено на 0,<br>' +
-                    'а в "Блокировки" буде відмічено<br><b>Promo Offers</b> і <b>PopUp Ads</b>.',
+                      'а в "Блокировки" буде відмічено<br><b>Promo Offers</b> і <b>PopUp Ads</b>.',
                 showCancelButton: true,
                 cancelButtonText: 'Відміна',
                 confirmButtonText: 'Так',
@@ -11099,10 +11757,7 @@
                             `https://admin.${project}.com/players/playersItems/changePromoOfferLimitPerDay/`,
                             {
                                 ...baseConfig,
-                                headers: {
-                                    ...baseHeaders,
-                                    "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-                                },
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
                                 body: `playerId=${userId}&offerLimit=0`
                             }
                         ).then(res => res.json());
@@ -11111,7 +11766,7 @@
 
                         // 2. Зберігаємо поточний стан усіх блокувань і вмикаємо лише дві потрібні,
                         //    щоб не зачепити інші активності гравця.
-                        const featuresToBlock = {playerId: userId};
+                        const featuresToBlock = { playerId: userId };
                         allCheckboxes.forEach(checkbox => {
                             if (checkbox.name) featuresToBlock[checkbox.name] = !!checkbox.checked;
                         });
@@ -11122,7 +11777,7 @@
                             `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
                             {
                                 ...baseConfig,
-                                headers: {...baseHeaders, "content-type": "application/json"},
+                                headers: { ...baseHeaders, "content-type": "application/json" },
                                 body: JSON.stringify(featuresToBlock)
                             }
                         ).then(res => res.json());
@@ -11135,10 +11790,10 @@
                             : 'Отключил офферы';
                         insertTextToComment(insertText, true);
 
-                        Swal.fire({icon: 'success', title: 'Офери вимкнено', width: '250px'})
+                        Swal.fire({ icon: 'success', title: 'Офери вимкнено', width: '250px' })
                             .then(() => location.reload());
                     } catch (error) {
-                        Swal.fire({icon: 'error', title: 'Помилка', text: error.message});
+                        Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
                     }
                 }
             });
@@ -11265,7 +11920,7 @@
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: baseURL,
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+${getTomorrowDate()}+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
                 onload: (response) => {
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -11299,12 +11954,12 @@
                             }
                             const profit = deposits - withdrawals;
                             console.log(`${project}: Deposits=${deposits}, Withdrawals=${withdrawals}, Profit=${profit}`);
-                            resolve({project, profit, deposits, withdrawals});
+                            resolve({ project, profit, deposits, withdrawals });
                         },
-                        onerror: () => resolve({project, profit: 0, deposits: 0, withdrawals: 0})
+                        onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
                     });
                 },
-                onerror: () => resolve({project, profit: 0, deposits: 0, withdrawals: 0})
+                onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
             });
         });
     }
@@ -11345,11 +12000,11 @@
                             projectLinks[project] = link;
 
                             if (project !== currentProject.toLowerCase()) {
-                                relatedAccounts.push({project, id});
+                                relatedAccounts.push({ project, id });
                             }
                         }
                     });
-                    resolve({relatedAccounts, projectLinks});
+                    resolve({ relatedAccounts, projectLinks });
                 },
                 onerror: (error) => reject(error)
             });
@@ -11439,7 +12094,7 @@
                 });
             });
 
-            observer.observe(resultDiv, {childList: true, subtree: true});
+            observer.observe(resultDiv, { childList: true, subtree: true });
 
             setTimeout(() => observer.disconnect(), 5000);
         });
@@ -11488,23 +12143,23 @@
     // Баланс у зведеній таблиці гравця, якщо він там взагалі є.
     function extractBalanceFromDetail(doc) {
         const table = doc ? doc.querySelector('.detail-view') : null;
-        if (!table) return {value: 0, found: false, parts: {}};
+        if (!table) return { value: 0, found: false, parts: {} };
 
-        let result = {value: 0, found: false, parts: {}};
+        let result = { value: 0, found: false, parts: {} };
         table.querySelectorAll('tr').forEach(row => {
             if (result.found) return;
             const label = (row.querySelector('th')?.textContent || '').trim().toLowerCase();
             if (!label) return;
             if (BALANCE_ROW_LABELS.some(candidate => label === candidate || label.startsWith(candidate))) {
                 const value = parseMoneyValue(row.querySelector('td')?.textContent);
-                result = {value, found: true, parts: {balance: value}};
+                result = { value, found: true, parts: { balance: value } };
             }
         });
         return result;
     }
 
     function getProjectHostForPrognose(project) {
-        const domains = {'spintime': 'spintime.app'};
+        const domains = { 'spintime': 'spintime.app' };
         return domains[String(project).toLowerCase()] || `${project}.com`;
     }
 
@@ -11537,7 +12192,7 @@
             found = true;
         });
 
-        return {value: total, found, parts};
+        return { value: total, found, parts };
     }
 
     function extractBalanceFromPlayersGrid(doc) {
@@ -11573,9 +12228,9 @@
                 found = true;
             });
 
-            if (found) return {value: total, found: true, parts};
+            if (found) return { value: total, found: true, parts };
         }
-        return {value: 0, found: false, parts: {}};
+        return { value: 0, found: false, parts: {} };
     }
 
     function extractBalanceFromDocument(doc) {
@@ -11594,7 +12249,7 @@
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: searchUrl,
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 data: `PlayersSearchForm[number]=${encodeURIComponent(id)}`,
                 onload: response => {
                     try {
@@ -11602,14 +12257,14 @@
                         const balance = extractBalanceFromDocument(doc);
                         if (!balance.found) {
                             console.debug(`[Person Prognose] ${project} (${id}): баланс не знайдено`,
-                                {finalUrl: response.finalUrl});
+                                { finalUrl: response.finalUrl });
                         }
                         resolve(balance);
                     } catch (e) {
-                        resolve({value: 0, found: false, parts: {}});
+                        resolve({ value: 0, found: false, parts: {} });
                     }
                 },
-                onerror: () => resolve({value: 0, found: false, parts: {}})
+                onerror: () => resolve({ value: 0, found: false, parts: {} })
             });
         });
     }
@@ -11624,7 +12279,7 @@
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: `https://admin.${host}/players/playersDetail/index/`,
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+${getTomorrowDate()}+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
                 onload: response => {
                     try {
@@ -11638,12 +12293,12 @@
                                 }
                             });
                         }
-                        resolve({deposits, balance: extractBalanceFromDetail(doc), ok: true});
+                        resolve({ deposits, balance: extractBalanceFromDetail(doc), ok: true });
                     } catch (e) {
-                        resolve({deposits: 0, balance: {found: false}, ok: false});
+                        resolve({ deposits: 0, balance: { found: false }, ok: false });
                     }
                 },
-                onerror: () => resolve({deposits: 0, balance: {found: false}, ok: false})
+                onerror: () => resolve({ deposits: 0, balance: { found: false }, ok: false })
             });
         });
     }
@@ -11674,12 +12329,12 @@
                                 if (status === 'pending') pending += amount;
                             });
                         }
-                        resolve({withdrawals, pending, ok: true});
+                        resolve({ withdrawals, pending, ok: true });
                     } catch (e) {
-                        resolve({withdrawals: 0, pending: 0, ok: false});
+                        resolve({ withdrawals: 0, pending: 0, ok: false });
                     }
                 },
-                onerror: () => resolve({withdrawals: 0, pending: 0, ok: false})
+                onerror: () => resolve({ withdrawals: 0, pending: 0, ok: false })
             });
         });
     }
@@ -11692,10 +12347,8 @@
         ]);
 
         if (!detail.ok && !payments.ok) {
-            return {
-                project, id, deposits: 0, withdrawals: 0, pending: 0,
-                balance: 0, balanceFound: false, balanceParts: {}, profit: 0, failed: true
-            };
+            return { project, id, deposits: 0, withdrawals: 0, pending: 0,
+                balance: 0, balanceFound: false, balanceParts: {}, profit: 0, failed: true };
         }
 
         // Баланс зі зведеної таблиці має пріоритет, якщо він там є.
@@ -11729,7 +12382,7 @@
             }
         }
 
-        await Promise.all(Array.from({length: Math.min(limit, items.length)}, next));
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
         return results;
     }
 
@@ -11781,12 +12434,7 @@
             return '<div class="pp-empty">Не вдалося отримати дані по жодному акаунту</div>';
         }
 
-        const partLabels = {
-            winnings: 'Winnings',
-            entries: 'Entries',
-            bonusEntries: 'Bonus Entries',
-            balance: 'Balance'
-        };
+        const partLabels = { winnings: 'Winnings', entries: 'Entries', bonusEntries: 'Bonus Entries', balance: 'Balance' };
 
         const totals = rows.reduce((acc, item) => {
             acc.deposits += item.deposits;
@@ -11796,7 +12444,7 @@
             acc.profit += item.profit;
             acc.prognose += item.profit - item.pending - item.balance;
             return acc;
-        }, {deposits: 0, withdrawals: 0, pending: 0, balance: 0, profit: 0, prognose: 0});
+        }, { deposits: 0, withdrawals: 0, pending: 0, balance: 0, profit: 0, prognose: 0 });
 
         const body = rows.map(item => {
             const prognose = item.profit - item.pending - item.balance;
@@ -11891,8 +12539,8 @@
             runButton.disabled = true;
 
             const accounts = [
-                {project: context.currentProject, id: context.currentId, isCurrent: true},
-                ...(context.relatedAccounts || []).map(item => ({project: item.project, id: item.id}))
+                { project: context.currentProject, id: context.currentId, isCurrent: true },
+                ...(context.relatedAccounts || []).map(item => ({ project: item.project, id: item.id }))
             ];
 
             hint.textContent = `Опрацьовано 0 з ${accounts.length}`;
@@ -11918,7 +12566,7 @@
                     if (typeof context.currentBalance === 'number') {
                         data[0].balance = context.currentBalance;
                         data[0].balanceFound = true;
-                        data[0].balanceParts = {balance: context.currentBalance};
+                        data[0].balanceParts = { balance: context.currentBalance };
                     }
                     if (typeof context.currentPending === 'number') data[0].pending = context.currentPending;
                 }
@@ -11927,7 +12575,7 @@
                 PERSON_PROGNOSE_CACHE = {
                     personId: context.currentId,
                     data,
-                    time: new Date().toLocaleTimeString('uk-UA', {hour: '2-digit', minute: '2-digit'})
+                    time: new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
                 };
                 hint.textContent = `Розраховано о ${PERSON_PROGNOSE_CACHE.time}`;
                 runButton.textContent = 'Перерахувати';
@@ -11958,12 +12606,8 @@
         button.style.cssText =
             'background:#6a1b9a;color:#fff;border:none;border-radius:4px;padding:6px 12px;' +
             'cursor:pointer;font-size:12px;width:100%;';
-        button.onmouseenter = () => {
-            button.style.background = '#4a148c';
-        };
-        button.onmouseleave = () => {
-            button.style.background = '#6a1b9a';
-        };
+        button.onmouseenter = () => { button.style.background = '#4a148c'; };
+        button.onmouseleave = () => { button.style.background = '#6a1b9a'; };
 
         button.addEventListener('click', () => openPersonPrognosePopup(context));
 
@@ -12059,7 +12703,7 @@
             icon: 'warning',
             title: 'Вкладки заблоковано',
             html: `Браузер заблокував ${blocked} із ${total} вкладок.<br>` +
-                'Дозвольте спливаючі вікна для цього сайту, щоб відкривати все одразу.'
+                  'Дозвольте спливаючі вікна для цього сайту, щоб відкривати все одразу.'
         });
     }
 
@@ -12099,8 +12743,8 @@
         }
 
         if (internalId) {
-            links.push({title: 'Лог балансу', url: `${base}players/playersItems/balanceLog/${internalId}/`});
-            links.push({title: 'Лог транзакцій', url: `${base}players/playersItems/transactionLog/${internalId}/`});
+            links.push({ title: 'Лог балансу', url: `${base}players/playersItems/balanceLog/${internalId}/` });
+            links.push({ title: 'Лог транзакцій', url: `${base}players/playersItems/transactionLog/${internalId}/` });
         }
 
         return links;
@@ -12142,11 +12786,8 @@
         const add = (url, title) => {
             if (!url) return;
             let parsed;
-            try {
-                parsed = new URL(url, window.location.origin);
-            } catch (e) {
-                return;
-            }
+            try { parsed = new URL(url, window.location.origin); }
+            catch (e) { return; }
 
             const absolute = parsed.href;
             if (/^javascript:/i.test(absolute) || absolute.endsWith('#')) return;
@@ -12157,7 +12798,7 @@
             if (NON_DOCUMENT_RE.test(parsed.pathname)) return;
 
             if (!found.has(absolute)) {
-                found.set(absolute, {url: absolute, title: (title || '').trim() || 'Документ'});
+                found.set(absolute, { url: absolute, title: (title || '').trim() || 'Документ' });
             }
         };
 
@@ -12165,6 +12806,12 @@
         document.querySelectorAll('a[href]').forEach(a => {
             const href = a.getAttribute('href') || '';
             if (DOCUMENT_FILE_RE.test(href)) add(href, a.textContent || a.title);
+        });
+
+        // Нова таблиця документів: кнопка-прев'ю веде на /playersDocuments/viewDocument/{id}/
+        // без розширення файлу, тому окремо беремо саме ці посилання.
+        document.querySelectorAll('a[href*="/playersDocuments/viewDocument/"]').forEach(a => {
+            add(a.getAttribute('href'), a.textContent || a.title);
         });
 
         // Мініатюри: беремо посилання на оригінал, інакше сам src.
@@ -12202,7 +12849,7 @@
                 icon: 'info',
                 title: 'Документів не знайдено',
                 html: 'На цій сторінці не знайдено посилань на документи.<br>' +
-                    'Відкрийте картку гравця й спробуйте ще раз.'
+                      'Відкрийте картку гравця й спробуйте ще раз.'
             });
             return;
         }
@@ -12224,12 +12871,12 @@
         notifyBlockedTabs(openLinksInTabs(links), links.length);
     }
 
-    // USA-проєкти: усі .com/.app, окрім EU (WildWinz, 777Royals). Українські (777.ua, vegas.ua,
+    // USA-проєкти: усі .com/.app, окрім WildWinz. Українські (777.ua, vegas.ua,
     // betking.com.ua) відсіюються за доменом .ua.
     function isUsaProject() {
         const host = window.location.hostname.toLowerCase();
         if (host.endsWith('.ua')) return false;
-        if (isEuProject()) return false;
+        if (host.includes('wildwinz')) return false;
         return host.endsWith('.com') || host.endsWith('.app');
     }
 
@@ -12245,14 +12892,11 @@
             const href = a.getAttribute('href') || '';
             if (!href || href === '#') return;
             let absolute;
-            try {
-                absolute = new URL(href, window.location.origin).href;
-            } catch (e) {
-                return;
-            }
+            try { absolute = new URL(href, window.location.origin).href; }
+            catch (e) { return; }
             if (seen.has(absolute)) return;
             seen.add(absolute);
-            links.push({url: absolute, title: (a.textContent || '').trim() || 'Акаунт'});
+            links.push({ url: absolute, title: (a.textContent || '').trim() || 'Акаунт' });
         });
 
         return links;
@@ -12276,12 +12920,8 @@
             'background:#1e88e5;color:#fff;border:none;border-radius:4px;padding:6px 12px;' +
             'cursor:pointer;font-size:12px;width:100%;';
         button.title = 'Відкрити всі знайдені акаунти гравця в нових вкладках';
-        button.onmouseenter = () => {
-            button.style.background = '#1565c0';
-        };
-        button.onmouseleave = () => {
-            button.style.background = '#1e88e5';
-        };
+        button.onmouseenter = () => { button.style.background = '#1565c0'; };
+        button.onmouseleave = () => { button.style.background = '#1e88e5'; };
 
         button.addEventListener('click', () => {
             const current = collectRelatedProjectLinks(container);
@@ -12342,12 +12982,8 @@
             'margin-left:10px;padding:2px 10px;font-size:11px;line-height:18px;' +
             'color:#fff;background:#d32f2f;border:none;border-radius:3px;cursor:pointer;' +
             'vertical-align:middle;';
-        button.onmouseenter = () => {
-            button.style.background = '#b71c1c';
-        };
-        button.onmouseleave = () => {
-            button.style.background = '#d32f2f';
-        };
+        button.onmouseenter = () => { button.style.background = '#b71c1c'; };
+        button.onmouseleave = () => { button.style.background = '#d32f2f'; };
 
         button.addEventListener('click', (e) => {
             e.preventDefault();
@@ -12365,7 +13001,7 @@
                     button.style.background = '#d32f2f';
                 }, 1500);
             } catch (error) {
-                Swal.fire({icon: 'error', title: 'Помилка', text: error.message});
+                Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
             }
         });
 
@@ -12389,13 +13025,13 @@
             }, 300);
         });
 
-        observer.observe(document.body, {childList: true, subtree: true});
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     function createIcon(iconClass, positionStyles, title, onClick) {
         const icon = document.createElement('div');
         icon.innerHTML = `<i class="fa ${iconClass}"></i>`;
-        applyStyles(icon, {...ICON_STYLES, ...positionStyles});
+        applyStyles(icon, { ...ICON_STYLES, ...positionStyles });
         icon.title = title;
         icon.onclick = onClick;
         return icon;
@@ -12406,15 +13042,15 @@
 
         async function fetchMonthAndTotalPA() {
             const urlMatch = Array.from(document.querySelectorAll('script'))
-                .find(script => script.textContent.includes('#show-player-in-out'))
-                ?.textContent.match(/url:\s*'([^']+)'/)?.[1];
+            .find(script => script.textContent.includes('#show-player-in-out'))
+            ?.textContent.match(/url:\s*'([^']+)'/)?.[1];
             if (!urlMatch) return null;
 
             const descriptionField = document.getElementById('gateway-method-description-visible-common');
             const hasRefunds = descriptionField?.innerText.toLowerCase().includes('рефандами');
 
             try {
-                const response = await $.ajax({type: 'GET', url: urlMatch});
+                const response = await $.ajax({ type: 'GET', url: urlMatch });
                 return {
                     TotalPA: hasRefunds ? 'Refund' : response.totalInOut,
                     MonthPA: response.monthInOut
@@ -12426,7 +13062,7 @@
         }
 
         setTimeout(async () => {
-            const {TotalPA, MonthPA} = (await fetchMonthAndTotalPA()) || {};
+            const { TotalPA, MonthPA } = (await fetchMonthAndTotalPA()) || {};
             const entries = document.querySelector('#Players_balance')?.value.trim() || 'N/A';
             const winnings = getWinnings() || 'N/A';
 
@@ -12439,6 +13075,7 @@
                 animation: 'glow 1s infinite alternate'
             });
             popupBox.id = 'custom-popup-box';
+            registerThemeRoot(popupBox);
 
             const dragHandle = document.createElement('div');
             applyStyles(dragHandle, {
@@ -12487,13 +13124,13 @@
 
             popupBox.appendChild(createOldSettingsIcon());
             popupBox.appendChild(createOldStatisticIcon());
-            const watchIcon = createIcon('fa-eye', {top: '10px', left: '10px'}, 'Нагляд', () => createFraudPopup());
+            const watchIcon = createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup());
             // Без цього id індикатор (лічильник і блимання) не мав до чого прикріпитись.
             watchIcon.id = 'af-watch-icon';
             popupBox.appendChild(watchIcon);
             startWatchPolling();
 
-            const reminderIcon = createIcon('fa-book', {top: '40px', left: '10px'}, 'Памятка', () => {
+            const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
                 createReminderPopup();
                 reminderIcon.classList.remove('blinking');
                 GM_setValue('reminderBlinkKey', false);
@@ -12504,22 +13141,22 @@
             popupBox.appendChild(reminderIcon);
 
             // Швидке відкриття документів та фінансових вкладок гравця.
-            popupBox.appendChild(createIcon('fa-id-card-o', {top: '70px', left: '10px'},
+            popupBox.appendChild(createIcon('fa-id-card-o', { top: '70px', left: '10px' },
                 'Відкрити всі документи гравця', () => openPlayerDocuments()));
-            popupBox.appendChild(createIcon('fa-exchange', {top: '100px', left: '10px'},
+            popupBox.appendChild(createIcon('fa-exchange', { top: '100px', left: '10px' },
                 'Відкрити депозити, виплати, лог балансу і лог транзакцій', () => openFinanceTabs()));
 
             await addAdminIcon(popupBox);
 
             const firstRowButtonContainer = document.createElement('div');
-            applyStyles(firstRowButtonContainer, {marginTop: '10px', display: 'flex', gap: '10px'});
+            applyStyles(firstRowButtonContainer, { marginTop: '10px', display: 'flex', gap: '10px' });
             popupBox.appendChild(firstRowButtonContainer);
 
-            const {isCheckedToday} = await checkUserInChecklist();
+            const { isCheckedToday } = await checkUserInChecklist();
             firstRowButtonContainer.appendChild(createCleanButton(isCheckedToday));
 
             const secondRowButtonContainer = document.createElement('div');
-            applyStyles(secondRowButtonContainer, {marginTop: '10px', textAlign: 'center'});
+            applyStyles(secondRowButtonContainer, { marginTop: '10px', textAlign: 'center' });
             popupBox.appendChild(secondRowButtonContainer);
 
             getPendings(totalPending => {
@@ -12528,7 +13165,7 @@
                 else pendingInfo.remove();
 
                 const profitButton = document.createElement('button');
-                applyStyles(profitButton, {...BUTTON_STYLES, backgroundColor: '#2196F3'});
+                applyStyles(profitButton, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
                 profitButton.innerText = 'Total InOut';
                 profitButton.onmouseover = () => profitButton.style.backgroundColor = '#2f76ae';
                 profitButton.onmouseout = () => profitButton.style.backgroundColor = '#2196F3';
@@ -12688,7 +13325,7 @@
         GM_xmlhttpRequest({
             method: 'GET',
             url: requestUrl,
-            onload: function (response) {
+            onload: function(response) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(response.responseText, 'text/html');
                 const formData = new FormData();
@@ -12701,7 +13338,7 @@
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     data: new URLSearchParams(formData).toString(),
-                    onload: function (response) {
+                    onload: function(response) {
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(response.responseText, 'text/html');
 
@@ -12761,14 +13398,14 @@
         GM_xmlhttpRequest({
             method: 'GET',
             url: baseURL,
-            onload: function (response) {
+            onload: function(response) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(response.responseText, 'text/html');
 
                 const select = doc.querySelector('#newPageSize');
                 if (select) {
                     select.value = '500';
-                    const event = new Event('change', {bubbles: true});
+                    const event = new Event('change', { bubbles: true });
                     select.dispatchEvent(event);
                 }
                 const rows = doc.querySelectorAll('tr');
@@ -12801,7 +13438,7 @@
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: baseURL,
-                onload: function (response) {
+                onload: function(response) {
                     try {
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(response.responseText, 'text/html');
@@ -12809,7 +13446,7 @@
                         const select = doc.querySelector('#newPageSize');
                         if (select) {
                             select.value = '500';
-                            const event = new Event('change', {bubbles: true});
+                            const event = new Event('change', { bubbles: true });
                             select.dispatchEvent(event);
                         }
 
@@ -12832,7 +13469,7 @@
                         reject(error);
                     }
                 },
-                onerror: function () {
+                onerror: function() {
                     reject('Error fetching data');
                 }
             });
@@ -12898,7 +13535,7 @@
                         fraudButton.style.transform = 'translateY(0)';
                     });
 
-                    fraudButton.addEventListener('click', function () {
+                    fraudButton.addEventListener('click', function() {
                         fetch(`${ProjectUrl}players/playerFeature/suspectedFraud/${userId}/`, {
                             headers: {
                                 "accept": "*/*",
@@ -12923,11 +13560,11 @@
                         })
                             .then(response => response.json())
                             .then(data => {
-                                window.location.reload();
-                            })
+                            window.location.reload();
+                        })
                             .catch(error => {
-                                console.error('Помилка:', error);
-                            });
+                            console.error('Помилка:', error);
+                        });
                     });
 
                     const span = td.querySelector('span');
@@ -12949,7 +13586,7 @@
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 },
-                onload: function (response) {
+                onload: function(response) {
                     try {
                         const data = JSON.parse(response.responseText);
                         if (data.country && data.city && data.isp) {
@@ -12961,7 +13598,7 @@
                         resolve(`Ошибка парсинга: ${e.message}`);
                     }
                 },
-                onerror: function (error) {
+                onerror: function(error) {
                     console.log('Ошибка запроса:', error);
                     resolve(`Ошибка запроса: ${error.statusText || 'Неизвестная ошибка'}`);
                 }
@@ -13069,8 +13706,8 @@
         const setPageId = id => GM_setValue('easyPayPageId', id);
 
         const getDate = () => new Date()
-            .toLocaleDateString('uk-UA', {day: '2-digit', month: '2-digit', year: 'numeric'})
-            .replace(/\./g, '');
+        .toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        .replace(/\./g, '');
 
         const fetchPageId = callback => {
             console.log('[PAGE_ID] Fetching new PageId');
@@ -13343,7 +13980,7 @@
                 });
             };
 
-            return {fullCardSpan, copiedMessage};
+            return { fullCardSpan, copiedMessage };
         };
 
         const commentDiv = document.getElementById('gateway-method-description-visible-common');
@@ -13368,7 +14005,7 @@
 
             for (const card of cardNumbers) {
                 if (matchMaskWithCard(originalMask, card)) {
-                    const {fullCardSpan, copiedMessage} = createCardElement(card);
+                    const { fullCardSpan, copiedMessage } = createCardElement(card);
                     maskCell.innerHTML = '';
                     maskCell.appendChild(fullCardSpan);
                     maskCell.appendChild(copiedMessage);
@@ -13415,7 +14052,7 @@
             const response = await fetch('/players/playersDetail/index/', {
                 method: 'POST',
                 body: formData,
-                headers: {'X-Requested-With': 'XMLHttpRequest'}
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const htmlText = await response.text();
             const doc = new DOMParser().parseFromString(htmlText, 'text/html');
@@ -13428,7 +14065,7 @@
             const total = totalRaw ? parseFloat(totalRaw.replace(/[^\d.]/g, '')) : 0;
             const avg = count > 0 ? (total / count).toFixed(2) : '0.00';
 
-            return {count, total, avg};
+            return { count, total, avg };
         };
 
         const renderContent = (data) => `
@@ -13462,23 +14099,19 @@
                     overflow: 'hidden'
                 });
                 document.body.appendChild(miniBox);
+                registerThemeRoot(miniBox);
 
                 let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
                 const dragStart = (e) => {
-                    initialX = e.clientX - xOffset;
-                    initialY = e.clientY - yOffset;
+                    initialX = e.clientX - xOffset; initialY = e.clientY - yOffset;
                     if (e.target.closest('#stats-header')) isDragging = true;
                 };
-                const dragEnd = () => {
-                    isDragging = false;
-                };
+                const dragEnd = () => { isDragging = false; };
                 const drag = (e) => {
                     if (!isDragging) return;
                     e.preventDefault();
-                    currentX = e.clientX - initialX;
-                    currentY = e.clientY - initialY;
-                    xOffset = currentX;
-                    yOffset = currentY;
+                    currentX = e.clientX - initialX; currentY = e.clientY - initialY;
+                    xOffset = currentX; yOffset = currentY;
                     miniBox.style.transform = `translate(${currentX}px, ${currentY}px)`;
                 };
                 document.addEventListener('mousedown', dragStart);
@@ -13487,10 +14120,10 @@
             }
 
             const tabs = [
-                {key: '30d', label: '30 днів'},
-                {key: '3m', label: '3 міс'},
-                {key: '6m', label: '6 міс'},
-                {key: 'year', label: 'Рік'}
+                { key: '30d', label: '30 днів' },
+                { key: '3m',  label: '3 міс' },
+                { key: '6m',  label: '6 міс' },
+                { key: 'year', label: 'Рік' }
             ];
 
             let activeTab = '30d';
@@ -13567,6 +14200,7 @@
             if (document.getElementById('manager-stats-popup')) return;
             const popup = document.createElement('div');
             popup.id = 'manager-stats-popup';
+            registerThemeRoot(popup);
 
             popup.innerHTML = `
         <div id="stats-header">
@@ -13585,6 +14219,7 @@
         </div>
     `;
             document.body.appendChild(popup);
+            mountFaceitProductivityView(popup, managerGoal);
 
             const toggleBtn = popup.querySelector('#stats-toggle-btn');
             const expandBtn = popup.querySelector('#stats-expand-btn');
@@ -13646,11 +14281,11 @@
                 if (isDragging) {
                     isDragging = false;
                     popup.style.transition = '';
-                    await GM_setValue('stats_popup_position', {top: popup.style.top, left: popup.style.left});
+                    await GM_setValue('stats_popup_position', { top: popup.style.top, left: popup.style.left });
                 }
             });
 
-            const savedPosition = await GM_getValue('stats_popup_position', {top: '15px', left: '15px'});
+            const savedPosition = await GM_getValue('stats_popup_position', { top: '15px', left: '15px' });
             popup.style.top = savedPosition.top;
             popup.style.left = savedPosition.left;
 
@@ -13734,6 +14369,9 @@
                 feedbackEl.style.color = feedbackColor;
                 feedbackEl.style.backgroundColor = feedbackBg;
             }
+
+            // FACEIT-тема: та сама статистика, лише інше візуальне представлення (без повторних розрахунків).
+            updateFaceitProductivityView({ processed: processedPerShift, goal: managerGoal, percent: percentComplete, projected: projectedText, pace: paceText });
         }
 
         async function updateStats(forceRefresh = false) {
@@ -13752,15 +14390,13 @@
                     await GM_setValue(cacheKey, shiftStats);
                 }
                 renderStats(shiftStats);
-            } catch (error) {
-                console.error('Статистика: Помилка при оновленні даних:', error);
-            }
+            } catch (error) { console.error('Статистика: Помилка при оновленні даних:', error); }
         }
 
         function interceptFetch() {
             const originalFetch = window.fetch;
             if (originalFetch.isStatsInterceptor) return;
-            window.fetch = async function (resource, config) {
+            window.fetch = async function(resource, config) {
                 const url = resource instanceof Request ? resource.url : resource;
                 const response = await originalFetch(resource, config);
                 if (url.includes('/api/working') && response.ok) {
@@ -13770,35 +14406,24 @@
             };
             window.fetch.isStatsInterceptor = true;
         }
-
         function getCurrentShiftWindow() {
-            const now = new Date();
-            const currentHour = now.getHours();
+            const now = new Date(); const currentHour = now.getHours();
             let shiftStart = new Date(now), shiftEnd = new Date(now);
             if (currentHour >= 9 && currentHour < 21) {
-                shiftStart.setHours(9, 0, 0, 0);
-                shiftEnd.setHours(21, 0, 0, 0);
+                shiftStart.setHours(9, 0, 0, 0); shiftEnd.setHours(21, 0, 0, 0);
             } else {
                 if (currentHour >= 21) {
-                    shiftStart.setHours(21, 0, 0, 0);
-                    shiftEnd.setHours(9, 0, 0, 0);
-                    shiftEnd.setDate(shiftEnd.getDate() + 1);
+                    shiftStart.setHours(21, 0, 0, 0); shiftEnd.setHours(9, 0, 0, 0); shiftEnd.setDate(shiftEnd.getDate() + 1);
                 } else {
-                    shiftStart.setHours(21, 0, 0, 0);
-                    shiftStart.setDate(shiftStart.getDate() - 1);
-                    shiftEnd.setHours(9, 0, 0, 0);
+                    shiftStart.setHours(21, 0, 0, 0); shiftStart.setDate(shiftStart.getDate() - 1); shiftEnd.setHours(9, 0, 0, 0);
                 }
             }
-            return {start: shiftStart, end: shiftEnd};
+            return { start: shiftStart, end: shiftEnd };
         }
-
         async function fetchApi(endpoint, options = {}) {
             const url = `${API_BASE_URL}${endpoint}`;
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json', ...options.headers
-            };
-            const response = await fetch(url, {...options, headers});
+            const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers };
+            const response = await fetch(url, { ...options, headers });
             if (!response.ok) {
                 console.error(`HTTP error! status: ${response.status} for URL: ${url}`);
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -13816,7 +14441,6 @@
 
         initializeStats();
     }
-
     //================= КІНЕЦЬ БЛОКУ СТАТИСТИКИ =================
 
 
@@ -13882,11 +14506,10 @@
         </div>
         `;
         document.body.appendChild(modal);
+        registerThemeRoot(modal);
+        registerThemeRoot(tooltip);
 
-        const closeModal = () => {
-            modal.remove();
-            tooltip.remove();
-        };
+        const closeModal = () => { modal.remove(); tooltip.remove(); };
         modal.querySelector('#dash-modal-backdrop').onclick = closeModal;
         modal.querySelector('#dash-close-main').onclick = closeModal;
 
@@ -13898,14 +14521,11 @@
             gridContainer.innerHTML = '<div style="padding:20px; text-align:center; color: #7f8c8d;">Завантаження даних...</div>';
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth() + 1;
-            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', {
-                month: 'long',
-                year: 'numeric'
-            }).toUpperCase();
+            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' }).toUpperCase();
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/get_team_performance?year=${year}&month=${month}`, {
-                    headers: {'Authorization': `Bearer ${token}`}
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await response.json();
                 renderGrid(data, year, month);
@@ -13918,7 +14538,7 @@
         function renderGrid(data, year, month) {
             gridContainer.innerHTML = '';
 
-            const {performance: performanceData, goals: goalsData, teams: teamsData} = data;
+            const { performance: performanceData, goals: goalsData, teams: teamsData } = data;
 
             if (!performanceData || Object.keys(performanceData).length === 0) {
                 gridContainer.innerHTML = '<div style="padding:20px; text-align:center;">За цей період немає даних.</div>';
@@ -14034,6 +14654,7 @@
             </div>
             `;
             document.body.appendChild(hourlyModal);
+            registerThemeRoot(hourlyModal);
 
             const innerContainer = hourlyModal.querySelector('#hourly-grid-container-inner');
             const titleEl = hourlyModal.querySelector('#hourly-title');
@@ -14050,7 +14671,7 @@
 
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/get_day_hourly_stats?date=${dateStr}&shift=${currentShift}`, {
-                        headers: {'Authorization': `Bearer ${token}`}
+                        headers: { 'Authorization': `Bearer ${token}` }
                     });
                     const data = await response.json();
                     renderHourlyShiftGrid(data, innerContainer);
@@ -14068,14 +14689,8 @@
                 };
             });
 
-            hourlyModal.querySelector('#hourly-prev').onclick = () => {
-                currentDetailDate.setDate(currentDetailDate.getDate() - 1);
-                loadHourlyData();
-            };
-            hourlyModal.querySelector('#hourly-next').onclick = () => {
-                currentDetailDate.setDate(currentDetailDate.getDate() + 1);
-                loadHourlyData();
-            };
+            hourlyModal.querySelector('#hourly-prev').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() - 1); loadHourlyData(); };
+            hourlyModal.querySelector('#hourly-next').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() + 1); loadHourlyData(); };
             hourlyModal.querySelector('#close-hourly').onclick = () => hourlyModal.remove();
             hourlyModal.querySelector('#dash-modal-backdrop').onclick = () => hourlyModal.remove();
 
@@ -14084,7 +14699,7 @@
 
         function renderHourlyShiftGrid(data, container) {
             container.innerHTML = '';
-            const {stats, hours, shift, manager_ids} = data;
+            const { stats, hours, shift, manager_ids } = data;
             let managers = Object.keys(stats).sort();
             const isAdmin = managerData.status === 'Admin';
 
@@ -14118,9 +14733,7 @@
                 row.appendChild(nameCell);
 
                 let shiftTotal = 0;
-                hours.forEach(h => {
-                    shiftTotal += (stats[name][h]?.count || 0);
-                });
+                hours.forEach(h => { shiftTotal += (stats[name][h]?.count || 0); });
 
                 const totalCell = document.createElement('div');
                 totalCell.className = 'dash-total-cell';
@@ -14128,7 +14741,7 @@
                 row.appendChild(totalCell);
 
                 hours.forEach(h => {
-                    const hourData = stats[name][h] || {count: 0, first: null, last: null};
+                    const hourData = stats[name][h] || { count: 0, first: null, last: null };
                     const cell = document.createElement('div');
                     cell.className = 'dash-day-cell';
 
@@ -14153,9 +14766,7 @@
                                     tooltip.style.top = `${rect.top - 35}px`;
                                 }
                             };
-                            bar.onmouseleave = () => {
-                                document.getElementById('dash-tooltip').style.display = 'none';
-                            };
+                            bar.onmouseleave = () => { document.getElementById('dash-tooltip').style.display = 'none'; };
                             bar.style.cursor = 'pointer';
                             bar.onclick = () => {
                                 const titleEl = document.getElementById('hourly-title');
@@ -14180,14 +14791,8 @@
             });
         }
 
-        modal.querySelector('#dash-prev-month').onclick = () => {
-            currentDate.setMonth(currentDate.getMonth() - 1);
-            loadAndRender();
-        };
-        modal.querySelector('#dash-next-month').onclick = () => {
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            loadAndRender();
-        };
+        modal.querySelector('#dash-prev-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() - 1); loadAndRender(); };
+        modal.querySelector('#dash-next-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() + 1); loadAndRender(); };
 
         gridContainer.onmouseover = (e) => {
             const bar = e.target.closest('.dash-bar');
@@ -14199,13 +14804,10 @@
                 tooltip.style.top = `${rect.top - 30}px`;
             }
         };
-        gridContainer.onmouseout = () => {
-            tooltip.style.display = 'none';
-        };
+        gridContainer.onmouseout = () => { tooltip.style.display = 'none'; };
 
         loadAndRender();
     }
-
     //================= КІНЕЦЬ ДАШБОРДУ =================
 
 
@@ -14249,9 +14851,9 @@
 
     document.addEventListener('click', (event) => {
         const isGridAction = event.target.closest('.applyFiltersBtn') ||
-            event.target.closest('.dropdown-multiselect-checkbox-list-apply') ||
-            event.target.closest('.pagination a') ||
-            event.target.closest('.sort-link');
+              event.target.closest('.dropdown-multiselect-checkbox-list-apply') ||
+              event.target.closest('.pagination a') ||
+              event.target.closest('.sort-link');
 
         if (isGridAction) {
             setTimeout(() => addLocationButton(), 1000);
@@ -14263,7 +14865,7 @@
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             const isFilterInput = event.target.closest('.filter-container input') ||
-                event.target.closest('.filters input');
+                  event.target.closest('.filters input');
 
             if (isFilterInput) {
                 setTimeout(() => addLocationButton(), 2000);
@@ -14272,19 +14874,12 @@
         }
     });
 
-    window.addEventListener('load', async function () {
+    window.addEventListener('load', async function() {
         addLocationButton();
         const isUser = await checkToken();
         const currentHost = window.location.hostname;
         if (isUser.success) {
-            managerData = {
-                id: isUser.id,
-                name: isUser.name,
-                status: isUser.status,
-                goal: isUser.goal,
-                work_hours: isUser.work_hours,
-                team: isUser.team
-            };
+            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours, team:isUser.team};
             const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
             if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents')) {
                 setupManagerStats(API_BASE_URL, token);
@@ -14292,13 +14887,16 @@
             addMainMenuButtons();
 
             sendActivePageInfo();
-            if (isEuProject() && currentUrl.includes('paymentsItemsOut/index')) {
-                calculatePendingAmountEU();
-            } else if (currentUrl.includes('PaymentsItemsInForm%5Bsearch_login%5D=')) {
+            if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmountWildWinz();
+            }
+            else if (currentUrl.includes('PaymentsItemsInForm%5Bsearch_login%5D=')) {
                 fetchAndRenderMiniStats();
-            } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('paymentsItemsOut/index')) {
+            }
+            else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();
-            } else if (currentHost.endsWith('.ua') && (currentUrl.includes('PaymentsItemsOut') || currentUrl.includes('paymentsItemsOut'))) {
+            }
+            else if (currentHost.endsWith('.ua') && (currentUrl.includes('PaymentsItemsOut') || currentUrl.includes('paymentsItemsOut'))) {
                 calculatePendingAmount();
                 setPageSize1k();
                 checkForUpdates();
@@ -14329,14 +14927,11 @@
                     changeCardStatus();
                     new MutationObserver(() => {
                         changeCardStatus();
-                    }).observe(document.querySelector('#payments-cards-masks-parent'), {
-                        childList: true,
-                        subtree: true
-                    });
+                    }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
                 }
                 await activeUrlsManagers();
                 await checkUnreadTlComments(managerData.id)
-            } else if (isEuProject() && currentUrl.includes('players/playersItems/update')) {
+            } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
                 handlePopupWildWinz();
                 addForeignButton();
                 buttonToSave();
@@ -14361,15 +14956,16 @@
                 await checkUnreadTlComments(managerData.id)
             } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('playersItems/balanceLog/')) {
                 setBalanceLogPageSize();
-            } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') || currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
+            } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
                 checkForUpdates();
                 powerBImakeCellsClickable();
                 new MutationObserver(() => {
                     powerBIfetchHighlightedValues();
                     powerBImakeCellsClickable();
-                }).observe(document.body, {childList: true, subtree: true});
-            } else if (currentHost.endsWith('.ua') && currentUrl.includes('playersItems/balanceLog/')) {
+                }).observe(document.body, { childList: true, subtree: true });
+            }
+            else if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
                 createFloatingButton(buttonImageUrl);
             } else if (currentUrl.includes('playersItems/transactionLog/')) {
                 initTransactionsPage();
